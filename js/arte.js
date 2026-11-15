@@ -132,7 +132,7 @@ export function retrato(folha, tamanho = 64) {
   const cv = criarCanvas(tamanho, tamanho), x = cv.getContext('2d');
   x.imageSmoothingEnabled = false;
   const k = tamanho / 16;
-  x.drawImage(folha, 16, 0, 16, 16, 0, Math.round(k * 1), tamanho, tamanho);
+  x.drawImage(folha, 16, 6, 16, 16, 0, 0, tamanho, tamanho);
   return cv;
 }
 
