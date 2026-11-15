@@ -9,7 +9,7 @@ export const versaoAtual = () => versao;
 // Linha do banco -> evento plano.
 export function deLinha(l) {
   const d = l.dados || {};
-  return { ...d, id: l.id, t: l.t ?? d.t, pessoa: l.pessoa ?? d.pessoa, agente: d.agente === 'Explore' ? 'explorador' : d.agente };
+  return { ...d, id: l.id, t: l.t ?? d.t, pessoa: l.pessoa ?? d.pessoa, agente: d.agente === 'Explore' ? 'explorador' : d.agente, texto: String(d.texto ?? '') };
 }
 export function adicionar(lista) {
   const ids = new Set(eventos.map((e) => e.id));
@@ -89,6 +89,61 @@ export function resumoDesde(t) {
     r.arquivos += (e.miniaturas || []).length;
   }
   return { total: novos.length, porPessoa };
+}
+
+// ---------- missões: cada pedido vira uma história (pedido › passos › resposta) ----------
+let cacheMissoes = { v: -1 };
+export function missoes() {
+  if (cacheMissoes.v === versao) return cacheMissoes.lista;
+  const lista = [], abertas = new Map();
+  const nova = (e, chave, alvo) => {
+    const m = { id: `${chave}|${e.t}`, pessoa: e.pessoa, sessao: e.sessao, projeto: e.projeto, alvo, origem: e.origem, pedido: e.texto, inicio: e.t, ultimo: e.t, passos: [], agentes: new Set(), miniaturas: [], nomes: [], alertas: 0, erros: 0, fim: null, resposta: null };
+    lista.push(m); abertas.set(chave, m); return m;
+  };
+  for (const e of eventos) {
+    const codex = e.agente === 'Codex' && (e.origem === 'vscode' || e.origem === 'site');
+    const chave = codex ? `${e.pessoa}|codex|${e.sessao || ''}` : `${e.pessoa}|${e.sessao || ''}`;
+    if (!codex && e.agente === 'Orquestrador' && e.tipo === 'inicio') { nova(e, chave, 'claude'); continue; }
+    if (codex && (e.tipo === 'pedido' || e.tipo === 'inicio')) { nova(e, chave, 'codex'); continue; }
+    const m = abertas.get(chave);
+    if (!m) continue;
+    m.ultimo = e.t;
+    if (e.agente !== 'Orquestrador' && !codex) m.agentes.add(e.agente);
+    for (const mi of e.miniaturas || []) m.miniaturas.push(mi);
+    for (const n of e.nomes || []) if (!m.nomes.includes(n)) m.nomes.push(n);
+    if (e.tipo === 'alerta') m.alertas++;
+    if (e.tipo === 'erro') m.erros++;
+    if ((e.agente === 'Orquestrador' && e.tipo === 'espera' && !codex) || (codex && (e.tipo === 'fim' || e.tipo === 'erro'))) {
+      if (e.texto === 'sessão aberta') continue;
+      m.fim = e.t; m.resposta = codex ? e.texto : e.resposta || null; abertas.delete(chave); continue;
+    }
+    if (e.agente === 'Orquestrador' && e.tipo === 'espera') continue;
+    m.passos.push(e);
+  }
+  for (const m of lista) {
+    const idade = Date.now() - m.ultimo;
+    m.status = m.fim ? (m.erros && !m.resposta ? 'erro' : 'fim') : m.passos.at(-1)?.tipo === 'alerta' ? 'alerta' : idade < 30 * 60e3 ? 'trab' : 'espera';
+    m.duracao = (m.fim || m.ultimo) - m.inicio;
+  }
+  lista.reverse();
+  cacheMissoes = { v: versao, lista };
+  return lista;
+}
+export function duracao(ms) {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+}
+
+// ---------- quem é Claude, quem é GPT ----------
+const FERRAMENTAS = new Set(['PixelLab', 'Blender', 'Render', 'Godot', 'HuggingFace']);
+export function modeloDe(nome, agentesInfo = []) {
+  if (nome === 'Codex') return { rotulo: 'GPT · Codex', familia: 'gpt' };
+  if (FERRAMENTAS.has(nome)) return { rotulo: 'Ferramenta', familia: 'ferramenta' };
+  if (nome === 'Orquestrador') return { rotulo: 'Claude', familia: 'claude' };
+  const info = agentesInfo.find((a) => a.nome === nome);
+  const m = String(info?.modelo || '').toLowerCase();
+  const nomeModelo = /haiku/.test(m) ? 'Haiku' : /sonnet/.test(m) ? 'Sonnet' : /opus/.test(m) ? 'Opus' : /fable/.test(m) ? 'Fable' : '';
+  return { rotulo: nomeModelo ? `Claude ${nomeModelo}` : 'Claude', familia: 'claude', descricao: info?.descricao };
 }
 
 export function ha(t) {

@@ -9,6 +9,7 @@ export const COR = {
   corredor: { h: 212, s: 22, b: -22, c: -78 },
   salao: { h: 32, s: 30, b: -6, c: -62 },
   tapeteSalao: { h: 352, s: 40, b: -38, c: -70 },
+  codex: { h: 152, s: 42, b: -38, c: -68 },
   salas: [
     { piso: { h: 25, s: 48, b: -43, c: -88 }, tapete: { h: 18, s: 55, b: -48, c: -70 } },   // Rafael (madeira, tapete terracota)
     { piso: { h: 30, s: 30, b: -50, c: -88 }, tapete: { h: 200, s: 45, b: -40, c: -70 } },  // Kenny (madeira escura, tapete azul)
@@ -17,15 +18,15 @@ export const COR = {
 
 // Salas de vidro (índice 0 = esquerda, 1 = direita).
 export const SALAS = [
-  { x0: 1, x1: 11, vidroX: 12, porta: 5, mesaDono: [2, 4], assistente: { mesa: [7, 8], lugar: [8, 7] }, dono: [3.5, 7.2] },
-  { x0: 28, x1: 38, vidroX: 27, porta: 33, mesaDono: [35, 4], assistente: { mesa: [30, 8], lugar: [31, 7] }, dono: [36.5, 7.2] },
+  { x0: 1, x1: 11, vidroX: 12, porta: 5, mesaDono: [2, 4], assistente: { mesa: [7, 8], lugar: [8, 7] }, codex: { mesa: [3, 8], lugar: [4, 7] }, dono: [6.5, 6.4] },
+  { x0: 28, x1: 38, vidroX: 27, porta: 33, mesaDono: [35, 4], assistente: { mesa: [30, 8], lugar: [31, 7] }, codex: { mesa: [34, 8], lugar: [35, 7] }, dono: [33.5, 6.4] },
 ];
 // Baias: 4 colunas x 3 fileiras por equipe. Cada baia = 3 tiles de mesa + 1 de passagem.
 export const EQUIPES = [{ x0: 2 }, { x0: 22 }];
 export const FILEIRAS = [14, 18, 22];
 export const ORDEM_BAIAS = [
   ['editor-de-video', 'criador-de-conteudo', 'artista-3d', 'balanceador'],
-  ['explorador', 'revisor-godot', 'Codex', 'PixelLab'],
+  ['explorador', 'revisor-godot', 'PixelLab', '*'],
   ['Blender', 'Render', 'Godot', '*'],
 ];
 
@@ -41,7 +42,7 @@ export function montarPlanta() {
   pinta(1, 12, MW - 2, 13, 2, COR.corredor);
   pinta(13, 2, 26, 11, 4, COR.salao);
   pinta(16, 3, 21, 8, 2, COR.tapeteSalao);
-  SALAS.forEach((s, i) => { pinta(s.x0, 2, s.x1, 10, 7, COR.salas[i].piso); pinta(s.x0 + 1, 6, s.x1 - 1, 9, 2, COR.salas[i].tapete); });
+  SALAS.forEach((s, i) => { pinta(s.x0, 2, s.x1, 10, 7, COR.salas[i].piso); pinta(s.x0 + 1, 6, s.x1 - 1, 9, 2, COR.salas[i].tapete); pinta(s.codex.mesa[0], 6, s.codex.mesa[0] + 2, 10, 2, COR.codex); });
   // paredes de fora
   pinta(0, 0, MW - 1, 1, 0, COR.parede); pinta(0, 0, 0, MH - 1, 0, COR.parede); pinta(MW - 1, 0, MW - 1, MH - 1, 0, COR.parede); pinta(0, MH - 1, MW - 1, MH - 1, 0, COR.parede);
   trava(0, 0, MW - 1, 1); trava(0, 0, 0, MH - 1); trava(MW - 1, 0, MW - 1, MH - 1); trava(0, MH - 1, MW - 1, MH - 1);
@@ -82,6 +83,14 @@ export function montarPlanta() {
     m('cafe', a.mesa[0] + 2, a.mesa[1], 16, 16, { ordem: (a.mesa[1] + 2) * T + 2, sobre: true, dy: 20 });
     m('cadeiraFrente', a.lugar[0], a.lugar[1], 16, 16, { ordem: a.lugar[1] * T + 4 });
     trava(a.lugar[0], a.lugar[1], a.lugar[0], a.lugar[1]);
+    // mesa do Codex (GPT): função separada, ao lado da assistente
+    const cx = s.codex;
+    m('mesa', cx.mesa[0], cx.mesa[1], 48, 32); trava(cx.mesa[0], cx.mesa[1], cx.mesa[0] + 2, cx.mesa[1] + 1);
+    m('pcCostas', cx.mesa[0] + 1.6, cx.mesa[1], 16, 32, { ordem: (cx.mesa[1] + 2) * T + 2, sobre: true, dy: 10 });
+    m('cacto', cx.mesa[0] + 0.1, cx.mesa[1], 16, 32, { ordem: (cx.mesa[1] + 2) * T + 2, sobre: true, dy: 8 });
+    m('cadeiraFrente', cx.lugar[0], cx.lugar[1], 16, 16, { ordem: cx.lugar[1] * T + 4 });
+    trava(cx.lugar[0], cx.lugar[1], cx.lugar[0], cx.lugar[1]);
+    lugares.push({ equipe: i, nome: 'Codex', x: cx.lugar[0] * T + 8, y: cx.lugar[1] * T + 21, dir: 'baixo', tile: cx.lugar, pc: null, codex: true });
     lugares.push({ equipe: i, nome: 'Orquestrador', x: a.lugar[0] * T + 8, y: a.lugar[1] * T + 21, dir: 'baixo', tile: a.lugar, pc: null, assistente: true });
   });
 

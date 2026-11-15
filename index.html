@@ -5,32 +5,42 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estúdio Genesis</title>
 <meta name="description" content="Escritório virtual do Rafael e do Kenny: veja as IAs trabalhando e fale com a sua assistente.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2315131b'/%3E%3Crect x='3' y='3' width='10' height='7' fill='%23f0973d'/%3E%3Crect x='5' y='11' width='6' height='2' fill='%23f0973d'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#15131b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Estúdio">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/icone-180.png">
+<link rel="icon" href="icones/icone-64.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:wght@700;900&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="estilo.css">
+<link rel="stylesheet" href="estilo-extra.css">
 </head>
 <body>
 <header id="topo">
-  <div class="logo"><span class="quad"></span>Estúdio Genesis</div>
+  <div class="logo"><span class="quad"></span><span class="nome-logo">Estúdio Genesis</span></div>
   <div id="gente" class="gente"></div>
   <div id="resumoTopo" class="resumo-topo"></div>
+  <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
   <div class="espaco"></div>
   <nav class="botoes" id="botoesTopo">
     <button data-aba="equipe" title="Equipe (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
     <button data-aba="atencao" title="Precisa de você (A)"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
-    <button data-aba="galeria" title="Galeria (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
-    <button data-aba="atividade" title="Atividade (F)"><span class="ico">≡</span><span class="txt">Atividade</span></button>
+    <button data-aba="missoes" title="Missões: histórico de pedidos (H)"><span class="ico">◷</span><span class="txt">Missões</span></button>
     <button data-aba="chat" title="Chat com a assistente (C)"><span class="ico">✉</span><span class="txt">Chat</span></button>
+    <button data-aba="galeria" title="Galeria (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
     <button data-aba="mural" title="Mural de recados (M)"><span class="ico">✎</span><span class="txt">Mural</span><b class="badge" id="badgeMural" hidden>0</b></button>
+    <button data-acao="jornal" title="Diário do Estúdio (J)"><span class="ico">▤</span><span class="txt">Diário</span></button>
     <button data-aba="ajustes" title="Ajustes"><span class="ico">⚙</span></button>
   </nav>
 </header>
 
 <main id="area">
   <div id="palco">
-    <canvas id="tela"></canvas>
+    <canvas id="tela" tabindex="0"></canvas>
     <div id="camada"></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
@@ -45,25 +55,37 @@
   </div>
 
   <aside id="gaveta" class="painel-px">
-    <div class="gaveta-topo"><h2 id="tituloAba">Equipe</h2><button id="fecharGaveta" title="Fechar (Esc)">×</button></div>
+    <div class="gaveta-topo"><button id="voltarGaveta" class="voltar" hidden title="Voltar">‹</button><h2 id="tituloAba">Equipe</h2><button id="fecharGaveta" title="Fechar (Esc)">×</button></div>
     <section data-painel="equipe" class="painel">
-      <div class="filtros" id="filtroEquipe"><button data-f="todos" class="on">Todos</button></div>
+      <div class="filtros" id="filtroEquipe"></div>
       <div id="listaEquipe"></div>
     </section>
     <section data-painel="agente" class="painel" hidden><div id="detalheAgente"></div></section>
-    <section data-painel="atencao" class="painel" hidden><div id="listaAtencao"></div></section>
-    <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
-    <section data-painel="atividade" class="painel" hidden>
-      <div class="filtros" id="filtroAtividade"></div>
-      <label class="chk"><input type="checkbox" id="mostrarMiudos"> mostrar leitura/edição de arquivos</label>
-      <div id="listaAtividade"></div>
+    <section data-painel="atencao" class="painel" hidden><div id="listaAprovacoes"></div><div id="listaAtencao"></div></section>
+    <section data-painel="missoes" class="painel" hidden>
+      <input id="buscaMissoes" class="busca" type="search" placeholder="Buscar em pedidos, respostas, agentes, arquivos…">
+      <div class="filtros" id="filtroMissoes"></div>
+      <div id="listaMissoes"></div>
     </section>
+    <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
+    <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
+      <div class="conversa-topo">
+        <select id="selConversa" title="Conversa"></select>
+        <button class="btn" id="btnNovaConversa" title="Conversa nova">+ Nova</button>
+        <button class="btn mini" id="btnMaisConversa" title="Renomear ou apagar">⋯</button>
+      </div>
+      <form id="formNovaConversa" class="nova-conversa" hidden>
+        <input id="tituloConversa" maxlength="120" placeholder="Sobre o quê? (ex.: Short Raio + Fogo)" required>
+        <div class="alvos"><label><input type="radio" name="alvo" value="claude" checked><span class="alvo claude">Assistente · Claude</span></label><label><input type="radio" name="alvo" value="codex"><span class="alvo gpt">Codex · GPT</span></label></div>
+        <select id="projetoConversa" title="Projeto"></select>
+        <div class="linha"><button type="button" class="btn" id="cancelarConversa">Cancelar</button><span class="espaco"></span><button class="btn forte">Criar</button></div>
+      </form>
       <div id="estadoPonte" class="estado-ponte"></div>
       <div id="msgs"></div>
       <form id="formChat">
-        <textarea id="entrada" rows="2" placeholder="Peça algo à sua assistente… (Enter envia, Shift+Enter quebra linha)"></textarea>
-        <div class="linha"><button type="button" id="btnParar" class="btn">Parar</button><button type="button" id="btnNova" class="btn">Conversa nova</button><span class="espaco"></span><button class="btn forte" id="btnEnviar">Enviar</button></div>
+        <textarea id="entrada" rows="2" placeholder="Peça algo… (Enter envia, Shift+Enter quebra linha)"></textarea>
+        <div class="linha"><button type="button" id="btnParar" class="btn">Parar</button><span class="espaco"></span><span id="alvoAtual" class="alvo claude">Claude</span><button class="btn forte" id="btnEnviar">Enviar</button></div>
       </form>
     </section>
     <section data-painel="mural" class="painel" hidden>
@@ -83,12 +105,13 @@
     <p class="sub">Escritório das IAs do Rafael e do Kenny.</p>
     <form id="formEmail"><label>Seu e-mail<input id="email" type="email" required autocomplete="email" placeholder="voce@email.com"></label><button class="btn forte">Entrar</button></form>
     <div id="avisoLink" hidden><p class="sub" style="text-align:left">Mandei um link para <b id="emailEnviado"></b>.<br>Abra o e-mail <b>neste aparelho</b> e clique em <b>Log In</b>: você volta para cá já dentro do escritório.</p><button type="button" class="btn" id="reenviar">Usar outro e-mail</button></div>
-    <form id="formCodigo" hidden><label>Código que chegou no e-mail<input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></label><button class="btn forte">Entrar</button><button type="button" class="btn" id="voltarEmail">Usar outro e-mail</button></form>
+    <form id="formCodigo" hidden><label>Código<input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label><button class="btn forte">Entrar</button><button type="button" class="btn" id="voltarEmail">Voltar</button></form>
     <p id="erroLogin" class="erro" hidden></p>
   </div>
 </div>
 <div id="resumo" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Enquanto você estava fora</h2><div id="textoResumo"></div><button class="btn forte" id="fecharResumo">Bora</button></div></div>
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
+<div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

@@ -38,7 +38,14 @@ export async function carregarTudo() {
     sb.from('membros').select('pessoa,email'),
   ]);
   for (const r of [ev, rec, est, chat, mem]) if (r.error) throw r.error;
-  return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data };
+  // partes do SQL 2 (se ainda não rodou, a página funciona sem elas)
+  const opcional = async (q) => { const r = await q; return r.error ? null : r.data; };
+  const [conversas, aprovacoes, jornal] = await Promise.all([
+    opcional(sb.from('conversas').select('*').order('atualizado', { ascending: false }).limit(200)),
+    opcional(sb.from('aprovacoes').select('*').eq('status', 'pendente').order('id')),
+    opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
+  ]);
+  return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, temSql2: conversas !== null };
 }
 
 // ---------- tempo real ----------
@@ -49,6 +56,9 @@ export function conectar({ x, y, status }) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'estado' }, (p) => emitir('estado', p.new))
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat', filter: `user_id=eq.${euId}` }, (p) => emitir('chat', p.new))
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'comandos', filter: `user_id=eq.${euId}` }, (p) => emitir('comando', p.new))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'conversas', filter: `user_id=eq.${euId}` }, (p) => emitir('conversa', p))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'aprovacoes', filter: `user_id=eq.${euId}` }, (p) => emitir('aprovacao', p.new))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'jornal' }, (p) => emitir('jornal', p.new))
     .subscribe((s) => emitir('conexao', s));
   canal = sb.channel('escritorio', { config: { private: true, presence: { key: euPessoa }, broadcast: { self: false } } });
   canal
@@ -78,12 +88,29 @@ export const emote = (e) => canal?.send({ type: 'broadcast', event: 'emote', pay
 export const acenar = (para) => canal?.send({ type: 'broadcast', event: 'aceno', payload: { de: euPessoa, para } });
 
 // ---------- ações ----------
-export async function pedir(texto) {
-  const { data, error } = await sb.from('comandos').insert({ texto, tipo: 'chat' }).select().single();
+export async function pedir(texto, conversa_id = null) {
+  const extra = conversa_id ? { conversa_id } : {};
+  const { data, error } = await sb.from('comandos').insert({ texto, tipo: 'chat', ...extra }).select().single();
   if (error) throw error;
-  await sb.from('chat').insert({ comando_id: data.id, de: 'eu', texto });
+  await sb.from('chat').insert({ comando_id: data.id, de: 'eu', texto, ...extra });
+  if (conversa_id) await sb.from('conversas').update({ atualizado: new Date().toISOString() }).eq('id', conversa_id);
   return data;
 }
+export async function novaConversa({ titulo, alvo, projeto }) {
+  const { data, error } = await sb.from('conversas').insert({ titulo: titulo.slice(0, 120), alvo, projeto: projeto || null }).select().single();
+  if (error) throw error;
+  return data;
+}
+export const renomearConversa = (id, titulo) => sb.from('conversas').update({ titulo: titulo.slice(0, 120) }).eq('id', id);
+export const apagarConversa = (id) => sb.from('conversas').delete().eq('id', id);
+export async function carregarChat(conversa_id) {
+  const q = sb.from('chat').select('*').order('id', { ascending: true }).limit(400);
+  const { data, error } = conversa_id ? await q.eq('conversa_id', conversa_id) : await q.is('conversa_id', null);
+  if (error) throw error;
+  return data;
+}
+export async function decidir(id, status) { const { error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString() }).eq('id', id); if (error) throw error; }
+export const pedirJornal = () => sb.from('comandos').insert({ tipo: 'jornal' });
 export const parar = () => sb.from('comandos').insert({ tipo: 'parar' });
 export const conversaNova = () => sb.from('comandos').insert({ tipo: 'nova' });
 export async function pausar(sim) { const { error } = await sb.from('estado').update({ pausado: sim }).eq('user_id', euId); if (error) throw error; }
