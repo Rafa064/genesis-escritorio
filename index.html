@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estúdio Genesis</title>
+<meta name="description" content="Escritório virtual do Rafael e do Kenny: veja as IAs trabalhando e fale com a sua assistente.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2315131b'/%3E%3Crect x='3' y='3' width='10' height='7' fill='%23f0973d'/%3E%3Crect x='5' y='11' width='6' height='2' fill='%23f0973d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header id="topo">
+  <div class="logo"><span class="quad"></span>Estúdio Genesis</div>
+  <div id="gente" class="gente"></div>
+  <div id="resumoTopo" class="resumo-topo"></div>
+  <div class="espaco"></div>
+  <nav class="botoes" id="botoesTopo">
+    <button data-aba="equipe" title="Equipe (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
+    <button data-aba="atencao" title="Precisa de você (A)"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
+    <button data-aba="galeria" title="Galeria (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
+    <button data-aba="atividade" title="Atividade (F)"><span class="ico">≡</span><span class="txt">Atividade</span></button>
+    <button data-aba="chat" title="Chat com a assistente (C)"><span class="ico">✉</span><span class="txt">Chat</span></button>
+    <button data-aba="mural" title="Mural de recados (M)"><span class="ico">✎</span><span class="txt">Mural</span><b class="badge" id="badgeMural" hidden>0</b></button>
+    <button data-aba="ajustes" title="Ajustes"><span class="ico">⚙</span></button>
+  </nav>
+</header>
+
+<main id="area">
+  <div id="palco">
+    <canvas id="tela"></canvas>
+    <div id="camada"></div>
+    <div id="dica" hidden></div>
+    <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
+    <div id="barra" class="painel-px">
+      <button data-emote="👋" title="1">👋</button><button data-emote="✅" title="2">✅</button><button data-emote="❓" title="3">❓</button><button data-emote="☕" title="4">☕</button><button data-emote="🎉" title="5">🎉</button><button data-emote="🔥" title="6">🔥</button>
+      <span class="sep"></span>
+      <button id="btnAcenar" title="Acenar (Q)">Acenar</button><button id="btnIrAte" title="Ir até (K)">Ir até</button>
+      <span class="sep"></span>
+      <span class="tecla" title="Segure Shift para andar de skate">⇧ skate</span>
+    </div>
+    <div id="toasts"></div>
+  </div>
+
+  <aside id="gaveta" class="painel-px">
+    <div class="gaveta-topo"><h2 id="tituloAba">Equipe</h2><button id="fecharGaveta" title="Fechar (Esc)">×</button></div>
+    <section data-painel="equipe" class="painel">
+      <div class="filtros" id="filtroEquipe"><button data-f="todos" class="on">Todos</button></div>
+      <div id="listaEquipe"></div>
+    </section>
+    <section data-painel="agente" class="painel" hidden><div id="detalheAgente"></div></section>
+    <section data-painel="atencao" class="painel" hidden><div id="listaAtencao"></div></section>
+    <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
+    <section data-painel="atividade" class="painel" hidden>
+      <div class="filtros" id="filtroAtividade"></div>
+      <label class="chk"><input type="checkbox" id="mostrarMiudos"> mostrar leitura/edição de arquivos</label>
+      <div id="listaAtividade"></div>
+    </section>
+    <section data-painel="chat" class="painel painel-chat" hidden>
+      <div id="estadoPonte" class="estado-ponte"></div>
+      <div id="msgs"></div>
+      <form id="formChat">
+        <textarea id="entrada" rows="2" placeholder="Peça algo à sua assistente… (Enter envia, Shift+Enter quebra linha)"></textarea>
+        <div class="linha"><button type="button" id="btnParar" class="btn">Parar</button><button type="button" id="btnNova" class="btn">Conversa nova</button><span class="espaco"></span><button class="btn forte" id="btnEnviar">Enviar</button></div>
+      </form>
+    </section>
+    <section data-painel="mural" class="painel" hidden>
+      <form id="formRecado" class="form-recado">
+        <textarea id="textoRecado" rows="2" maxlength="500" placeholder="Deixe um recado para o time…"></textarea>
+        <div class="linha"><span class="cores" id="coresRecado"></span><span class="espaco"></span><button class="btn forte">Colar no mural</button></div>
+      </form>
+      <div id="listaRecados" class="recados"></div>
+    </section>
+    <section data-painel="ajustes" class="painel" hidden><div id="ajustes"></div></section>
+  </aside>
+</main>
+
+<div id="login" class="modal" hidden>
+  <div class="caixa-modal painel-px">
+    <div class="logo grande"><span class="quad"></span>Estúdio Genesis</div>
+    <p class="sub">Escritório das IAs do Rafael e do Kenny.</p>
+    <form id="formEmail"><label>Seu e-mail<input id="email" type="email" required autocomplete="email" placeholder="voce@email.com"></label><button class="btn forte">Mandar código</button></form>
+    <form id="formCodigo" hidden><label>Código que chegou no e-mail<input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></label><button class="btn forte">Entrar</button><button type="button" class="btn" id="voltarEmail">Usar outro e-mail</button></form>
+    <p id="erroLogin" class="erro" hidden></p>
+  </div>
+</div>
+<div id="resumo" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Enquanto você estava fora</h2><div id="textoResumo"></div><button class="btn forte" id="fecharResumo">Bora</button></div></div>
+<div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
+<div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
