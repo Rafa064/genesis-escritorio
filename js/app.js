@@ -85,7 +85,7 @@ function mostrarLogin(msg) {
   $('#formEmail').onsubmit = async (e) => {
     e.preventDefault();
     const email = $('#email').value.trim();
-    try { await R.pedirCodigo(email); guarda('email', email); $('#formEmail').hidden = true; $('#formCodigo').hidden = false; $('#codigo').focus(); $('#erroLogin').hidden = true; }
+    try { await R.pedirCodigo(email); guarda('email', email); $('#formEmail').hidden = true; $('#avisoLink').hidden = false; $('#emailEnviado').textContent = email; $('#erroLogin').hidden = true; }
     catch (err) { $('#erroLogin').textContent = `Não consegui mandar: ${err.message}`; $('#erroLogin').hidden = false; }
   };
   $('#formCodigo').onsubmit = async (e) => {
@@ -94,6 +94,7 @@ function mostrarLogin(msg) {
     catch (err) { $('#erroLogin').textContent = `Código não aceito: ${err.message}`; $('#erroLogin').hidden = false; }
   };
   $('#voltarEmail').onclick = () => { $('#formEmail').hidden = false; $('#formCodigo').hidden = true; };
+  $('#reenviar').onclick = () => { $('#formEmail').hidden = false; $('#avisoLink').hidden = true; };
   $('#email').value = guardado('email', '');
 }
 
