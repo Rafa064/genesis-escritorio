@@ -32,7 +32,7 @@ export async function quemSouEu() {
 export async function carregarTudo() {
   const [ev, rec, est, chat, mem] = await Promise.all([
     sb.from('eventos').select('id,t,pessoa,dados').order('t', { ascending: false }).limit(2500),
-    sb.from('recados').select('*').order('criado', { ascending: false }).limit(100),
+    sb.from('recados').select('*').order('criado', { ascending: false }).limit(500),
     sb.from('estado').select('*'),
     sb.from('chat').select('*').order('id', { ascending: false }).limit(120),
     sb.from('membros').select('pessoa,email'),
@@ -46,6 +46,13 @@ export async function carregarTudo() {
     opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
   ]);
   return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, temSql2: conversas !== null };
+}
+
+// Histórico: eventos mais antigos que t (para o botão "carregar dias mais antigos").
+export async function eventosAntes(t, n = 2500) {
+  const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').lt('t', t).order('t', { ascending: false }).limit(n);
+  if (error) throw error;
+  return data.reverse();
 }
 
 // ---------- tempo real ----------

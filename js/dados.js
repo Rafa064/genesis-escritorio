@@ -1,5 +1,8 @@
 // Modelo: transforma os eventos em "mesas" (estado de cada agente de cada pessoa).
 import { tituloDe } from './config.js';
+import { classificar } from './frentes.js';
+import { conectorDe } from './tipos.js';
+import { primeiraFrase } from './humano.js';
 
 export const eventos = [];
 let versao = 0;
@@ -103,10 +106,11 @@ export function missoes() {
   for (const e of eventos) {
     const codex = e.agente === 'Codex' && (e.origem === 'vscode' || e.origem === 'site');
     const chave = codex ? `${e.pessoa}|codex|${e.sessao || ''}` : `${e.pessoa}|${e.sessao || ''}`;
-    if (!codex && e.agente === 'Orquestrador' && e.tipo === 'inicio') { nova(e, chave, 'claude'); continue; }
-    if (codex && (e.tipo === 'pedido' || e.tipo === 'inicio')) { nova(e, chave, 'codex'); continue; }
+    if (!codex && e.agente === 'Orquestrador' && e.tipo === 'inicio') { e._m = nova(e, chave, 'claude'); continue; }
+    if (codex && (e.tipo === 'pedido' || e.tipo === 'inicio')) { e._m = nova(e, chave, 'codex'); continue; }
     const m = abertas.get(chave);
     if (!m) continue;
+    e._m = m;
     m.ultimo = e.t;
     if (e.agente !== 'Orquestrador' && !codex) m.agentes.add(e.agente);
     for (const mi of e.miniaturas || []) m.miniaturas.push(mi);
@@ -124,11 +128,18 @@ export function missoes() {
     const idade = Date.now() - m.ultimo;
     m.status = m.fim ? (m.erros && !m.resposta ? 'erro' : 'fim') : m.passos.at(-1)?.tipo === 'alerta' ? 'alerta' : idade < 30 * 60e3 ? 'trab' : 'espera';
     m.duracao = (m.fim || m.ultimo) - m.inicio;
+    m.titulo = primeiraFrase(m.pedido, 110) || 'Pedido sem texto';
+    m.frente = classificar(m);
+    m.skills = [...new Set(m.passos.filter((e) => e.ferramenta === 'Skill').map((e) => String(e.alvo || '').split(':').pop()))].filter(Boolean);
+    m.conectores = [...new Set(m.passos.map((e) => conectorDe(e.ferramenta)).filter(Boolean))];
   }
   lista.reverse();
   cacheMissoes = { v: versao, lista };
   return lista;
 }
+// Frente em que a mesa (agente) está trabalhando agora: a da missão do último passo dele.
+export function frenteDaMesa(m) { missoes(); return m?.ult?._m?.frente || null; }
+
 export function duracao(ms) {
   const s = Math.round(ms / 1000);
   return s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;

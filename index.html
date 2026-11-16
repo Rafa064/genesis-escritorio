@@ -27,12 +27,14 @@
   <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
   <div class="espaco"></div>
   <nav class="botoes" id="botoesTopo">
-    <button data-aba="equipe" title="Equipe (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
-    <button data-aba="atencao" title="Precisa de você (A)"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
-    <button data-aba="missoes" title="Missões: histórico de pedidos (H)"><span class="ico">◷</span><span class="txt">Missões</span></button>
-    <button data-aba="chat" title="Chat com a assistente (C)"><span class="ico">✉</span><span class="txt">Chat</span></button>
-    <button data-aba="galeria" title="Galeria (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
-    <button data-aba="mural" title="Mural de recados (M)"><span class="ico">✎</span><span class="txt">Mural</span><b class="badge" id="badgeMural" hidden>0</b></button>
+    <button data-aba="equipe" title="Equipe: quem está fazendo o quê (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
+    <button data-aba="atencao" title="Precisa de você"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
+    <button data-aba="missoes" title="Missões por frente (H)"><span class="ico">◆</span><span class="txt">Missões</span></button>
+    <button data-aba="historico" title="Histórico: o que fizemos por dia (L)"><span class="ico">◷</span><span class="txt">Histórico</span></button>
+    <button data-aba="chat" title="Falar com a sua assistente (C)"><span class="ico">✦</span><span class="txt">Assistente</span></button>
+    <button data-aba="dupla" title="Conversa da dupla: você e o outro (M)"><span class="ico">✉</span><span class="txt">Dupla</span><b class="badge" id="badgeMural" hidden>0</b></button>
+    <button data-aba="galeria" title="Galeria de resultados (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
+    <button data-aba="catalogo" title="Quem é quem: agentes, skills, conectores (I)"><span class="ico">◎</span><span class="txt">Quem é quem</span></button>
     <button data-acao="jornal" title="Diário do Estúdio (J)"><span class="ico">▤</span><span class="txt">Diário</span></button>
     <button data-aba="ajustes" title="Ajustes"><span class="ico">⚙</span></button>
   </nav>
@@ -42,6 +44,7 @@
   <div id="palco">
     <canvas id="tela" tabindex="0"></canvas>
     <div id="camada"></div>
+    <div id="frentes" class="frentes"></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
     <div id="barra" class="painel-px">
@@ -69,6 +72,12 @@
       <div class="filtros" id="filtroMissoes"></div>
       <div id="listaMissoes"></div>
     </section>
+    <section data-painel="historico" class="painel" hidden>
+      <div class="filtros" id="filtroHistorico"></div>
+      <div id="listaHistorico"></div>
+    </section>
+    <section data-painel="catalogo" class="painel" hidden><div id="listaCatalogo"></div></section>
+    <section data-painel="mais" class="painel" hidden><div id="listaMais" class="mais"></div></section>
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
@@ -90,12 +99,14 @@
         <div class="linha"><button type="button" id="btnParar" class="btn">Parar</button><span class="espaco"></span><span id="alvoAtual" class="alvo claude">Claude</span><button class="btn forte" id="btnEnviar">Enviar</button></div>
       </form>
     </section>
-    <section data-painel="mural" class="painel" hidden>
-      <form id="formRecado" class="form-recado">
-        <textarea id="textoRecado" rows="2" maxlength="500" placeholder="Deixe um recado para o time…"></textarea>
-        <div class="linha"><span class="cores" id="coresRecado"></span><span class="espaco"></span><button class="btn forte">Colar no mural</button></div>
+    <section data-painel="dupla" class="painel painel-chat" hidden>
+      <div id="fixados"></div>
+      <div id="msgsDupla"></div>
+      <div id="rapidasDupla" class="rapidas"></div>
+      <form id="formRecado">
+        <textarea id="textoRecado" rows="2" maxlength="500" placeholder="Mensagem para a dupla… (Enter envia)"></textarea>
+        <div class="linha"><label class="chk" style="margin:0" title="Fica no topo, como recado no mural"><input type="checkbox" id="chkFixar"> 📌 fixar como recado</label><span class="espaco"></span><button class="btn forte">Enviar</button></div>
       </form>
-      <div id="listaRecados" class="recados"></div>
     </section>
     <section data-painel="ajustes" class="painel" hidden><div id="ajustes"></div></section>
   </aside>
@@ -115,7 +126,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="equipe"><span>☰</span>Equipe</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-aba="missoes"><span>◷</span>Missões</button><button data-aba="chat"><span>✉</span>Chat</button><button data-aba="ajustes"><span>⚙</span>Mais</button></nav>
+<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-aba="missoes"><span>◆</span>Missões</button><button data-aba="chat"><span>✦</span>Assistente</button><button data-aba="dupla"><span>✉</span>Dupla<b class="badge" id="badgeDuplaCel" hidden>0</b></button><button data-aba="mais"><span>⋯</span>Mais</button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

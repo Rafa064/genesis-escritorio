@@ -1,3 +1,4 @@
+import { tituloDe } from './config.js';
 // Traduz o que as IAs fazem para frases humanas, em português.
 // Entrada: um evento (ferramenta + alvo) ou um passo do chat ({ ferramenta, entrada }).
 
@@ -103,7 +104,9 @@ export function frase(e) {
   if (e.tipo === 'inicio' && e.ferramenta && e.ferramenta !== 'Agent') return passo(e.ferramenta, e.alvo) + (e.chamou && e.chamou !== 'Orquestrador' ? ` (a pedido de ${e.chamou})` : '');
   const t = String(e.texto ?? '');
   if (e.tipo === 'pedido') return t.replace(/^(\S+) pediu: /, (_, q) => `${q === 'Orquestrador' ? 'A assistente' : q} pediu: `);
-  if (e.tipo === 'alerta') return t.replace(/^pediu permissão: /, 'Quer permissão para ').replace(/^precisa de você$/, 'Precisa de você');
+  if (e.tipo === 'alerta') return alertaHumano(t);
+  if (e.tipo === 'erro') return 'Deu erro: ' + primeiraFrase(t.replace(/^(SCRIPT )?ERROR:\s*/i, '').replace(/^não começou: /, 'não conseguiu começar: '), 140);
+  if (e.tipo === 'fim' && e.agente !== 'Orquestrador') return (FORA.has(e.agente) ? 'Terminou: ' : 'Entregou: ') + primeiraFrase(t, 160);
   if (e.tipo === 'espera' && e.resposta) return `Respondeu: ${e.resposta}`;
   if (t === 'esperando você') return 'Esperando você';
   if (t === 'sessão aberta') return 'Abriu uma sessão';
@@ -126,4 +129,87 @@ export function iconePasso(ferramenta, modo) {
   if (/^(Agent|Task)$/.test(t)) return '👥';
   if (t.startsWith('mcp__')) return '🧩';
   return '•';
+}
+
+// ======================= menos "log", mais gente =======================
+const FORA = new Set(['Render', 'Godot', 'PixelLab', 'Blender', 'HuggingFace', 'Codex']);
+export function primeiraFrase(t, n = 160) {
+  const s = String(t ?? '').replace(/[#*`>_]+/g, '').replace(/\s+/g, ' ').trim();
+  const m = /^(.{40,}?[.!?])(\s|$)/.exec(s);
+  return curto(m && m[1].length <= n ? m[1] : s, n);
+}
+
+// "pediu permissão: generate_3d ..." -> "Quer sua permissão para gerar um modelo 3D"
+function acaoMcp(acao) {
+  for (const tabela of Object.values(MCP)) if (tabela[acao]) return tabela[acao];
+  return null;
+}
+export function alertaHumano(t) {
+  const m = /^pediu permissão: (\S+)\s*(.*)$/.exec(t);
+  if (!m) return t === 'precisa de você' ? 'Precisa de você' : t.replace(/^Claude needs your permission to use /i, 'Quer permissão para usar ');
+  const [, ferr, resto] = m;
+  const f = acaoMcp(ferr) || (/^(Bash|PowerShell)$/.test(ferr) ? comandoHumano(resto) : /^[A-Z]/.test(ferr) ? passo(ferr, resto) : `usar ${ferr.replace(/_/g, ' ')}`);
+  return `Quer permissão para: ${f.charAt(0).toLowerCase() + f.slice(1)}`;
+}
+
+// Classe de cada passo: para juntar passos parecidos.
+export function categoria(e) {
+  const t = String(e.ferramenta || '');
+  if (e.tipo === 'alerta') return 'alerta';
+  if (e.tipo === 'erro') return 'erro';
+  if (e.tipo === 'fim') return 'entrega';
+  if (e.tipo === 'pedido') return 'chamar';
+  if (/^(Read|Grep|Glob|LS|NotebookRead)$/.test(t)) return 'ler';
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(t)) return 'escrever';
+  if (/^Web/.test(t)) return 'web';
+  if (/^(Bash|PowerShell)$/.test(t)) return 'cmd';
+  if (/^(Agent|Task)$/.test(t)) return 'chamar';
+  if (t === 'Skill') return 'skill';
+  if (t.startsWith('mcp__')) return 'mcp';
+  if (/^(TodoWrite|TaskCreate|TaskUpdate)$/.test(t)) return 'organizar';
+  return 'outro';
+}
+const lista = (xs, n = 3) => { const u = [...new Set(xs.filter(Boolean))]; return u.slice(0, n).join(', ') + (u.length > n ? ` e mais ${u.length - n}` : ''); };
+const alvoArq = (e) => arquivo(String(e.alvo ?? '').split(' ::: ')[0]);
+const vezes = (n) => (n > 1 ? ` (${n}×)` : '');
+
+// Resumo da missão inteira em poucas linhas: [{ icone, texto }]
+export function resumo(passos) {
+  const por = {};
+  for (const e of passos) (por[categoria(e)] ??= []).push(e);
+  const out = [];
+  if (por.chamar) out.push({ icone: '🤖', texto: `Chamou ${lista(por.chamar.map((e) => e.ferramenta ? '' : tituloDe(e.agente)), 4) || 'um ajudante'}` });
+  if (por.skill) out.push({ icone: '📘', texto: `Seguiu a skill ${lista(por.skill.map((e) => e.alvo))}` });
+  if (por.ler) out.push({ icone: '📖', texto: `Leu ${new Set(por.ler.map(alvoArq)).size} arquivo(s) e fez ${por.ler.filter((e) => /Grep|Glob/.test(e.ferramenta)).length} busca(s)`.replace(' e fez 0 busca(s)', '') });
+  if (por.escrever) { const a = por.escrever.map(alvoArq); out.push({ icone: '✏️', texto: `Mudou ${new Set(a).size} arquivo(s): ${lista(a)}` }); }
+  if (por.cmd) {
+    const c = new Map(); for (const e of por.cmd) { const f = passo(e.ferramenta, e.alvo); c.set(f, (c.get(f) || 0) + 1); }
+    const top = [...c].sort((a, b) => b[1] - a[1]).filter(([f]) => !/^(Lendo um arquivo|Olhando os arquivos|Olhando o histórico)/.test(f));
+    if (top.length) out.push({ icone: '▶️', texto: top.slice(0, 3).map(([f, n]) => f + vezes(n)).join(' · ') });
+  }
+  if (por.mcp) out.push({ icone: '🔌', texto: lista(por.mcp.map((e) => passo(e.ferramenta, e.alvo)), 2) });
+  if (por.web) out.push({ icone: '🌐', texto: `Pesquisou na web${vezes(por.web.length)}` });
+  if (por.alerta) out.push({ icone: '⚠️', texto: `Pediu sua permissão${vezes(por.alerta.length)}` });
+  if (por.erro) out.push({ icone: '❌', texto: `${por.erro.length} erro(s): ${primeiraFrase(frase(por.erro.at(-1)).replace(/^Deu erro: /, ''), 70)}` });
+  return out;
+}
+
+// Linha do tempo "por fases": passos seguidos do mesmo agente e do mesmo tipo viram uma linha só.
+export function fases(passos) {
+  const out = [];
+  for (const e of passos) {
+    const cat = categoria(e), ult = out.at(-1);
+    if (ult && ult.agente === e.agente && ult.cat === cat && ['ler', 'escrever', 'cmd', 'web', 'organizar', 'mcp'].includes(cat)) { ult.itens.push(e); ult.fim = e.t; continue; }
+    out.push({ agente: e.agente, cat, itens: [e], t: e.t, fim: e.t, tipo: e.tipo });
+  }
+  for (const f of out) {
+    const n = f.itens.length, a = f.itens.map(alvoArq);
+    f.texto = f.cat === 'ler' && n > 1 ? `Leu ${new Set(a).size} arquivos: ${lista(a)}`
+      : f.cat === 'escrever' && n > 1 ? `Mudou ${new Set(a).size} arquivo(s): ${lista(a)}`
+      : f.cat === 'cmd' && n > 1 ? lista(f.itens.map((e) => passo(e.ferramenta, e.alvo)), 3)
+      : f.cat === 'web' && n > 1 ? `Pesquisou na web ${n}×`
+      : f.cat === 'organizar' ? 'Organizou a lista de tarefas'
+      : frase(f.itens[0]);
+  }
+  return out;
 }

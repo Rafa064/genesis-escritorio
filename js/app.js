@@ -4,7 +4,9 @@ import { T, MW, MH, SALAS, ORDEM_BAIAS, tileDe } from './mapa.js';
 import { criarMundo } from './mundo.js';
 import { montarPersonagem, retrato } from './arte.js';
 import { visualDe } from './personagens.js';
-import { frase, passo, iconePasso } from './humano.js';
+import { frase, passo, iconePasso, resumo, fases, primeiraFrase, categoria } from './humano.js';
+import { FRENTES, todasFrentes, frentePorId } from './frentes.js';
+import { TIPOS, tipoDe, etiquetaTipo, descricaoHumana, conectorDe, nomeConector } from './tipos.js';
 import * as D from './dados.js';
 import * as R from './rede.js';
 
@@ -20,6 +22,8 @@ let EU = null, mundo = null, membros = [], estados = new Map(), recados = [], pr
 let conversas = [], conversaAtual = null, mensagens = [], aprovacoes = [], jornais = [], temSql2 = false;
 let aba = guardado('aba', 'equipe'), filtroEquipe = 'todos', selecionado = null, missaoAberta = null, chatOcupado = false;
 const pilha = []; // para o botão "voltar" da gaveta
+let filtroFrente = guardado('frente', ''); // '' = todas as frentes
+if (aba === 'mural') aba = 'dupla';
 
 // ======================= markdown simples (seguro: escapa tudo antes) =======================
 function md(texto) {
@@ -139,9 +143,16 @@ const contagemErros = new Map();
 function ligarRede() {
   R.on('evento', (linha) => { const e = D.deLinha(linha); D.adicionar([e]); sincronizarMundo(); avisarEvento(e); agendarInterface(); });
   R.on('recado', (p) => {
-    if (p.eventType === 'INSERT') { recados.unshift(p.new); if (p.new.pessoa !== EU.pessoa) { toast({ titulo: `${p.new.pessoa} deixou um recado`, texto: p.new.texto, cor: corPessoa(p.new.pessoa), acao: () => abrirAba('mural') }); som('recado'); } }
+    if (p.eventType === 'INSERT' && !recados.some((r) => r.id === p.new.id)) {
+      recados.unshift(p.new);
+      if (p.new.pessoa !== EU.pessoa) {
+        const r = p.new, txt = r.cor === 'reacao' ? `reagiu ${r.texto.split(' ')[0]}` : r.cor === 'missao' ? `compartilhou: ${lerJson(r.texto).titulo || 'uma missão'}` : r.texto;
+        toast({ titulo: r.cor === 'reacao' ? `${r.pessoa} ${txt}` : `${r.pessoa} na conversa da dupla`, texto: r.cor === 'reacao' ? '' : txt, cor: corPessoa(r.pessoa), acao: () => abrirAba('dupla') });
+        if (r.cor !== 'reacao') { som('recado'); notificar(`${r.pessoa} mandou mensagem`, txt); }
+      }
+    }
     if (p.eventType === 'DELETE') recados = recados.filter((r) => r.id !== p.old.id);
-    agendarInterface();
+    if (aba === 'dupla') desenharDupla(); else agendarInterface();
   });
   R.on('estado', (e) => { estados.set(e.pessoa, { ...estados.get(e.pessoa), ...e }); agendarInterface(); });
   R.on('chat', (c) => {
@@ -258,7 +269,9 @@ addEventListener('keydown', (e) => {
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
   else if (k === 'g') alternarAba('galeria');
-  else if (k === 'm') alternarAba('mural');
+  else if (k === 'm') { alternarAba('dupla'); setTimeout(() => aba === 'dupla' && $('#textoRecado').focus(), 0); }
+  else if (k === 'l') alternarAba('historico');
+  else if (k === 'i') alternarAba('catalogo');
   else if (k === 'j') abrirJornal();
   else if (k === '?' || k === '/') abrirAjuda();
   else if (k === 'q') acenarParaOutro();
@@ -275,7 +288,7 @@ function telaParaMundo(ev) { const r = tela.getBoundingClientRect(); return [(ev
 const boneconoPonto = (x, y) => [...mundo.agentes.values()].filter((b) => Math.abs(b.x - x) < 9 && y > b.y - 30 && y < b.y + 4).sort((a, b) => b.y - a.y)[0];
 // Pontos de interesse do mapa: mural (lousa) e jornal (mesa do salão).
 const PONTOS = [
-  { id: 'mural', x: 15 * T, y: 2.4 * T, raio: 26, texto: 'ler o mural de recados', acao: () => abrirAba('mural') },
+  { id: 'mural', x: 15 * T, y: 2.4 * T, raio: 26, texto: 'abrir a conversa da dupla (mural)', acao: () => abrirAba('dupla') },
   { id: 'jornal', x: 19 * T, y: 5.2 * T, raio: 30, texto: 'ler o Diário do Estúdio', acao: () => abrirJornal() },
 ];
 tela.addEventListener('pointerdown', (ev) => {
@@ -354,11 +367,18 @@ let hoverId = null;
 tela.addEventListener('pointermove', (ev) => { if (!mundo) return; const [x, y] = telaParaMundo(ev); hoverId = boneconoPonto(x, y)?.id || null; tela.style.cursor = hoverId || PONTOS.some((p) => Math.hypot(p.x - x, p.y - y) < 18) ? 'pointer' : 'crosshair'; });
 function rotulo(id, cls) { let el = poolRotulos.get(id); if (!el) { el = document.createElement('div'); camada.appendChild(el); poolRotulos.set(id, el); } if (el.className !== cls) el.className = cls; el.dataset.v = '1'; return el; }
 const colocar = (el, x, y, c, cima = false) => { el.style.transform = `translate(calc(${Math.round((x - c.x) * zoom)}px - 50%), calc(${Math.round((y - c.y) * zoom)}px - ${cima ? '100%' : '0px'}))`; };
-function nomeNoMapa(b) {
-  if (b.lugar.assistente) return b.pessoa === EU.pessoa ? 'Sua assistente · Claude' : `Assistente de ${b.pessoa}`;
+function nomeBase(b) {
+  if (b.lugar.assistente) return b.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${b.pessoa}`;
   if (b.lugar.codex) return b.pessoa === EU.pessoa ? 'Codex · GPT' : `Codex de ${b.pessoa}`;
   return CURTO[b.nome] || tituloDe(b.nome === '*' ? 'agente' : b.nome);
 }
+// No mapa: ícone do tipo (👑 assistente, 🤖 agente, 🧠 GPT, 🔌 conector, 🛠️ programa) + ícone da frente quando está trabalhando.
+function nomeNoMapa(b) {
+  const nome = b.m?.nome || b.nome, tipo = b.lugar.assistente ? 'assistente' : b.lugar.codex ? 'ia' : tipoDe(nome);
+  const fr = ['trab', 'alerta', 'erro'].includes(b.status) ? D.frenteDaMesa(b.m) : null;
+  return `${TIPOS[tipo].icone} ${nomeBase(b)}${fr ? ' · ' + fr.icone : ''}`;
+}
+const foraDoFiltro = (b) => filtroFrente && D.frenteDaMesa(b.m)?.id !== filtroFrente;
 function rotulos(c) {
   for (const el of poolRotulos.values()) el.dataset.v = '';
   const visivel = (x, y) => x > c.x - 30 && x < c.x + VW + 30 && y > c.y - 10 && y < c.y + VH + 50;
@@ -368,14 +388,14 @@ function rotulos(c) {
     const fixo = b.lugar.assistente || b.lugar.codex;
     if (!(foco || b.status === 'alerta' || b.status === 'erro' || fixo) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
-    const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}`);
+    const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}`);
     const nome = nomeNoMapa(b);
     if (el.textContent !== nome) el.textContent = nome;
     colocar(el, b.x, b.y + 2, c);
     const recente = b.m?.ult && Date.now() - b.m.ult.t < 8 * 60e3;
     let fala = '';
     if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && chatOcupado && alvoAtual() === (b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
-    else if (b.m?.ult && (b.status === 'alerta' || foco || (zoom >= 3 && (b.status === 'trab' || b.status === 'fim') && recente))) fala = frase(b.m.ult).slice(0, 80);
+    else if (b.m?.ult && (b.status === 'alerta' || foco || (zoom >= 3 && !foraDoFiltro(b) && (b.status === 'trab' || b.status === 'fim') && recente))) fala = primeiraFrase(frase(b.m.ult), 80);
     if (fala) {
       const f = rotulo(b.id + 'f', `fala ${b.status}`);
       if (f.textContent !== fala) f.textContent = fala;
@@ -397,7 +417,7 @@ function rotulos(c) {
   if (perto && !digitando()) {
     if (perto.pessoa === EU.pessoa && perto.lugar.assistente) html = '<b>E</b> conversar com a sua assistente (Claude)';
     else if (perto.pessoa === EU.pessoa && perto.lugar.codex) html = '<b>E</b> conversar com o Codex (GPT)';
-    else html = `<b>E</b> ver o trabalho de ${esc(nomeNoMapa(perto))}`;
+    else html = `<b>E</b> ver o trabalho de ${esc(nomeBase(perto))}`;
   } else if (pontoPerto && !digitando()) html = `<b>E</b> ${esc(pontoPerto.texto)}`;
   dica.hidden = !html;
   if (html && dica.innerHTML !== html) dica.innerHTML = html;
@@ -410,7 +430,7 @@ function fazerEmote(e) { mostrarEmote(EU.pessoa, e); R.emote(e); }
 const outraPessoa = () => pessoas().find((p) => p !== EU.pessoa);
 function acenarParaOutro() {
   const o = outraPessoa(); if (!o) return;
-  if (!presentes.has(o)) { toast({ titulo: `${o} não está no escritório agora`, texto: 'Deixe um recado no mural.', cor: corPessoa(o), acao: () => abrirAba('mural') }); return; }
+  if (!presentes.has(o)) { toast({ titulo: `${o} não está no escritório agora`, texto: 'Mande uma mensagem na conversa da dupla.', cor: corPessoa(o), acao: () => abrirAba('dupla') }); return; }
   R.acenar(o); fazerEmote('👋'); toast({ titulo: `Você acenou para ${o}`, cor: corPessoa(o) });
 }
 function teleportar(px, py) {
@@ -429,14 +449,17 @@ function irAtePessoa(p) {
 }
 
 // ======================= gaveta =======================
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Precisa de você', missoes: 'Missões', missao: 'Missão', galeria: 'Galeria', chat: 'Chat', mural: 'Mural de recados', ajustes: 'Ajustes' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Precisa de você', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes' };
 function abrirAba(nome, empilhar = false) {
+  if (nome === 'mural') nome = 'dupla';
   if (empilhar && aba !== nome && !$('#gaveta').classList.contains('fechada')) pilha.push(aba); else if (!empilhar) pilha.length = 0;
   aba = nome; if (!['agente', 'missao'].includes(nome)) guarda('aba', nome);
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz));
+  const raizCel = ['equipe', 'agente', 'historico', 'galeria', 'catalogo', 'ajustes'].includes(nome) ? 'mais' : raiz;
+  $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz));
+  $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raizCel));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
   desenharAba();
@@ -449,7 +472,7 @@ $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else alternarAba(b.dataset.aba); };
 
 let pendenteUI = false;
-function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); if (aba !== 'chat') desenharAba(); }, 150); }
+function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharFrentes(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -464,12 +487,15 @@ function montarInterface() {
   $('#formNovaConversa').onsubmit = (e) => { e.preventDefault(); criarConversa(); };
   $('#selConversa').onchange = (e) => abrirConversa(Number(e.target.value) || null);
   $('#btnMaisConversa').onclick = menuConversa;
-  const CORES = { amarelo: '#ffe58a', rosa: '#ffc2d4', azul: '#bfe0ff', verde: '#c8f0c4' };
-  let corRecado = 'amarelo';
-  $('#coresRecado').innerHTML = Object.entries(CORES).map(([n, c]) => `<button type="button" data-cor="${n}" style="--cor:${c}" class="${n === corRecado ? 'on' : ''}"></button>`).join('');
-  $('#coresRecado').onclick = (e) => { const b = e.target.closest('[data-cor]'); if (!b) return; corRecado = b.dataset.cor; $$('#coresRecado button').forEach((x) => x.classList.toggle('on', x === b)); };
-  $('#formRecado').onsubmit = async (e) => { e.preventDefault(); const t = $('#textoRecado').value.trim(); if (!t) return; try { await R.recado(t, corRecado); $('#textoRecado').value = ''; } catch (err) { toast({ titulo: 'Não colou', texto: err.message, cor: '#ef6a55' }); } };
-  $('#listaRecados').onclick = async (e) => { const b = e.target.closest('[data-tirar]'); if (b) await R.tirarRecado(Number(b.dataset.tirar)); };
+  $('#formRecado').onsubmit = (e) => { e.preventDefault(); enviarDupla(); };
+  $('#textoRecado').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDupla(); } };
+  $('#rapidasDupla').innerHTML = RAPIDAS.map((r) => `<button type="button" data-rapida="${esc(r)}">${esc(r)}</button>`).join('');
+  $('#rapidasDupla').onclick = (e) => { const b = e.target.closest('[data-rapida]'); if (b) enviarDupla(b.dataset.rapida); };
+  $('#frentes').onclick = (e) => {
+    const c = e.target.closest('[data-frente]'); if (!c) return;
+    filtroFrente = filtroFrente === c.dataset.frente ? '' : c.dataset.frente; guarda('frente', filtroFrente);
+    desenharFrentes(); if (filtroFrente && !['missoes', 'historico', 'equipe'].includes(aba)) abrirAba('missoes'); else desenharAba();
+  };
   $('#fecharResumo').onclick = () => { $('#resumo').hidden = true; };
   $('#fecharLightbox').onclick = () => { $('#lightbox').hidden = true; $('#conteudoLightbox').innerHTML = ''; };
   $('#fecharJornal').onclick = () => { $('#jornal').hidden = true; };
@@ -483,10 +509,9 @@ function montarInterface() {
   if (!guardado('boasVindas', '')) {
     if (matchMedia('(pointer: coarse)').matches) $('#boasVindas span').innerHTML = '<b>Toque no chão</b> para andar · toque num boneco para ver o trabalho dele · <b>Chat</b> embaixo fala com a sua assistente';
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
-  window.CORES_RECADO = CORES;
   dimensionar();
-  if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao'].includes(aba) ? 'equipe' : aba);
-  desenharTopo();
+  if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao', 'mais'].includes(aba) ? 'equipe' : aba);
+  desenharTopo(); desenharFrentes();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
 
@@ -510,8 +535,8 @@ async function desenharTopo() {
   $('#resumoTopo').onclick = (e) => { const c = e.target.closest('[data-ver]'); if (c) abrirAba(c.dataset.ver === 'alerta' ? 'atencao' : 'equipe'); };
   $('#badgeAtencao').hidden = !meusAlertas; $('#badgeAtencao').textContent = meusAlertas;
   $('#badgeAtencaoCel').hidden = !meusAlertas; $('#badgeAtencaoCel').textContent = meusAlertas;
-  const novosRecados = recados.filter((r) => new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
-  $('#badgeMural').hidden = !novosRecados || aba === 'mural'; $('#badgeMural').textContent = novosRecados;
+  const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
+  for (const id of ['#badgeMural', '#badgeDuplaCel']) { $(id).hidden = !novosRecados || aba === 'dupla'; $(id).textContent = novosRecados; }
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
 }
 function todosAgentes() {
@@ -524,23 +549,39 @@ function todosAgentes() {
 // ---------- abas ----------
 function desenharAba() {
   if (!mundo || $('#gaveta').classList.contains('fechada')) return;
-  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, galeria: desenharGaleria, chat: desenharChatCompleto, mural: desenharMural, ajustes: desenharAjustes })[aba]?.();
+  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, catalogo: desenharCatalogo, mais: desenharMais, ajustes: desenharAjustes })[aba]?.();
 }
 function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
   el.onclick = (e) => { const b = e.target.closest('[data-f]'); if (b) fn(b.dataset.f); };
 }
 const tituloAgente = (m) => m.nome === 'Orquestrador' ? (m.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${m.pessoa}`) : m.nome === 'Codex' ? (m.pessoa === EU.pessoa ? 'Codex' : `Codex de ${m.pessoa}`) : m.titulo || tituloDe(m.nome);
+// Etiquetas: tipo (👑 🤖 🧠 🔌 🛠️) + modelo só para quem pensa (Claude Haiku, GPT) + frente atual.
+function etiquetasDe(m) {
+  const tipo = tipoDe(m.nome), mod = modelo(m.nome, m.pessoa);
+  const fr = ['trab', 'alerta', 'erro', 'fim'].includes(D.estadoDe(m.ult ? m : null).cls) ? D.frenteDaMesa(m) : null;
+  return `${etiquetaTipo(tipo)}${['agente', 'assistente'].includes(tipo) && mod.rotulo !== 'Claude' ? ` <span class="modelo claude" title="Modelo de IA">${esc(mod.rotulo.replace('Claude ', ''))}</span>` : ''}${fr ? ` ${chipFrente(fr)}` : ''}`;
+}
+const chipFrente = (f, extra = '') => `<span class="chip-frente" style="--cor:${f.cor}" title="${esc(f.descricao)}">${f.icone} ${esc(f.nome)}${extra}</span>`;
 async function linhaAgente({ m, st }) {
-  const texto = m.ult ? (st.cls === 'trab' && m.pedido && m.ult.tipo === 'atividade' ? `${frase(m.ult)} · ${frase(m.pedido)}` : frase(m.ult)) : modelo(m.nome, m.pessoa).descricao || 'ainda não trabalhou';
+  let texto = m.ult ? primeiraFrase(frase(m.ult), 120) : modelo(m.nome, m.pessoa).descricao || TIPOS[tipoDe(m.nome)].curta;
+  const sobre = m.ult && m.nome !== 'Orquestrador' && m.pedido && st.cls !== 'livre' ? primeiraFrase(frase(m.pedido).replace(/^.*? pediu: /, ''), 90) : '';
   return `<div class="ag ${selecionado === m.k ? 'sel' : ''}" data-k="${esc(m.k)}" style="--cor:${corPessoa(m.pessoa)}">
     <img src="${await retratoDe(m.nome)}" alt="">
-    <div><div class="n">${esc(tituloAgente(m))} ${tagModelo(m.nome, m.pessoa)} <small>${esc(m.pessoa)}</small></div><div class="t">${esc(texto)}</div></div>
+    <div><div class="n">${esc(tituloAgente(m))} <small>${esc(m.pessoa)}</small></div><div class="etqs">${etiquetasDe(m)}</div><div class="t">${esc(texto)}</div>${sobre ? `<div class="t sobre">Missão: ${esc(sobre)}</div>` : ''}</div>
     <div class="q" style="--cor:${st.cor}"><i>${st.glifo}</i><br>${m.ult ? D.ha(m.ult.t) : ''}</div></div>`;
 }
 async function desenharEquipe() {
-  filtros($('#filtroEquipe'), filtroEquipe, [['todos', 'Todos'], ...pessoas().map((p) => [p, p]), ['claude', 'Claude'], ['gpt', 'GPT']], (f) => { filtroEquipe = f; desenharEquipe(); });
-  const lista = todosAgentes().filter((a) => filtroEquipe === 'todos' || a.m.pessoa === filtroEquipe || modelo(a.m.nome, a.m.pessoa).familia === filtroEquipe);
+  filtros($('#filtroEquipe'), filtroEquipe, [['todos', 'Todos'], ...pessoas().map((p) => [p, p]), ['t:agente', '🤖 Agentes'], ['t:fora', '🔌 Conectores e programas'], ['t:ia', '🧠 GPT']], (f) => { filtroEquipe = f; desenharEquipe(); });
+  const lista = todosAgentes().filter((a) => {
+    const t = tipoDe(a.m.nome);
+    if (filtroEquipe === 't:agente' && !['agente', 'assistente'].includes(t)) return false;
+    if (filtroEquipe === 't:fora' && !['plugin', 'programa'].includes(t)) return false;
+    if (filtroEquipe === 't:ia' && t !== 'ia') return false;
+    if (!filtroEquipe.startsWith('t:') && filtroEquipe !== 'todos' && a.m.pessoa !== filtroEquipe) return false;
+    if (filtroFrente && D.frenteDaMesa(a.m)?.id !== filtroFrente) return false;
+    return true;
+  });
   const grupos = [['Precisa de você', ['alerta', 'erro'], 'alerta'], ['Trabalhando', ['trab'], 'trab'], ['Pronto', ['fim'], 'fim'], ['Livre', ['espera', 'livre'], 'livre']];
   let html = '';
   for (const [nome, cls, chave] of grupos) {
@@ -549,9 +590,12 @@ async function desenharEquipe() {
     html += `<div class="grupo" style="--cor:${D.ESTADOS[chave].cor}"><i>${D.ESTADOS[chave].glifo}</i>${nome} · ${itens.length}</div>`;
     html += (await Promise.all(itens.map(linhaAgente))).join('');
   }
-  $('#listaEquipe').innerHTML = html || '<div class="vazio">Ninguém por aqui ainda.</div>';
-  $('#listaEquipe').onclick = (e) => { const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k); };
+  const fr = frentePorId(filtroFrente);
+  $('#listaEquipe').innerHTML = (fr ? avisoFiltro(fr) : '') + (html || `<div class="vazio">${fr ? 'Ninguém trabalhou nesta frente ultimamente.' : 'Ninguém por aqui ainda.'}</div>`);
+  $('#listaEquipe').onclick = (e) => { if (e.target.closest('[data-tirar-filtro]')) return tirarFiltro(); const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k); };
 }
+const avisoFiltro = (fr) => `<div class="aviso-filtro" style="--cor:${fr.cor}">${fr.icone} Só a frente <b>${esc(fr.nome)}</b><button data-tirar-filtro title="Ver todas as frentes">× ver tudo</button></div>`;
+function tirarFiltro() { filtroFrente = ''; guarda('frente', ''); desenharFrentes(); desenharAba(); }
 
 // ---------- atenção: aprovações + agentes parados ----------
 async function desenharAtencao() {
@@ -595,59 +639,159 @@ async function desenharAgente() {
   const linhas = m.hist.filter((e) => e.texto !== 'esperando você').slice(-40).reverse();
   $('#detalheAgente').innerHTML = `
     <div class="det-topo"><img src="${await retratoDe(nome)}" alt=""><div><h3>${esc(tituloAgente(m))}</h3>
-      <div>${tagModelo(nome, p)} <span class="sub">equipe de ${esc(p)}</span></div>
+      <div class="etqs">${etiquetasDe(m)} <span class="sub">equipe de ${esc(p)}</span></div>
       <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot}${m.ult ? ' · ' + D.ha(m.ult.t) : ''}</div></div></div>
-    ${mod.descricao ? `<div class="bloco"><h4>O que faz</h4>${esc(mod.descricao)}</div>` : ''}
-    ${m.pedido && nome !== 'Orquestrador' ? `<div class="bloco"><h4>Pedido</h4>${esc(frase(m.pedido))}</div>` : ''}
-    ${m.ult ? `<div class="bloco"><h4>${st.cls === 'fim' ? 'Entregou' : 'Agora'}</h4>${esc(frase(m.ult))}</div>` : ''}
+    <div class="bloco explica" style="--cor:${TIPOS[tipoDe(nome)].cor}"><h4>${TIPOS[tipoDe(nome)].icone} O que é</h4>${esc(mod.descricao ? descricaoHumana(mod.descricao) : TIPOS[tipoDe(nome)].explica)}</div>
+    ${m.ult?._m ? `<div class="bloco"><h4>Missão atual</h4><a href="#" class="link-missao" data-abrir-missao="${esc(m.ult._m.id)}">${chipFrente(m.ult._m.frente)} ${esc(m.ult._m.titulo)}</a></div>` : m.pedido && nome !== 'Orquestrador' ? `<div class="bloco"><h4>Pedido</h4>${esc(frase(m.pedido))}</div>` : ''}
+    ${m.ult ? `<div class="bloco"><h4>${st.cls === 'fim' ? 'Entregou' : 'Agora'}</h4>${st.cls === 'fim' && m.ult.texto?.length > 160 ? md(m.ult.texto) : esc(frase(m.ult))}</div>` : ''}
     ${urls.filter(Boolean).length ? `<div class="bloco"><h4>Resultados</h4><div class="grade-galeria">${m.miniaturas.map((mi, i) => urls[i] ? `<div class="mini-card" data-mini="${i}"><div class="${mi.video ? 'play' : ''}"><img src="${urls[i]}" alt=""></div><div>${esc(mi.nome)}</div></div>` : '').join('')}</div></div>` : ''}
     <div class="linha"><button class="btn" id="irAoAgente">Ir até a mesa</button>${meu ? `<button class="btn forte" id="pedirAgente">${nome === 'Orquestrador' ? 'Conversar' : nome === 'Codex' ? 'Conversar com o Codex' : 'Pedir algo a este agente'}</button>` : ''}</div>
-    ${linhas.length ? `<div class="bloco"><h4>Linha do tempo</h4>${linhas.map((e) => `<div class="etapa ${e.tipo}"><span class="h">${D.hora(e.t)}</span><span>${iconePasso(e.ferramenta, e.modo)}</span><span>${esc(frase(e))}</span></div>`).join('')}</div>` : ''}`;
+    ${linhas.length ? `<div class="bloco"><h4>O que andou fazendo</h4>${fases([...linhas].reverse()).reverse().slice(0, 25).map((f) => `<div class="etapa ${f.tipo}"><span class="h">${D.hora(f.t)}</span><span>${ICONE_CAT[f.cat] || '•'}</span><span>${esc(f.texto)}</span></div>`).join('')}</div>` : ''}`;
+  $('#detalheAgente [data-abrir-missao]')?.addEventListener('click', (e) => { e.preventDefault(); abrirMissao(e.currentTarget.dataset.abrirMissao); });
   $('#irAoAgente').onclick = () => { const b = [...mundo.agentes.values()].find((x) => x.pessoa === p && (x.m?.nome === nome || x.nome === nome)); if (b) teleportar(b.lugar.x + 24, b.lugar.y); };
   $('#pedirAgente')?.addEventListener('click', () => { if (nome === 'Codex') abrirChatCom('codex'); else { abrirChatCom('claude'); if (nome !== 'Orquestrador') { $('#entrada').value = `Use o sub-agente ${nome} para: `; $('#entrada').focus(); } } });
   $$('#detalheAgente [data-mini]').forEach((el) => { el.onclick = () => abrirMidia(m.miniaturas[Number(el.dataset.mini)], urls[Number(el.dataset.mini)], m.pessoa); });
 }
 
-// ---------- missões ----------
+// ---------- missões (agrupadas por frente) ----------
+const ICONE_CAT = { ler: '📖', escrever: '✏️', cmd: '▶️', web: '🌐', chamar: '🤖', skill: '📘', mcp: '🔌', organizar: '🗒️', alerta: '⚠️', erro: '❌', entrega: '✅', outro: '•' };
 let filtroMissoes = 'todos';
-async function desenharMissoes() {
-  filtros($('#filtroMissoes'), filtroMissoes, [['todos', 'Todas'], ...pessoas().map((p) => [p, p]), ['claude', 'Claude'], ['codex', 'Codex'], ['abertas', 'Em andamento']], (f) => { filtroMissoes = f; desenharMissoes(); });
-  const busca = $('#buscaMissoes').value.trim().toLowerCase();
-  const lista = D.missoes().filter((m) => {
-    if (filtroMissoes === 'claude' || filtroMissoes === 'codex') { if (m.alvo !== filtroMissoes) return false; }
-    else if (filtroMissoes === 'abertas') { if (m.fim) return false; }
+const frentesFechadas = new Set(lerJson(guardado('frentesFechadas', '[]')) || []);
+function missoesFiltradas() {
+  const busca = ($('#buscaMissoes')?.value || '').trim().toLowerCase();
+  return D.missoes().filter((m) => {
+    if (filtroFrente && m.frente.id !== filtroFrente) return false;
+    if (filtroMissoes === 'abertas') { if (m.fim) return false; }
     else if (filtroMissoes !== 'todos' && m.pessoa !== filtroMissoes) return false;
     if (!busca) return true;
-    return [m.pedido, m.resposta, m.projeto, ...m.agentes, ...m.nomes, ...m.passos.map((e) => frase(e))].join(' ').toLowerCase().includes(busca);
-  }).slice(0, 80);
-  if (!lista.length) { $('#listaMissoes').innerHTML = '<div class="vazio">Nenhuma missão ainda. Cada pedido à assistente (no VS Code ou aqui) vira uma missão.</div>'; return; }
-  const html = await Promise.all(lista.map(async (m) => {
-    const st = D.ESTADOS[m.status] || D.ESTADOS.espera;
-    const rostos = await Promise.all([...m.agentes].slice(0, 7).map(async (a) => `<img src="${await retratoDe(a)}" title="${esc(tituloDe(a))}" alt="">`));
-    return `<div class="missao" data-mi="${esc(m.id)}" style="--cor:${st.cor}">
-      <div class="cab"><span style="color:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT</span>' : '<span class="modelo claude">Claude</span>'}<span>${esc(m.projeto || '')}</span><span class="espaco"></span><span>${D.ha(m.inicio)} · ${D.duracao(m.duracao)}</span></div>
-      <div class="ped">${esc(m.pedido)}</div>
-      ${m.resposta ? `<div class="res">↳ ${esc(m.resposta)}</div>` : `<div class="res" style="color:${st.cor}">${st.glifo} ${st.rot}${m.passos.length ? ' · ' + esc(frase(m.passos.at(-1))) : ''}</div>`}
-      ${rostos.length || m.passos.length ? `<div class="rostos">${rostos.join('')}<span>${m.passos.length} passo(s)${m.miniaturas.length ? ` · ${m.miniaturas.length} resultado(s)` : ''}${m.alertas ? ` · ${m.alertas} permissão(ões)` : ''}</span></div>` : ''}
-    </div>`;
-  }));
-  $('#listaMissoes').innerHTML = html.join('');
-  $('#listaMissoes').onclick = (e) => { const d = e.target.closest('[data-mi]'); if (d) { missaoAberta = d.dataset.mi; abrirAba('missao', true); } };
+    return [m.pedido, m.resposta, m.projeto, m.frente.nome, ...m.agentes, ...m.skills, ...m.conectores, ...m.nomes, ...m.passos.map((e) => frase(e))].join(' ').toLowerCase().includes(busca);
+  });
 }
+async function cartaoMissao(m) {
+  const st = D.ESTADOS[m.status] || D.ESTADOS.espera;
+  const rostos = await Promise.all([...m.agentes].slice(0, 6).map(async (a) => `<img src="${await retratoDe(a)}" title="${esc(TIPOS[tipoDe(a)].icone + ' ' + tituloDe(a))}" alt="">`));
+  const linhas = resumo(m.passos).slice(0, 3);
+  return `<div class="missao" data-mi="${esc(m.id)}" style="--cor:${st.cor}">
+    <div class="cab"><span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT</span>' : ''}<span class="st" style="color:${st.cor}">${st.glifo} ${st.rot}</span><span class="espaco"></span><span>${D.ha(m.inicio)} · ${D.duracao(m.duracao)}</span></div>
+    <div class="ped">${esc(m.titulo)}</div>
+    ${linhas.length ? `<div class="resumo-linhas">${linhas.map((l) => `<div>${l.icone} ${esc(l.texto)}</div>`).join('')}</div>` : ''}
+    ${m.resposta ? `<div class="res">↳ ${esc(primeiraFrase(m.resposta, 180))}</div>` : ''}
+    ${rostos.length || m.skills.length || m.conectores.length || m.miniaturas.length ? `<div class="rostos">${rostos.join('')}${m.skills.slice(0, 2).map((s) => `<span class="tipo mini" style="--cor:${TIPOS.skill.cor}">📘 ${esc(s)}</span>`).join('')}${m.conectores.slice(0, 2).map((c) => `<span class="tipo mini" style="--cor:${TIPOS.plugin.cor}">🔌 ${esc(c)}</span>`).join('')}${m.miniaturas.length ? `<span>▣ ${m.miniaturas.length}</span>` : ''}</div>` : ''}
+  </div>`;
+}
+async function desenharMissoes() {
+  filtros($('#filtroMissoes'), filtroMissoes, [['todos', 'Todas'], ...pessoas().map((p) => [p, p]), ['abertas', 'Em andamento']], (f) => { filtroMissoes = f; desenharMissoes(); });
+  const lista = missoesFiltradas();
+  const fr = frentePorId(filtroFrente);
+  if (!lista.length) { $('#listaMissoes').innerHTML = (fr ? avisoFiltro(fr) : '') + '<div class="vazio">Nenhuma missão aqui. Cada pedido à assistente (no VS Code ou aqui) vira uma missão e cai sozinho na frente certa.</div>'; return; }
+  // Um bloco por frente; a frente com atividade mais recente vem primeiro.
+  const grupos = new Map();
+  for (const m of lista) { if (!grupos.has(m.frente.id)) grupos.set(m.frente.id, { f: m.frente, ms: [] }); grupos.get(m.frente.id).ms.push(m); }
+  let html = fr ? avisoFiltro(fr) : '';
+  for (const { f, ms } of grupos.values()) {
+    const ativas = ms.filter((m) => !m.fim && m.status !== 'espera').length, fechado = !fr && frentesFechadas.has(f.id);
+    html += `<div class="bloco-frente" style="--cor:${f.cor}"><button class="cab-frente" data-dobrar="${esc(f.id)}"><span class="ic">${f.icone}</span><b>${esc(f.nome)}</b><span class="cont">${ms.length} missão(ões)${ativas ? ` · <i>${ativas} em andamento</i>` : ''}</span><span class="espaco"></span>${fechado ? '▸' : '▾'}</button>`;
+    if (!fechado) html += (await Promise.all(ms.slice(0, fr ? 60 : 6).map((m) => cartaoMissao(m)))).join('') + (!fr && ms.length > 6 ? `<button class="btn ver-mais" data-so-frente="${esc(f.id)}">Ver as ${ms.length} missões de ${esc(f.nome)}</button>` : '');
+    html += '</div>';
+  }
+  $('#listaMissoes').innerHTML = html;
+  $('#listaMissoes').onclick = (e) => {
+    if (e.target.closest('[data-tirar-filtro]')) return tirarFiltro();
+    const dob = e.target.closest('[data-dobrar]');
+    if (dob) { const id = dob.dataset.dobrar; if (frentesFechadas.has(id)) frentesFechadas.delete(id); else frentesFechadas.add(id); guarda('frentesFechadas', JSON.stringify([...frentesFechadas])); desenharMissoes(); return; }
+    const so = e.target.closest('[data-so-frente]');
+    if (so) { filtroFrente = so.dataset.soFrente; guarda('frente', filtroFrente); desenharFrentes(); desenharMissoes(); return; }
+    const d = e.target.closest('[data-mi]'); if (d) abrirMissao(d.dataset.mi);
+  };
+}
+function abrirMissao(id) { missaoAberta = id; abrirAba('missao', true); }
 async function desenharMissao() {
   const m = D.missoes().find((x) => x.id === missaoAberta);
-  if (!m) { $('#detalheMissao').innerHTML = '<div class="vazio">Missão não encontrada.</div>'; return; }
+  if (!m) { $('#detalheMissao').innerHTML = '<div class="vazio">Missão não encontrada (talvez seja antiga demais: carregue mais no Histórico).</div>'; return; }
   const st = D.ESTADOS[m.status] || D.ESTADOS.espera;
   const urls = await R.urlsMiniaturas(m.miniaturas.map((x) => x.caminho)).catch(() => []);
-  const etapas = await Promise.all(m.passos.map(async (e) => `<div class="etapa ${e.tipo}"><span class="h">${D.hora(e.t)}</span><img src="${await retratoDe(e.agente)}" title="${esc(tituloDe(e.agente))}" alt=""><span><b>${esc(e.agente === 'Orquestrador' ? 'Assistente' : tituloDe(e.agente))}</b> <span class="sub2">${esc(frase(e))}</span></span></div>`));
+  const fs = fases(m.passos);
+  const linhasFases = await Promise.all(fs.map(async (f) => `<div class="etapa ${f.tipo}"><span class="h">${D.hora(f.t)}</span><img src="${await retratoDe(f.agente)}" title="${esc(tituloDe(f.agente))}" alt=""><span><b>${esc(f.agente === 'Orquestrador' ? 'Assistente' : tituloDe(f.agente))}</b> <span class="sub2">${ICONE_CAT[f.cat] || ''} ${esc(f.texto)}</span></span></div>`));
+  const quem = await Promise.all([...m.agentes].map(async (a) => `<div class="quem-linha"><img src="${await retratoDe(a)}" alt=""><b>${esc(tituloDe(a))}</b>${etiquetaTipo(tipoDe(a))}</div>`));
+  const res = resumo(m.passos);
   $('#detalheMissao').innerHTML = `
-    <div style="display:flex;gap:6px;align-items:center;font:14px var(--px);color:var(--fraco);flex-wrap:wrap"><span style="color:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : '<span class="modelo claude">Claude</span>'}<span>${esc(m.projeto || '')}</span>${m.origem ? `<span>· ${m.origem === 'vscode' ? 'VS Code' : 'site'}</span>` : ''}</div>
-    <div class="bloco"><h4>Pedido · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</h4>${esc(m.pedido)}</div>
-    <div class="estado" style="--cor:${st.cor};margin-top:8px"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)}${m.agentes.size ? ' · com ' + [...m.agentes].map(tituloDe).join(', ') : ''}</div>
-    ${m.resposta ? `<div class="bloco"><h4>Resposta</h4><div class="msg assistente" style="box-shadow:none;background:none;padding:0;max-width:100%">${md(m.resposta)}</div></div>` : ''}
+    <div class="etqs">${chipFrente(m.frente)}<span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : ''}<span class="sub">${esc(m.projeto || '')}${m.origem ? ` · pelo ${m.origem === 'vscode' ? 'VS Code' : 'site'}` : ''}</span></div>
+    <h3 class="titulo-missao">${esc(m.titulo)}</h3>
+    <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)} · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+    ${m.resposta ? `<div class="bloco destaque"><h4>✅ Resultado</h4><div class="msg assistente" style="box-shadow:none;background:none;padding:0;max-width:100%">${md(m.resposta)}</div></div>` : ''}
+    ${res.length ? `<div class="bloco"><h4>Em resumo</h4><div class="resumo-linhas grande">${res.map((l) => `<div>${l.icone} ${esc(l.texto)}</div>`).join('')}</div></div>` : ''}
+    ${quem.length || m.skills.length || m.conectores.length ? `<div class="bloco"><h4>Quem e o quê ajudou</h4>${quem.join('')}
+      ${m.skills.map((s) => `<div class="quem-linha"><span class="ic-grande">📘</span><b>${esc(s)}</b>${etiquetaTipo('skill')}</div>`).join('')}
+      ${m.conectores.map((c) => `<div class="quem-linha"><span class="ic-grande">🔌</span><b>${esc(c)}</b>${etiquetaTipo('plugin')}</div>`).join('')}</div>` : ''}
     ${urls.filter(Boolean).length ? `<div class="bloco"><h4>Resultados</h4><div class="grade-galeria">${m.miniaturas.map((mi, i) => urls[i] ? `<div class="mini-card" data-mini="${i}"><div class="${mi.video ? 'play' : ''}"><img src="${urls[i]}" alt=""></div><div>${esc(mi.nome)}</div></div>` : '').join('')}</div></div>` : m.nomes.length ? `<div class="bloco"><h4>Arquivos citados</h4>${m.nomes.map(esc).join(' · ')}</div>` : ''}
-    <div class="bloco"><h4>Passo a passo (${m.passos.length})</h4>${etapas.join('') || '<div class="sub" style="text-align:left">Sem passos registrados.</div>'}</div>`;
+    <div class="bloco"><h4>Pedido completo</h4>${esc(m.pedido)}</div>
+    <div class="linha"><button class="btn" id="compartilharMissao">✉ Mandar para a dupla</button>${m.pessoa === EU.pessoa && m.alvo === 'claude' ? '<button class="btn" id="continuarMissao">✦ Continuar com a assistente</button>' : ''}</div>
+    <details class="bloco tecnico"><summary>Passo a passo (${fs.length} fases, ${m.passos.length} passos)</summary>${linhasFases.join('') || '<div class="sub" style="text-align:left">Sem passos registrados.</div>'}</details>`;
   $$('#detalheMissao [data-mini]').forEach((el) => { el.onclick = () => abrirMidia(m.miniaturas[Number(el.dataset.mini)], urls[Number(el.dataset.mini)], m.pessoa); });
+  $('#compartilharMissao').onclick = () => compartilharMissao(m);
+  $('#continuarMissao')?.addEventListener('click', () => { abrirChatCom('claude'); setTimeout(() => { $('#entrada').value = `Sobre "${m.titulo}": `; $('#entrada').focus(); }, 50); });
+}
+
+// ---------- histórico: por dia e por frente ----------
+let periodoHist = guardado('periodoHist', '7'), pessoaHist = 'todos', carregandoMais = false;
+async function desenharHistorico() {
+  const el = $('#filtroHistorico');
+  el.innerHTML = [['1', 'Hoje'], ['7', '7 dias'], ['30', '30 dias'], ['0', 'Tudo']].map(([v, t]) => `<button data-p="${v}" class="${v === periodoHist ? 'on' : ''}">${t}</button>`).join('') + '<span class="sep-f"></span>' + [['todos', 'Os dois'], ...pessoas().map((p) => [p, p])].map(([v, t]) => `<button data-pe="${esc(v)}" class="${v === pessoaHist ? 'on' : ''}">${esc(t)}</button>`).join('');
+  el.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.p) { periodoHist = b.dataset.p; guarda('periodoHist', periodoHist); } if (b.dataset.pe) pessoaHist = b.dataset.pe; desenharHistorico(); };
+  const desde = periodoHist === '0' ? 0 : periodoHist === '1' ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(periodoHist) * 86400e3;
+  const lista = D.missoes().filter((m) => m.inicio >= desde && (pessoaHist === 'todos' || m.pessoa === pessoaHist) && (!filtroFrente || m.frente.id === filtroFrente));
+  const fr = frentePorId(filtroFrente);
+  const placar = new Map();
+  for (const m of lista) { const p = placar.get(m.frente.id) || { f: m.frente, n: 0, ms: 0 }; p.n++; p.ms += m.duracao; placar.set(m.frente.id, p); }
+  let html = fr ? avisoFiltro(fr) : '';
+  html += `<div class="placar">${[...placar.values()].sort((a, b) => b.n - a.n).map((p) => `<button class="placar-item" data-frente-h="${esc(p.f.id)}" style="--cor:${p.f.cor}"><span>${p.f.icone}</span><b>${p.n}</b><small>${esc(p.f.nome)}<br>${D.duracao(p.ms)} de trabalho</small></button>`).join('') || '<div class="vazio">Nada neste período.</div>'}</div>`;
+  const dias = new Map();
+  for (const m of lista) { const d = new Date(m.inicio).toDateString(); if (!dias.has(d)) dias.set(d, []); dias.get(d).push(m); }
+  const hojeS = new Date().toDateString(), ontem = new Date(Date.now() - 86400e3).toDateString();
+  for (const [d, ms] of dias) {
+    const nomeDia = d === hojeS ? 'Hoje' : d === ontem ? 'Ontem' : new Date(d).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+    const entregas = ms.reduce((s, m) => s + m.miniaturas.length, 0), erros = ms.filter((m) => m.status === 'erro').length;
+    html += `<div class="dia"><div class="cab-dia"><b>${esc(nomeDia)}</b><span>${ms.length} missão(ões)${entregas ? ` · ${entregas} resultado(s)` : ''}${erros ? ` · ${erros} com erro` : ''}</span></div>`;
+    const porFrente = new Map(); for (const m of ms) { if (!porFrente.has(m.frente.id)) porFrente.set(m.frente.id, []); porFrente.get(m.frente.id).push(m); }
+    for (const [, mf] of porFrente) {
+      const f = mf[0].frente;
+      html += `<div class="hist-frente" style="--cor:${f.cor}"><div class="hf-nome">${f.icone} ${esc(f.nome)}</div>${mf.map((m) => { const st = D.ESTADOS[m.status] || D.ESTADOS.espera; return `<button class="hist-item" data-mi="${esc(m.id)}"><span class="h">${D.hora(m.inicio)}</span><span class="g" style="--cor:${st.cor}">${st.glifo}</span><span class="tx"><b style="color:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</b> ${esc(m.titulo)}${m.resposta ? `<small>↳ ${esc(primeiraFrase(m.resposta, 110))}</small>` : ''}</span></button>`; }).join('')}</div>`;
+    }
+    html += '</div>';
+  }
+  if (!DEMO) html += `<div class="linha" style="justify-content:center"><button class="btn" id="maisAntigo">${carregandoMais ? 'Carregando…' : 'Carregar dias mais antigos'}</button></div>`;
+  $('#listaHistorico').innerHTML = html;
+  $('#listaHistorico').onclick = async (e) => {
+    if (e.target.closest('[data-tirar-filtro]')) return tirarFiltro();
+    const pf = e.target.closest('[data-frente-h]');
+    if (pf) { filtroFrente = filtroFrente === pf.dataset.frenteH ? '' : pf.dataset.frenteH; guarda('frente', filtroFrente); desenharFrentes(); desenharHistorico(); return; }
+    const d = e.target.closest('[data-mi]'); if (d) { abrirMissao(d.dataset.mi); return; }
+    if (e.target.id === 'maisAntigo' && !carregandoMais) {
+      carregandoMais = true; desenharHistorico();
+      try {
+        const n = await R.eventosAntes(D.eventos[0]?.t || Date.now());
+        D.adicionar(n.map(D.deLinha));
+        if (!n.length) toast({ titulo: 'Não há nada mais antigo', cor: '#9a90a8' }); else { periodoHist = '0'; guarda('periodoHist', '0'); }
+      } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+      carregandoMais = false; desenharHistorico();
+    }
+  };
+}
+
+// ---------- faixa de frentes (HUD em cima do mapa) ----------
+function desenharFrentes() {
+  if (!EU) return;
+  const semana = Date.now() - 7 * 86400e3, ms = D.missoes();
+  const ag = todosAgentes();
+  const itens = todasFrentes().map((f) => {
+    const doF = ms.filter((m) => m.frente.id === f.id);
+    const trab = ag.filter((a) => a.st.cls === 'trab' && D.frenteDaMesa(a.m)?.id === f.id).length;
+    const alerta = ag.filter((a) => ['alerta', 'erro'].includes(a.st.cls) && D.frenteDaMesa(a.m)?.id === f.id).length;
+    return { f, trab, alerta, semana: doF.filter((m) => m.inicio > semana).length, ult: doF[0]?.inicio || 0 };
+  }).filter((x) => !x.f.auto || x.semana || x.trab);
+  $('#frentes').innerHTML = itens.map(({ f, trab, alerta, semana: n }) => `<button class="frente ${filtroFrente === f.id ? 'on' : ''} ${filtroFrente && filtroFrente !== f.id ? 'apagada' : ''}" data-frente="${esc(f.id)}" style="--cor:${f.cor}" title="${esc(f.descricao)} · clique para ver só esta frente">
+    <span class="ic">${f.icone}</span><span class="nm">${esc(f.nome)}</span>${alerta ? `<i class="cnt alerta">!${alerta}</i>` : ''}${trab ? `<i class="cnt trab">${trab} ⚙</i>` : ''}<small>${n ? `${n}/sem` : '—'}</small></button>`).join('')
+    + (filtroFrente ? '<button class="frente limpar" data-frente="' + esc(filtroFrente) + '" title="Ver todas">× todas</button>' : '');
 }
 
 // ---------- galeria ----------
@@ -763,11 +907,101 @@ async function enviarChat() {
   catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; mensagens.pop(); desenharChat(); }
 }
 
-// ---------- mural ----------
-function desenharMural() {
-  guarda('recadosVistos', Date.now()); $('#badgeMural').hidden = true;
-  const cores = window.CORES_RECADO || {};
-  $('#listaRecados').innerHTML = recados.map((r, i) => `<div class="recado" style="--cor:${cores[r.cor] || '#ffe58a'};--r:${((i * 37) % 5) - 2}deg"><button data-tirar="${r.id}" title="Tirar do mural">×</button>${esc(r.texto)}<small>${esc(r.pessoa)} · ${D.ha(new Date(r.criado).getTime())}</small></div>`).join('') || '<div class="vazio">Mural vazio. Deixe o primeiro recado!</div>';
+// ---------- conversa da dupla (usa a tabela de recados: msg, recado fixado, missão compartilhada, reação) ----------
+const RAPIDAS = ['👀 Pode revisar?', '🚀 Subi na main', '📞 Bora call?', '🎧 Tô focado', '☕ Pausa', '✅ Feito!'];
+const CORES_FIXADO = { amarelo: '#ffe58a', rosa: '#ffc2d4', azul: '#bfe0ff', verde: '#c8f0c4' };
+const REACOES = ['👍', '❤️', '😂', '🔥', '✅', '👀'];
+let reagindo = null;
+async function mandarRecado(texto, cor) {
+  if (DEMO) { recados.unshift({ id: Date.now(), pessoa: EU.pessoa, texto, cor, criado: new Date().toISOString() }); desenharDupla(); return; }
+  await R.recado(texto, cor);
+}
+async function enviarDupla(rapida) {
+  const t = (rapida || $('#textoRecado').value).trim();
+  if (!t) return;
+  try { await mandarRecado(t.slice(0, 500), $('#chkFixar').checked && !rapida ? 'amarelo' : 'msg'); if (!rapida) { $('#textoRecado').value = ''; $('#chkFixar').checked = false; } }
+  catch (err) { toast({ titulo: 'Não enviei', texto: err.message, cor: '#ef6a55' }); }
+}
+async function compartilharMissao(m) {
+  const card = JSON.stringify({ id: m.id, titulo: m.titulo.slice(0, 200), frente: m.frente.id, pessoa: m.pessoa, status: m.status });
+  try { await mandarRecado(card, 'missao'); abrirAba('dupla'); toast({ titulo: 'Missão enviada para a dupla', texto: 'Escreva um comentário se quiser.', cor: '#4fbf82' }); setTimeout(() => $('#textoRecado').focus(), 50); }
+  catch (err) { toast({ titulo: 'Não enviei', texto: err.message, cor: '#ef6a55' }); }
+}
+async function reagir(id, emoji) {
+  const minha = recados.find((r) => r.cor === 'reacao' && r.pessoa === EU.pessoa && r.texto === `${emoji} ${id}`);
+  try {
+    if (minha) { if (DEMO) recados = recados.filter((r) => r !== minha); else await R.tirarRecado(minha.id); desenharDupla(); }
+    else await mandarRecado(`${emoji} ${id}`, 'reacao');
+  } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+}
+const comMencao = (s) => esc(s).replace(/@(\p{L}+)/gu, '<b class="mencao">@$1</b>');
+function desenharDupla() {
+  if (aba !== 'dupla' || !EU) return;
+  guarda('recadosVistos', Date.now()); $('#badgeMural').hidden = true; $('#badgeDuplaCel').hidden = true;
+  const fixados = recados.filter((r) => CORES_FIXADO[r.cor]);
+  $('#fixados').innerHTML = fixados.length ? `<details class="fixados" ${fixados.length <= 3 ? 'open' : ''}><summary>📌 Recados fixados (${fixados.length})</summary><div class="recados">${fixados.map((r, i) => `<div class="recado" style="--cor:${CORES_FIXADO[r.cor]};--r:${((i * 37) % 5) - 2}deg"><button data-tirar="${r.id}" title="Tirar do mural">×</button>${comMencao(r.texto)}<small>${esc(r.pessoa)} · ${D.ha(new Date(r.criado).getTime())}</small></div>`).join('')}</div></details>` : '';
+  const reacoes = new Map();
+  for (const r of recados.filter((x) => x.cor === 'reacao')) { const [e, id] = r.texto.split(' '); const k = `${id}`; if (!reacoes.has(k)) reacoes.set(k, new Map()); const m = reacoes.get(k); if (!m.has(e)) m.set(e, []); m.get(e).push(r.pessoa); }
+  const msgs = recados.filter((r) => r.cor === 'msg' || r.cor === 'missao').slice().sort((a, b) => new Date(a.criado) - new Date(b.criado));
+  const el = $('#msgsDupla'), noFim = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  let html = '', diaAnt = '';
+  for (const r of msgs) {
+    const dia = new Date(r.criado).toDateString();
+    if (dia !== diaAnt) { diaAnt = dia; html += `<div class="sep-dia">${dia === new Date().toDateString() ? 'Hoje' : new Date(r.criado).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}</div>`; }
+    const eu = r.pessoa === EU.pessoa;
+    let corpo;
+    if (r.cor === 'missao') {
+      const c = lerJson(r.texto), f = frentePorId(c.frente) || FRENTES[0], existe = D.missoes().some((m) => m.id === c.id);
+      corpo = `<button class="card-missao" data-abrir-missao="${esc(c.id || '')}" ${existe ? '' : 'disabled'} style="--cor:${f.cor}"><span class="cm-f">${f.icone} ${esc(f.nome)} · missão de ${esc(c.pessoa || '?')}</span><b>${esc(c.titulo || 'Missão')}</b><span class="cm-a">${existe ? 'Abrir a missão ›' : 'missão antiga (carregue no Histórico)'}</span></button>`;
+    } else corpo = `<span class="txt">${comMencao(r.texto)}</span>`;
+    const rs = reacoes.get(String(r.id));
+    html += `<div class="bolha ${eu ? 'eu' : ''}" data-id="${r.id}" style="--cor:${corPessoa(r.pessoa)}">${eu ? '' : `<span class="quem">${esc(r.pessoa)}</span>`}${corpo}<span class="hora">${D.hora(new Date(r.criado).getTime())}</span>${rs ? `<div class="reacoes">${[...rs].map(([e, ps]) => `<button data-reagir="${e}" class="${ps.includes(EU.pessoa) ? 'minha' : ''}" title="${esc(ps.join(', '))}">${e} ${ps.length}</button>`).join('')}</div>` : ''}${reagindo === r.id ? `<div class="reacoes escolher">${REACOES.map((e) => `<button data-reagir="${e}">${e}</button>`).join('')}</div>` : ''}</div>`;}
+  el.innerHTML = html || `<div class="vazio">Aqui é a conversa entre você e ${esc(outraPessoa() || 'a dupla')}. Mande um oi, use as respostas rápidas ou compartilhe uma missão (botão "Mandar para a dupla" dentro de cada missão).</div>`;
+  if (noFim || !el.dataset.rolou) { el.scrollTop = el.scrollHeight; el.dataset.rolou = '1'; }
+  el.onclick = (e) => {
+    const am = e.target.closest('[data-abrir-missao]'); if (am) { abrirMissao(am.dataset.abrirMissao); return; }
+    const rb = e.target.closest('[data-reagir]'); if (rb) { reagindo = null; reagir(Number(rb.closest('[data-id]').dataset.id), rb.dataset.reagir); return; }
+    const b = e.target.closest('.bolha'); if (b) { const id = Number(b.dataset.id); reagindo = reagindo === id ? null : id; desenharDupla(); }
+  };
+  $('#fixados').onclick = async (e) => { const b = e.target.closest('[data-tirar]'); if (b) { if (DEMO) { recados = recados.filter((r) => r.id !== Number(b.dataset.tirar)); desenharDupla(); } else await R.tirarRecado(Number(b.dataset.tirar)); } };
+}
+
+// ---------- quem é quem: o catálogo de agentes, skills, conectores e plugins ----------
+let pessoaCatalogo = null;
+function desenharCatalogo() {
+  pessoaCatalogo ||= EU.pessoa;
+  const info = estados.get(pessoaCatalogo)?.info || {};
+  const desde = Date.now() - 30 * 86400e3;
+  const ev = D.eventos.filter((e) => e.pessoa === pessoaCatalogo && e.t > desde);
+  const conta = (fn) => { const c = new Map(); for (const e of ev) { const k = fn(e); if (k) c.set(k, (c.get(k) || 0) + 1); } return c; };
+  const usoSkill = conta((e) => e.ferramenta === 'Skill' ? String(e.alvo || '').split(':').pop() : null);
+  const usoCon = conta((e) => conectorDe(e.ferramenta) || (['PixelLab', 'Blender', 'HuggingFace'].includes(e.agente) && e.tipo === 'inicio' ? nomeConector(e.agente === 'HuggingFace' ? 'hf' : e.agente.toLowerCase()) : null));
+  const usoAg = conta((e) => (e.tipo === 'pedido' || e.tipo === 'inicio') && e.agente !== 'Orquestrador' ? e.agente : null);
+  const uso = (n) => n ? `<span class="uso">usado ${n}× no mês</span>` : '<span class="uso nunca">não usado no mês</span>';
+  const sec = (tipo, conteudo, extra = '') => `<div class="sec-cat" style="--cor:${TIPOS[tipo].cor}"><div class="sec-cab"><span class="ic">${TIPOS[tipo].icone}</span><div><b>${TIPOS[tipo].plural}${extra}</b><p>${esc(TIPOS[tipo].explica)}</p></div></div>${conteudo}</div>`;
+  const item = (nome, desc, extra = '') => `<div class="item-cat"><div><b>${esc(nome)}</b>${extra}</div>${desc ? `<p>${esc(desc)}</p>` : ''}</div>`;
+  const conectores = new Map((info.mcp || []).map((m) => [nomeConector(m.nome), m]));
+  for (const k of usoCon.keys()) if (!conectores.has(k)) conectores.set(k, { nome: k, origem: 'conta Claude' });
+  const velha = !info.skills;
+  let html = `<div class="filtros">${pessoas().map((p) => `<button data-pc="${esc(p)}" class="${p === pessoaCatalogo ? 'on' : ''}">Equipe de ${esc(p)}</button>`).join('')}</div>
+    <div class="legenda-tipos">${Object.entries(TIPOS).map(([k, t]) => `<div style="--cor:${t.cor}"><span>${t.icone}</span><b>${t.rot}</b><small>${t.curta}</small></div>`).join('')}</div>
+    <p class="sub dica-cat">Personagens com mesa: 👑 🤖 🧠 🔌 🛠️. Skills 📘 e plugins 📦 não são pessoas: são receitas e pacotes que os personagens usam.</p>`;
+  html += sec('assistente', item(`Assistente de ${pessoaCatalogo}`, 'Recebe seus pedidos (aqui ou no VS Code) e coordena todo mundo.'));
+  html += sec('agente', (info.agentes || []).map((a) => item(tituloDe(a.nome), descricaoHumana(a.descricao), ` <span class="modelo claude">${esc(/haiku|sonnet|opus|fable/i.exec(a.modelo || '')?.[0] || a.modelo || 'Claude')}</span> ${uso(usoAg.get(a.nome))}`)).join('') || '<p class="sub">Nenhum agente listado ainda (a ponte manda a lista quando liga).</p>');
+  html += sec('ia', item('Codex (GPT, da OpenAI)', 'Revisa, dá nota e faz tarefas separadas. Converse com ele no chat da assistente escolhendo "Codex".', uso(usoAg.get('Codex'))));
+  html += sec('skill', velha ? '<p class="sub">Atualize a ponte deste PC para listar as skills.</p>' : (info.skills || []).sort((a, b) => (usoSkill.get(b.nome) || 0) - (usoSkill.get(a.nome) || 0)).map((s) => item(s.nome, descricaoHumana(s.descricao), ` <span class="origem">${esc(s.origem)}</span> ${uso(usoSkill.get(s.nome))}`)).join(''), ` (${(info.skills || []).length})`);
+  html += sec('plugin', [...conectores.values()].map((c) => item(nomeConector(c.nome), '', ` <span class="origem">${esc(c.origem)}</span> ${uso(usoCon.get(nomeConector(c.nome)))}`)).join('') || '<p class="sub">Nenhum conector.</p>');
+  html += sec('programa', item('Godot', 'Abre e testa o jogo.', uso(usoAg.get('Godot'))) + item('Render (Remotion)', 'Monta e exporta os vídeos.', uso(usoAg.get('Render'))) + item('ffmpeg', 'Corta e converte vídeo e imagem; faz as miniaturas.', info.ffmpeg ? ' <span class="uso">instalado</span>' : ' <span class="uso nunca">não instalado</span>'));
+  if (info.plugins?.length) html += sec('pacote', info.plugins.map((p) => item(p.nome, '', ` <span class="origem">${esc(p.origem)}</span>`)).join(''));
+  $('#listaCatalogo').innerHTML = html;
+  $('#listaCatalogo').onclick = (e) => { const b = e.target.closest('[data-pc]'); if (b) { pessoaCatalogo = b.dataset.pc; desenharCatalogo(); } };
+}
+
+// ---------- "Mais" (celular) ----------
+function desenharMais() {
+  const itens = [['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['catalogo', '◎', 'Quem é quem', 'Agentes, skills, conectores'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
+  $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
+  $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
 }
 
 // ---------- jornal ----------
@@ -807,21 +1041,24 @@ function abrirAjuda() {
   $('#conteudoAjuda').innerHTML = `
     <div class="ajuda-col">
       <h3>Quem é quem</h3>
-      <p><span class="modelo claude">Claude</span> sua assistente e os sub-agentes (Editor, Artista 3D, Revisor…). A etiqueta diz o modelo: Haiku, Sonnet…</p>
-      <p><span class="modelo gpt">GPT · Codex</span> o Codex da OpenAI. Tem mesa própria, no tapete verde da sua sala.</p>
-      <p><span class="modelo ferramenta">Ferramenta</span> PixelLab, Blender, Render, Godot: aparecem quando alguém usa.</p>
+      ${Object.keys(TIPOS).map((k) => `<p>${etiquetaTipo(k)} ${esc(TIPOS[k].curta)}</p>`).join('')}
+      <p>A lista completa, com as skills e os conectores de cada um, fica em <b>Quem é quem</b> (tecla I).</p>
+      <h3>Frentes</h3>
+      <p>${FRENTES.map((f) => `${f.icone} <b>${esc(f.nome)}</b>`).join(' · ')}. Cada missão cai sozinha numa frente. A faixa em cima do mapa mostra quem está trabalhando em cada uma; clique para ver só ela.</p>
       <p>Cada um tem uma sala de vidro com a assistente na recepção. As baias da sua equipe ficam do lado da sua sala.</p>
       <h3>Estados</h3>
       <div class="legenda">${est('alerta')}${est('erro')}${est('trab')}${est('fim')}${est('livre')}</div>
       <p>Trabalhando, o boneco digita e a tela do PC anima. Livre, às vezes levanta para tomar café.</p>
       <h3>Onde ver as coisas</h3>
       <p><b>Equipe</b>: todo mundo agrupado por atenção. Clique para a câmera ir até a pessoa.</p>
-      <p><b>Missões</b>: cada pedido com o passo a passo, quem ajudou, a resposta e os resultados. Tem busca.</p>
-      <p><b>Chat</b>: uma conversa por tarefa, com a assistente (Claude) ou com o Codex (GPT). Pedidos de permissão aparecem com Permitir/Negar.</p>
+      <p><b>Missões</b>: cada pedido, agrupado por frente, com um resumo em português, quem ajudou e o resultado. O passo a passo técnico fica recolhido.</p>
+      <p><b>Histórico</b>: o que vocês fizeram por dia, com o placar de cada frente.</p>
+      <p><b>Dupla</b>: a conversa entre vocês dois, com reações, recados fixados e missões compartilhadas.</p>
+      <p><b>Assistente</b>: uma conversa por tarefa, com a assistente (Claude) ou com o Codex (GPT). Pedidos de permissão aparecem com Permitir/Negar.</p>
       <p><b>Diário</b>: o jornal do dia (manchete no topo; o jornal fica na mesa do salão).</p>
       <h3>Atalhos</h3>
       <p><kbd>WASD</kbd> anda · <kbd>Shift</kbd> skate · clique no chão para ir · <kbd>E</kbd> fala com quem está perto</p>
-      <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>C</kbd> chat · <kbd>G</kbd> galeria · <kbd>M</kbd> mural · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
+      <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>L</kbd> histórico · <kbd>C</kbd> assistente · <kbd>M</kbd> dupla · <kbd>G</kbd> galeria · <kbd>I</kbd> quem é quem · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
       <p><kbd>Q</kbd> acena · <kbd>K</kbd> vai até o outro · <kbd>1</kbd>–<kbd>6</kbd> emotes · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>Esc</kbd> fecha</p>
     </div>`;
   $('#ajuda').hidden = false;
@@ -843,7 +1080,7 @@ function desenharAjustes() {
     ${info.agentes?.length ? `<div class="campo"><span>Seus agentes</span>${info.agentes.map((a) => `<div class="sub" style="text-align:left;margin:3px 0">${tagModelo(a.nome, EU.pessoa)} <b>${esc(tituloDe(a.nome))}</b></div>`).join('')}</div>` : ''}
     <div class="campo"><span>Convidar</span><form id="formConvite" class="linha" style="margin:0"><input id="emailConvite" type="email" placeholder="email do Kenny" required style="flex:2;min-width:0;background:var(--painel2);color:var(--texto);border:0;box-shadow:inset 0 0 0 2px var(--borda-clara);padding:7px"><input id="nomeConvite" placeholder="Nome" value="Kenny" required style="flex:1;min-width:0;background:var(--painel2);color:var(--texto);border:0;box-shadow:inset 0 0 0 2px var(--borda-clara);padding:7px"><button class="btn">Convidar</button></form></div>
     <div class="campo"><span>No iPhone</span><div class="sub" style="text-align:left">Abra o site no Safari › Compartilhar › <b>Adicionar à Tela de Início</b>. Vira um app.</div></div>
-    <div class="campo"><span>Atalhos</span><div class="sub" style="text-align:left">WASD/setas anda · Shift skate · clique no chão anda até lá · E fala · Tab equipe · H missões · C chat · G galeria · M mural · J diário · Q acena · K vai até o outro · 1–6 emotes · +/− zoom · Esc fecha</div></div>
+    <div class="campo"><span>Atalhos</span><div class="sub" style="text-align:left">WASD/setas anda · Shift skate · clique no chão anda até lá · E fala · Tab equipe · H missões · L histórico · C assistente · M dupla · G galeria · I quem é quem · J diário · Q acena · K vai até o outro · 1–6 emotes · +/− zoom · Esc fecha</div></div>
     <div class="campo"><span>Créditos</span><div class="sub" style="text-align:left">Arte: <a href="https://github.com/pablodelucca/pixel-agents" target="_blank" rel="noopener" style="color:var(--laranja)">Pixel Agents</a> (MIT), personagens baseados em Metro City (JIK-A-4).</div></div>
     <div class="campo"><button class="btn" id="btnSair">Sair</button></div>`;
   $('#selStatus').value = st.status || 'disponivel';
@@ -901,12 +1138,41 @@ async function iniciarDemo() {
     ev(6, 'Kenny', 'Godot', 'erro', 'SCRIPT ERROR: Invalid call. Nonexistent function "dash" in base "Nil".'),
     ev(1, 'Kenny', 'revisor-godot', 'atividade', '', { ferramenta: 'Read', alvo: 'player.gd', modo: 'ler' }),
     ev(20, 'Kenny', 'explorador', 'fim', 'O dano é calculado em player.gd:strike() e enemy.gd:take_hit()'),
-    ev(30, 'Kenny', 'Codex', 'pedido', 'Refatora o sistema de inventário do jogo novo', { origem: 'vscode', sessao: 'cx1' }),
-    ev(22, 'Kenny', 'Codex', 'fim', 'Separei Inventory em InventoryModel e InventoryView; 14 arquivos mudaram.', { origem: 'vscode', sessao: 'cx1' }),
+    ev(30, 'Kenny', 'Codex', 'pedido', 'Refatora o sistema de inventário do jogo novo', { origem: 'vscode', sessao: 'cx1', projeto: 'jogo-novo' }),
+    ev(22, 'Kenny', 'Codex', 'fim', 'Separei Inventory em InventoryModel e InventoryView; 14 arquivos mudaram.', { origem: 'vscode', sessao: 'cx1', projeto: 'jogo-novo' }),
+    ev(47, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Skill', alvo: 'video-do-jogo' }),
+    ev(44, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Read', alvo: 'beats.json', modo: 'ler' }),
+    ev(43, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Read', alvo: 'ShortRaioFogo.tsx', modo: 'ler' }),
+    ev(15, 'Kenny', 'Orquestrador', 'inicio', 'Desenha o baú do inventário no PixelLab e coloca na tela', { sessao: 's3', projeto: 'jogo-novo' }),
+    ev(14, 'Kenny', 'Orquestrador', 'atividade', '', { sessao: 's3', projeto: 'jogo-novo', ferramenta: 'Skill', alvo: 'hud-em-jogo' }),
+    ev(13, 'Kenny', 'PixelLab', 'inicio', 'Orquestrador: create_image_pixflux', { sessao: 's3', projeto: 'jogo-novo', ferramenta: 'mcp__pixellab__create_image_pixflux', alvo: 'baú de madeira' }),
+    ev(11, 'Kenny', 'PixelLab', 'fim', 'Imagem pronta: bau_128.png', { sessao: 's3', projeto: 'jogo-novo' }),
+    ev(10, 'Kenny', 'Orquestrador', 'atividade', '', { sessao: 's3', projeto: 'jogo-novo', ferramenta: 'Edit', alvo: 'inventario.tscn', modo: 'escrever' }),
+    ev(9.5, 'Kenny', 'Orquestrador', 'espera', 'esperando você', { sessao: 's3', projeto: 'jogo-novo', resposta: 'Baú desenhado (128 px) e colocado no canto da tela de inventário. Abre com a tecla I.' }),
+    ev(200, 'Rafael', 'Orquestrador', 'inicio', 'Melhora o escritório: frentes, histórico e conversa da dupla', { sessao: 's4', projeto: 'genesis-estudio' }),
+    ev(195, 'Rafael', 'Orquestrador', 'atividade', '', { sessao: 's4', projeto: 'genesis-estudio', ferramenta: 'WebSearch', alvo: 'agent dashboard workstreams' }),
+    ev(180, 'Rafael', 'Orquestrador', 'atividade', '', { sessao: 's4', projeto: 'genesis-estudio', ferramenta: 'Edit', alvo: 'app.js', modo: 'escrever' }),
+    ev(178, 'Rafael', 'Orquestrador', 'atividade', '', { sessao: 's4', projeto: 'genesis-estudio', ferramenta: 'Edit', alvo: 'frentes.js', modo: 'escrever' }),
+    ev(170, 'Rafael', 'Orquestrador', 'espera', 'esperando você', { sessao: 's4', projeto: 'genesis-estudio', resposta: 'Pronto: faixa de frentes no mapa, missões agrupadas, histórico por dia e a conversa da dupla.' }),
+    ev(1500, 'Rafael', 'Orquestrador', 'inicio', 'Balanceia o Dragão do Inverno no Veterano com os bots', { sessao: 's5' }),
+    ev(1490, 'Rafael', 'balanceador', 'pedido', 'Orquestrador pediu: rodar 30 partidas no Veterano', { sessao: 's5' }),
+    ev(1480, 'Rafael', 'balanceador', 'atividade', '', { sessao: 's5', ferramenta: 'Bash', alvo: 'Bots jogando ::: godot --headless -s playtest_rodada.gd', modo: 'executar' }),
+    ev(1440, 'Rafael', 'balanceador', 'fim', 'Taxa de vitória 38% → 52% com vida -10% e sopro a cada 6 s.', { sessao: 's5' }),
+    ev(1438, 'Rafael', 'Orquestrador', 'espera', 'esperando você', { sessao: 's5', resposta: 'Dragão do Inverno ajustado: vitória dos bots subiu de 38% para 52% no Veterano.' }),
   ]);
-  estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku' }, { nome: 'revisor-godot', modelo: 'sonnet' }] } });
+  estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], ffmpeg: true, agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku', descricao: 'Lê o projeto e responde perguntas sem mexer em nada.' }, { nome: 'revisor-godot', modelo: 'sonnet', descricao: 'Revisa código GDScript antes do commit.' }, { nome: 'editor-de-video', modelo: 'sonnet', descricao: 'Monta Shorts e trailers no Remotion com cortes no compasso.' }],
+    skills: [{ nome: 'video-do-jogo', descricao: 'Use quando for gravar, montar ou renderizar um vídeo do Genesis', origem: 'projeto' }, { nome: 'balanceamento-com-bots', descricao: 'Use quando for balancear uma dificuldade com bots jogando', origem: 'projeto' }, { nome: 'hud-em-jogo', descricao: 'Use quando for desenhar ou mudar a HUD dentro da partida', origem: 'projeto' }],
+    mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official' }] } });
   estados.set('Kenny', { pessoa: 'Kenny', ponte_visto: new Date().toISOString(), branch: 'v0.2-loja-classes', projeto: 'genesis-game' });
-  recados = [{ id: 1, pessoa: 'Kenny', texto: 'Subi o fix do dash na main, pode puxar 🙏', cor: 'azul', criado: new Date(ag - 40 * 60e3).toISOString() }];
+  const quando = (min) => new Date(ag - min * 60e3).toISOString();
+  recados = [
+    { id: 1, pessoa: 'Kenny', texto: 'Reunião de sexta: decidir a loja de classes', cor: 'azul', criado: quando(900) },
+    { id: 2, pessoa: 'Kenny', texto: 'Subi o fix do dash na main, pode puxar 🙏', cor: 'msg', criado: quando(40) },
+    { id: 3, pessoa: 'Rafael', texto: 'Boa! Vou puxar depois do render do Short', cor: 'msg', criado: quando(38) },
+    { id: 4, pessoa: 'Kenny', texto: JSON.stringify({ id: `Kenny|s3|${ag - 15 * 60e3}`, titulo: 'Desenha o baú do inventário no PixelLab e coloca na tela', frente: 'novo', pessoa: 'Kenny' }), cor: 'missao', criado: quando(9) },
+    { id: 5, pessoa: 'Kenny', texto: 'Olha o baú do jogo novo @Rafael 👀', cor: 'msg', criado: quando(9) },
+    { id: 6, pessoa: 'Rafael', texto: '🔥 4', cor: 'reacao', criado: quando(8) },
+  ].reverse();
   conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }];
