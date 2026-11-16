@@ -43,7 +43,38 @@ export function estadoDe(m) {
   if (cls === 'erro' && idade > 60 * 60e3) cls = 'livre';
   if (cls === 'alerta' && idade > 2 * 3600e3) cls = 'espera';
   if (m.nome === 'Orquestrador' && e.texto === 'sessão fechada') cls = 'espera';
+  // tarefa rodando em segundo plano: o turno acabou, mas o trabalho continua
+  if (emSegundoPlano(m) && cls !== 'alerta' && cls !== 'erro') cls = 'trab';
   return { cls, ...ESTADOS[cls] };
+}
+
+export function emSegundoPlano(m) {
+  const e = m?.ult; if (!e || m.nome !== 'Orquestrador') return false;
+  if (m.fundo > 0 && Date.now() - (m.fundoT || 0) < 2 * 3600e3) return true;
+  return e.tipo === 'espera' && Date.now() - e.t < 90 * 60e3 && /segundo plano|em background|rodando sozinh|te aviso quando (terminar|acabar)/i.test(e.resposta || '');
+}
+
+// Cada aba (sessão) do Claude Code de cada pessoa vira uma assistente própria.
+let cacheAbas = { v: -1 };
+export function abas(janela = 3 * 3600e3) {
+  if (cacheAbas.v === versao) return cacheAbas.lista;
+  const por = new Map();
+  for (const e of eventos) {
+    if (e.agente !== 'Orquestrador' || !e.sessao || !e.pessoa) continue;
+    const k = `${e.pessoa}|aba|${e.sessao}`;
+    let a = por.get(k);
+    if (!a) { a = { k, aba: true, pessoa: e.pessoa, nome: 'Orquestrador', sessao: e.sessao, titulo: 'Assistente', hist: [], miniaturas: [], nomes: [], fundo: 0 }; por.set(k, a); }
+    a.hist.push(e); if (a.hist.length > 80) a.hist.shift();
+    a.ult = e; if (e.projeto) a.projeto = e.projeto; if (e.pasta) a.pasta = e.pasta;
+    if (e.tipo === 'inicio') a.pedido = e;
+    if (e.fundo) { a.fundo++; a.fundoT = e.t; }
+    if (e.fimFundo) a.fundo = Math.max(0, a.fundo - 1);
+    if (e.texto === 'sessão aberta') a.fundo = 0;
+    for (const mi of e.miniaturas || []) a.miniaturas = [{ ...mi, t: e.t }, ...a.miniaturas].slice(0, 12);
+  }
+  const lista = [...por.values()].filter((a) => Date.now() - a.ult.t < janela && a.ult.texto !== 'sessão fechada').sort((x, y) => y.ult.t - x.ult.t);
+  cacheAbas = { v: versao, lista };
+  return lista;
 }
 
 let cache = { v: -1 };
@@ -100,7 +131,7 @@ export function missoes() {
   if (cacheMissoes.v === versao) return cacheMissoes.lista;
   const lista = [], abertas = new Map();
   const nova = (e, chave, alvo) => {
-    const m = { id: `${chave}|${e.t}`, pessoa: e.pessoa, sessao: e.sessao, projeto: e.projeto, alvo, origem: e.origem, pedido: e.texto, inicio: e.t, ultimo: e.t, passos: [], agentes: new Set(), miniaturas: [], nomes: [], alertas: 0, erros: 0, fim: null, resposta: null };
+    const m = { id: `${chave}|${e.t}`, pessoa: e.pessoa, sessao: e.sessao, projeto: e.projeto, pasta: e.pasta, alvo, origem: e.origem, pedido: e.texto, inicio: e.t, ultimo: e.t, passos: [], agentes: new Set(), miniaturas: [], nomes: [], alertas: 0, erros: 0, fim: null, resposta: null };
     lista.push(m); abertas.set(chave, m); return m;
   };
   for (const e of eventos) {

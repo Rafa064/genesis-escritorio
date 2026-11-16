@@ -129,7 +129,7 @@ function mesasDoMundo() {
   const ps = pessoas(), eq = D.equipes(), lista = [], usados = new Set();
   for (const l of mundo.planta.lugares) {
     const p = ps[l.equipe]; if (!p) continue;
-    const m = eq.get(p)?.get(l.nome) || vazioMesa(p, l.nome);
+    const m = (l.nome === 'Orquestrador' ? D.abas().find((a) => a.pessoa === p) : null) || eq.get(p)?.get(l.nome) || vazioMesa(p, l.nome);
     let st = D.estadoDe(m.ult ? m : null).cls;
     if (l.assistente && p === EU.pessoa && chatOcupado && alvoAtual() === 'claude') st = 'trab';
     if (l.codex && p === EU.pessoa && chatOcupado && alvoAtual() === 'codex') st = 'trab';
@@ -144,7 +144,9 @@ function mesasDoMundo() {
     }
     return null;
   };
-  const outros = ps.flatMap((p) => [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex'));
+  // as outras abas do Claude (além da que está na recepção) entram como se fossem agentes
+  const outrasAbas = ps.flatMap((p) => D.abas().filter((a) => a.pessoa === p).slice(1));
+  const outros = [...ps.flatMap((p) => [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex')), ...outrasAbas];
   const comEstado = outros.map((m) => ({ m, st: D.estadoDe(m).cls })).sort((a, b) => b.m.ult.t - a.m.ult.t);
   const A = mundo.planta.assentos;
   for (const { m, st } of comEstado.filter((x) => TRABALHANDO.includes(x.st))) {
@@ -410,6 +412,7 @@ tela.addEventListener('pointermove', (ev) => { if (!mundo) return; const [x, y] 
 function rotulo(id, cls) { let el = poolRotulos.get(id); if (!el) { el = document.createElement('div'); camada.appendChild(el); poolRotulos.set(id, el); } if (el.className !== cls) el.className = cls; el.dataset.v = '1'; return el; }
 const colocar = (el, x, y, c, cima = false) => { el.style.transform = `translate(calc(${Math.round((x - c.x) * zoom)}px - 50%), calc(${Math.round((y - c.y) * zoom)}px - ${cima ? '100%' : '0px'}))`; };
 function nomeBase(b) {
+  if (b.m?.aba && !b.lugar.assistente) return tituloAgente(b.m);
   if (b.lugar.assistente) return b.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${b.pessoa}`;
   if (b.lugar.codex) return b.pessoa === EU.pessoa ? 'Codex · GPT' : `Codex de ${b.pessoa}`;
   return CURTO[b.nome] || tituloDe(b.nome === '*' ? 'agente' : b.nome);
@@ -439,7 +442,7 @@ function rotulos(c) {
     let fala = '', curta = false;
     if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && chatOcupado && alvoAtual() === (b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
     else if (b.m?.ult && (foco || b.status === 'alerta')) fala = primeiraFrase(frase(b.m.ult), 80);
-    else if (b.m?.ult && ativo && !foraDoFiltro(b) && b.modo === 'sentado') { const t = primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
+    else if (b.m?.ult && ativo && !foraDoFiltro(b) && b.modo === 'sentado') { const t = D.emSegundoPlano(b.m) ? 'segundo plano…' : primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
     if (fala) {
       const f = rotulo(b.id + 'f', `fala ${b.status}${curta ? ' curta' : ''}`);
       if (f.textContent !== fala) f.textContent = fala;
@@ -592,7 +595,8 @@ async function desenharTopo() {
 }
 function todosAgentes() {
   const out = [];
-  for (const [, mesas] of D.equipes()) for (const m of mesas.values()) out.push({ m, st: D.estadoDe(m) });
+  for (const [p, mesas] of D.equipes()) for (const m of mesas.values()) if (m.nome !== 'Orquestrador' || !D.abas().some((a) => a.pessoa === p)) out.push({ m, st: D.estadoDe(m) });
+  for (const a of D.abas()) out.push({ m: a, st: D.estadoDe(a) });
   for (const p of pessoas()) for (const nome of [...AGENTES_CONHECIDOS, 'Orquestrador', 'Codex']) if (nome !== '*' && !D.mesa(p, nome)) out.push({ m: vazioMesa(p, nome), st: D.estadoDe(null) });
   return out;
 }
@@ -606,7 +610,9 @@ function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
   el.onclick = (e) => { const b = e.target.closest('[data-f]'); if (b) fn(b.dataset.f); };
 }
-const tituloAgente = (m) => m.nome === 'Orquestrador' ? (m.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${m.pessoa}`) : m.nome === 'Codex' ? (m.pessoa === EU.pessoa ? 'Codex' : `Codex de ${m.pessoa}`) : m.titulo || tituloDe(m.nome);
+const pastaCurta = (a) => String(a.pasta || a.projeto || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'outra aba';
+const ehRecepcao = (m) => !m.aba || D.abas().find((a) => a.pessoa === m.pessoa) === m;
+const tituloAgente = (m) => m.nome === 'Orquestrador' ? (!ehRecepcao(m) ? `Assistente · ${pastaCurta(m)}` : m.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${m.pessoa}`) : m.nome === 'Codex' ? (m.pessoa === EU.pessoa ? 'Codex' : `Codex de ${m.pessoa}`) : m.titulo || tituloDe(m.nome);
 // Etiquetas: tipo (👑 🤖 🧠 🔌 🛠️) + modelo só para quem pensa (Claude Haiku, GPT) + frente atual.
 function etiquetasDe(m) {
   const tipo = tipoDe(m.nome), mod = modelo(m.nome, m.pessoa);
@@ -615,7 +621,7 @@ function etiquetasDe(m) {
 }
 const chipFrente = (f, extra = '') => `<span class="chip-frente" style="--cor:${f.cor}" title="${esc(f.descricao)}">${f.icone} ${esc(f.nome)}${extra}</span>`;
 async function linhaAgente({ m, st }) {
-  let texto = m.ult ? primeiraFrase(frase(m.ult), 120) : modelo(m.nome, m.pessoa).descricao || TIPOS[tipoDe(m.nome)].curta;
+  let texto = D.emSegundoPlano(m) ? '⏳ Rodando uma tarefa em segundo plano' : m.ult ? primeiraFrase(frase(m.ult), 120) : modelo(m.nome, m.pessoa).descricao || TIPOS[tipoDe(m.nome)].curta;
   const sobre = m.ult && m.nome !== 'Orquestrador' && m.pedido && st.cls !== 'livre' ? primeiraFrase(frase(m.pedido).replace(/^.*? pediu: /, ''), 90) : '';
   return `<div class="ag ${selecionado === m.k ? 'sel' : ''}" data-k="${esc(m.k)}" style="--cor:${corPessoa(m.pessoa)}">
     <img src="${await retratoDe(m.nome)}" alt="">
@@ -675,15 +681,16 @@ function ligarAprovacoes(el) {
 // ---------- localizar e detalhe do agente ----------
 function localizar(k) {
   const [p, nome] = k.split('|');
-  const b = [...mundo.agentes.values()].find((x) => x.pessoa === p && (x.m?.nome === nome || x.nome === nome));
+  const b = [...mundo.agentes.values()].find((x) => x.m?.k === k) || [...mundo.agentes.values()].find((x) => x.pessoa === p && (x.m?.nome === nome || x.nome === nome));
   selecionado = k;
   if (b) cam.alvo = [b.x, b.y - 10];
   abrirAba('agente', true);
 }
 function abrirAgente(b) { selecionado = b.m?.k || `${b.pessoa}|${b.nome}`; cam.alvo = null; abrirAba('agente', aba !== 'agente'); }
 async function desenharAgente() {
-  const [p, nome] = (selecionado || '').split('|');
-  const m = D.mesa(p, nome) || vazioMesa(p, nome);
+  let [p, nome] = (selecionado || '').split('|');
+  const m = (nome === 'aba' ? D.abas().find((a) => a.k === selecionado) : null) || D.mesa(p, nome) || vazioMesa(p, nome);
+  if (nome === 'aba') nome = 'Orquestrador';
   const st = D.estadoDe(m.ult ? m : null), mod = modelo(nome, p), meu = p === EU.pessoa;
   const urls = await R.urlsMiniaturas(m.miniaturas.map((x) => x.caminho)).catch(() => []);
   const linhas = m.hist.filter((e) => e.texto !== 'esperando você').slice(-40).reverse();
@@ -862,7 +869,7 @@ async function desenharHud() {
   if (!EU) return;
   const ativos = quemTrabalha();
   const cartoes = await Promise.all(ativos.slice(0, 12).map(async ({ m, cls, fr }) => {
-    const acao = m.ult ? primeiraFrase(frase(m.ult), 70) : 'pensando…';
+    const acao = D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano' : m.ult ? primeiraFrase(frase(m.ult), 70) : 'pensando…';
     const marco = marcoDaMissao(m.ult?._m);
     const desde = m.pedido?.t || m.ult?.t;
     const icone = cls === 'alerta' ? '⚠️' : cls === 'erro' ? '❌' : ICONE_CAT[categoria(m.ult || {})] || '⚙️';
@@ -1536,6 +1543,8 @@ async function iniciarDemo() {
     ev(3, 'Kenny', 'Orquestrador', 'inicio', 'Faz o baú do inventário abrir com animação', { sessao: 's6', projeto: 'jogo-novo' }),
     ev(2.5, 'Kenny', 'explorador', 'pedido', 'Orquestrador pediu: achar onde o baú abre', { sessao: 's6', projeto: 'jogo-novo' }),
     ev(0.4, 'Kenny', 'explorador', 'atividade', '', { sessao: 's6', projeto: 'jogo-novo', ferramenta: 'Grep', alvo: 'abrir_bau em scripts' }),
+    ev(25, 'Rafael', 'Orquestrador', 'inicio', 'Refaz a voz do devlog com um filtro mais suave', { sessao: 's7', projeto: 'devlog_1mes', pasta: 'C:/Users/rafon/projetos/genesis-game/_video/devlog_1mes' }),
+    ev(6, 'Rafael', 'Orquestrador', 'espera', 'esperando você', { sessao: 's7', projeto: 'devlog_1mes', pasta: 'C:/Users/rafon/projetos/genesis-game/_video/devlog_1mes', resposta: 'A rotina está rodando em segundo plano. Te aviso quando terminar.' }),
   ]);
   conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
