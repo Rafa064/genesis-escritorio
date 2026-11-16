@@ -106,8 +106,8 @@
     <div class="logo grande"><span class="quad"></span>Estúdio Genesis</div>
     <p class="sub">Escritório das IAs do Rafael e do Kenny.</p>
     <form id="formEmail"><label>Seu e-mail<input id="email" type="email" required autocomplete="email" placeholder="voce@email.com"></label><button class="btn forte">Entrar</button></form>
-    <div id="avisoLink" hidden><p class="sub" style="text-align:left">Mandei um link para <b id="emailEnviado"></b>.<br>Abra o e-mail <b>neste aparelho</b> e clique em <b>Log In</b>: você volta para cá já dentro do escritório.</p><button type="button" class="btn" id="reenviar">Usar outro e-mail</button></div>
-    <form id="formCodigo" hidden><label>Código<input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label><button class="btn forte">Entrar</button><button type="button" class="btn" id="voltarEmail">Voltar</button></form>
+    <div id="avisoLink" hidden><p class="sub" style="text-align:left">Mandei um e-mail para <b id="emailEnviado"></b>.<br>Digite aqui o <b>código</b> que veio nele. (Neste aparelho, clicar no link também funciona.)</p></div>
+    <form id="formCodigo" hidden><label>Código<input id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></label><button class="btn forte">Entrar</button><button type="button" class="btn" id="reenviar">Usar outro e-mail</button></form>
     <p id="erroLogin" class="erro" hidden></p>
   </div>
 </div>

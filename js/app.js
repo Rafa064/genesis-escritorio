@@ -85,10 +85,17 @@ function mostrarLogin(msg) {
   $('#formEmail').onsubmit = async (e) => {
     e.preventDefault();
     const email = $('#email').value.trim();
-    try { await R.pedirCodigo(email); guarda('email', email); $('#formEmail').hidden = true; $('#avisoLink').hidden = false; $('#emailEnviado').textContent = email; $('#erroLogin').hidden = true; }
+    try { await R.pedirCodigo(email); guarda('email', email); $('#formEmail').hidden = true; $('#avisoLink').hidden = false; $('#formCodigo').hidden = false; $('#codigo').value = ''; $('#codigo').focus(); $('#emailEnviado').textContent = email; $('#erroLogin').hidden = true; }
     catch (err) { $('#erroLogin').textContent = `Não consegui mandar: ${err.message}`; $('#erroLogin').hidden = false; }
   };
-  $('#reenviar').onclick = () => { $('#formEmail').hidden = false; $('#avisoLink').hidden = true; };
+  $('#reenviar').onclick = () => { $('#formEmail').hidden = false; $('#avisoLink').hidden = true; $('#formCodigo').hidden = true; };
+  $('#formCodigo').onsubmit = async (e) => {
+    e.preventDefault();
+    const cod = $('#codigo').value.replace(/\D/g, '');
+    if (cod.length < 6) { $('#erroLogin').textContent = 'O código tem 6 dígitos (ou mais).'; $('#erroLogin').hidden = false; return; }
+    try { await R.confirmarCodigo($('#email').value.trim() || guardado('email', ''), cod); location.replace(location.href.split('#')[0]); }
+    catch (err) { $('#erroLogin').textContent = /expired|invalid/i.test(err.message) ? 'Código errado ou vencido. Confira o e-mail mais novo ou peça outro.' : 'Não consegui entrar: ' + err.message; $('#erroLogin').hidden = false; }
+  };
   $('#email').value = guardado('email', '');
 }
 
