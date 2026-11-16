@@ -50,8 +50,10 @@
       <button id="btnAcenar" title="Acenar (Q)">Acenar</button><button id="btnIrAte" title="Ir até (K)">Ir até</button>
       <span class="sep"></span>
       <span class="tecla" title="Segure Shift para andar de skate">⇧ skate</span>
+      <button id="btnAjuda" title="Ajuda e legenda (?)">?</button>
     </div>
     <div id="toasts"></div>
+    <div id="boasVindas" class="painel-px" hidden><b>Bem-vindo ao Estúdio!</b><span><b>WASD</b> anda · <b>Shift</b> skate · <b>E</b> fala com quem está perto · <b>Tab</b> vê toda a equipe · <b>C</b> chat · <b>?</b> ajuda</span><button class="btn" id="fecharBoasVindas">Entendi</button></div>
   </div>
 
   <aside id="gaveta" class="painel-px">
@@ -112,6 +114,8 @@
 <div id="resumo" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Enquanto você estava fora</h2><div id="textoResumo"></div><button class="btn forte" id="fecharResumo">Bora</button></div></div>
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
+<div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
+<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="equipe"><span>☰</span>Equipe</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-aba="missoes"><span>◷</span>Missões</button><button data-aba="chat"><span>✉</span>Chat</button><button data-aba="ajustes"><span>⚙</span>Mais</button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

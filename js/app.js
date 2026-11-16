@@ -243,6 +243,7 @@ addEventListener('keydown', (e) => {
   if (digitando()) { if (e.key === 'Escape') document.activeElement.blur(); return; }
   if (!$('#login').hidden || !mundo) return;
   if (!$('#jornal').hidden) { if (e.key === 'Escape') $('#jornal').hidden = true; return; }
+  if (!$('#ajuda').hidden) { if (e.key === 'Escape' || e.key === '?') $('#ajuda').hidden = true; return; }
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
@@ -252,6 +253,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'g') alternarAba('galeria');
   else if (k === 'm') alternarAba('mural');
   else if (k === 'j') abrirJornal();
+  else if (k === '?' || k === '/') abrirAjuda();
   else if (k === 'q') acenarParaOutro();
   else if (k === 'k') irAtePessoa(outraPessoa());
   else if (k === '+' || k === '=') mudarZoom(1);
@@ -427,14 +429,14 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz));
+  $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
   desenharAba();
   setTimeout(dimensionar, 0);
 }
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
-function fecharGaveta() { $('#gaveta').classList.add('fechada'); $$('#botoesTopo button').forEach((b) => b.classList.remove('on')); setTimeout(dimensionar, 0); }
+function fecharGaveta() { $('#gaveta').classList.add('fechada'); $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else alternarAba(b.dataset.aba); };
@@ -468,6 +470,12 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') fecharGaveta(); else abrirAba(b.dataset.aba); };
+  $('#btnAjuda').onclick = abrirAjuda;
+  $('#fecharAjuda').onclick = () => { $('#ajuda').hidden = true; };
+  if (!guardado('boasVindas', '')) {
+    if (matchMedia('(pointer: coarse)').matches) $('#boasVindas span').innerHTML = '<b>Toque no chão</b> para andar · toque num boneco para ver o trabalho dele · <b>Chat</b> embaixo fala com a sua assistente';
+    $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   window.CORES_RECADO = CORES;
   dimensionar();
   if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao'].includes(aba) ? 'equipe' : aba);
@@ -494,6 +502,7 @@ async function desenharTopo() {
   $('#resumoTopo').innerHTML = [['alerta', 'precisam de você'], ['trab', 'trabalhando'], ['fim', 'prontos']].map(([c, t]) => `<span class="chip-estado" data-ver="${c}" title="${t}" style="--cor:${D.ESTADOS[c].cor}"><i>${D.ESTADOS[c].glifo}</i>${n(c) + (c === 'alerta' ? n('erro') + aprovacoes.length : 0)}</span>`).join('');
   $('#resumoTopo').onclick = (e) => { const c = e.target.closest('[data-ver]'); if (c) abrirAba(c.dataset.ver === 'alerta' ? 'atencao' : 'equipe'); };
   $('#badgeAtencao').hidden = !meusAlertas; $('#badgeAtencao').textContent = meusAlertas;
+  $('#badgeAtencaoCel').hidden = !meusAlertas; $('#badgeAtencaoCel').textContent = meusAlertas;
   const novosRecados = recados.filter((r) => new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
   $('#badgeMural').hidden = !novosRecados || aba === 'mural'; $('#badgeMural').textContent = novosRecados;
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
@@ -785,6 +794,32 @@ function abrirJornal(dia) {
   desenharManchete();
 }
 
+// ---------- ajuda e legenda ----------
+function abrirAjuda() {
+  const est = (c) => `<i style="--cor:${D.ESTADOS[c].cor}">${D.ESTADOS[c].glifo}</i><span><b>${D.ESTADOS[c].rot}</b></span>`;
+  $('#conteudoAjuda').innerHTML = `
+    <div class="ajuda-col">
+      <h3>Quem é quem</h3>
+      <p><span class="modelo claude">Claude</span> sua assistente e os sub-agentes (Editor, Artista 3D, Revisor…). A etiqueta diz o modelo: Haiku, Sonnet…</p>
+      <p><span class="modelo gpt">GPT · Codex</span> o Codex da OpenAI. Tem mesa própria, no tapete verde da sua sala.</p>
+      <p><span class="modelo ferramenta">Ferramenta</span> PixelLab, Blender, Render, Godot: aparecem quando alguém usa.</p>
+      <p>Cada um tem uma sala de vidro com a assistente na recepção. As baias da sua equipe ficam do lado da sua sala.</p>
+      <h3>Estados</h3>
+      <div class="legenda">${est('alerta')}${est('erro')}${est('trab')}${est('fim')}${est('livre')}</div>
+      <p>Trabalhando, o boneco digita e a tela do PC anima. Livre, às vezes levanta para tomar café.</p>
+      <h3>Onde ver as coisas</h3>
+      <p><b>Equipe</b>: todo mundo agrupado por atenção. Clique para a câmera ir até a pessoa.</p>
+      <p><b>Missões</b>: cada pedido com o passo a passo, quem ajudou, a resposta e os resultados. Tem busca.</p>
+      <p><b>Chat</b>: uma conversa por tarefa, com a assistente (Claude) ou com o Codex (GPT). Pedidos de permissão aparecem com Permitir/Negar.</p>
+      <p><b>Diário</b>: o jornal do dia (manchete no topo; o jornal fica na mesa do salão).</p>
+      <h3>Atalhos</h3>
+      <p><kbd>WASD</kbd> anda · <kbd>Shift</kbd> skate · clique no chão para ir · <kbd>E</kbd> fala com quem está perto</p>
+      <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>C</kbd> chat · <kbd>G</kbd> galeria · <kbd>M</kbd> mural · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
+      <p><kbd>Q</kbd> acena · <kbd>K</kbd> vai até o outro · <kbd>1</kbd>–<kbd>6</kbd> emotes · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>Esc</kbd> fecha</p>
+    </div>`;
+  $('#ajuda').hidden = false;
+}
+
 // ---------- ajustes ----------
 function desenharAjustes() {
   const st = estados.get(EU.pessoa) || {};
@@ -881,4 +916,7 @@ async function iniciarDemo() {
   requestAnimationFrame(laco);
 }
 
-iniciar();
+const mostrarErro = (e) => { console.error(e); const el = document.querySelector('#textoCarregando'); if (el && !document.querySelector('#carregando').hidden) el.textContent = `Deu erro ao abrir: ${e?.message || e}`; };
+addEventListener('error', (e) => mostrarErro(e.error || e.message));
+addEventListener('unhandledrejection', (e) => mostrarErro(e.reason));
+iniciar().catch(mostrarErro);
