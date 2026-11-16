@@ -176,6 +176,7 @@ function ligarRede() {
   R.on('recado', (p) => {
     if (p.eventType === 'INSERT' && !recados.some((r) => r.id === p.new.id)) {
       recados.unshift(p.new);
+      if (p.new.cor !== 'reacao') balaoPessoa(p.new.pessoa, p.new.cor === 'missao' ? '📎 ' + (lerJson(p.new.texto).titulo || 'missão') : p.new.texto);
       if (p.new.pessoa !== EU.pessoa) {
         const r = p.new, txt = r.cor === 'reacao' ? `reagiu ${r.texto.split(' ')[0]}` : r.cor === 'missao' ? `compartilhou: ${lerJson(r.texto).titulo || 'uma missão'}` : r.texto;
         toast({ titulo: r.cor === 'reacao' ? `${r.pessoa} ${txt}` : `${r.pessoa} na conversa da dupla`, texto: r.cor === 'reacao' ? '' : txt, cor: corPessoa(r.pessoa), acao: () => abrirAba('dupla') });
@@ -495,6 +496,12 @@ function rotulos(c) {
     const n = p === mundo.eu ? `${p.pessoa} (você)` : p.pessoa;
     if (el.textContent !== n) el.textContent = n;
     colocar(el, p.x, p.y + 2, c);
+    const fl = falasPessoa.get(p.pessoa);
+    if (fl && fl.ate > Date.now()) {
+      const b = rotulo('fp' + p.pessoa, 'fala-pessoa'); b.style.setProperty('--cor', corPessoa(p.pessoa));
+      if (b.textContent !== fl.texto) b.textContent = fl.texto;
+      colocar(b, p.x, p.y - 36, c, true);
+    }
     const em = emotes.get(p.pessoa);
     if (em && em.ate > Date.now()) { const e = rotulo('e' + p.pessoa, 'emoji'); if (e.textContent !== em.e) e.textContent = em.e; e.style.left = `${Math.round((p.x - c.x) * zoom)}px`; e.style.top = `${Math.round((p.y - 36 - c.y) * zoom)}px`; }
   }
@@ -511,7 +518,8 @@ function rotulos(c) {
 }
 
 // ======================= emotes, acenos, ir até =======================
-const emotes = new Map();
+const emotes = new Map(), falasPessoa = new Map();
+function balaoPessoa(pessoa, texto) { const t = String(texto || '').replace(/\s+/g, ' ').trim(); if (!t) return; falasPessoa.set(pessoa, { texto: t.length > 90 ? t.slice(0, 88) + '…' : t, ate: Date.now() + Math.min(12000, 4000 + t.length * 90) }); }
 function mostrarEmote(pessoa, e) { emotes.set(pessoa, { e, ate: Date.now() + 2600 }); const el = poolRotulos.get('e' + pessoa); if (el) { el.remove(); poolRotulos.delete('e' + pessoa); } }
 function fazerEmote(e) { mostrarEmote(EU.pessoa, e); R.emote(e); }
 const outraPessoa = () => pessoas().find((p) => p !== EU.pessoa);
@@ -551,13 +559,15 @@ function abrirAba(nome, empilhar = false) {
   $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raizCel));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
-  $('#gaveta').classList.toggle('folha', nome === 'agente');                         // no celular: ficha na metade de baixo
+  $('#gaveta').classList.toggle('folha', nome === 'agente');
+  $('#gaveta').classList.toggle('conversa', ['chat', 'dupla'].includes(nome));                         // no celular: ficha na metade de baixo
   $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco'].includes(nome));
   desenharAba();
   setTimeout(dimensionar, 0);
 }
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
-function fecharGaveta() { $('#gaveta').classList.add('fechada'); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
+function fecharGaveta() {
+  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
@@ -589,7 +599,7 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'chat')); else abrirAba(b.dataset.aba); };
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else abrirAba(b.dataset.aba); };
   document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
   $('#sinoCel').onclick = () => abrirAba('atencao');
   $('#menuCel').onclick = () => abrirAba('mais');
@@ -603,7 +613,8 @@ function montarInterface() {
     if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para mover · <b>pinça</b> para zoom';
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   dimensionar();
-  if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao', 'mais'].includes(aba) ? 'equipe' : aba);
+  if (innerWidth <= 760) { $('#gaveta').classList.add('fechada'); } else abrirAba(guardado('abaConversa', 'dupla'));
+  $('#vistas').onclick = (e) => { const b = e.target.closest('[data-acao]'); if (!b) return; if (b.dataset.acao === 'quadro') abrirQuadro(); else fecharQuadro(); };
   desenharTopo(); desenharHud();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
@@ -617,7 +628,7 @@ async function desenharTopo() {
     const ponte = st.ponte_visto && Date.now() - new Date(st.ponte_visto).getTime() < 150e3;
     const status = presentes.get(p)?.status || st.status || 'disponivel';
     const det = [on ? (status === 'focado' ? 'focado' : 'online') : 'fora', st.branch ? `⎇ ${st.branch}` : '', ponte ? '' : 'ponte off'].filter(Boolean).join(' · ');
-    html.push(`<div class="pessoa ${on ? 'on' : ''} ${status === 'focado' ? 'focado' : ''}" data-ir="${esc(p)}" title="${esc(st.commit ? 'Último commit: ' + st.commit : '')}"><img src="${await retratoDe(p)}" alt=""><span class="ponto"></span>${esc(p)}<span class="det">${esc(det)}</span></div>`);
+    html.push(`<div class="pessoa ${on ? 'on' : ''} ${status === 'focado' ? 'focado' : ''}" data-ir="${esc(p)}" title="${esc(det + (st.commit ? ' · último commit: ' + st.commit : ''))}"><img src="${await retratoDe(p)}" alt=""><span class="ponto"></span>${esc(p)}</div>`);
   }
   $('#gente').innerHTML = html.join('');
   $('#gente').onclick = (e) => { const d = e.target.closest('[data-ir]'); if (d && d.dataset.ir !== EU.pessoa) irAtePessoa(d.dataset.ir); };
@@ -978,13 +989,14 @@ function resumoMarco(mc) {
 function quemTrabalhaTodos() { return todosAgentes().filter((a) => TRABALHANDO.includes(a.st.cls)); }
 
 // ---------- tela do quadro ----------
+function marcarVista() { const q = !$('#quadro').hidden; $$('#vistas button').forEach((b) => b.classList.toggle('on', (b.dataset.acao === 'quadro') === q)); }
 function abrirQuadro() {
-  $('#quadro').hidden = false; guarda('quadro', '1');
+  $('#quadro').hidden = false; guarda('quadro', '1'); marcarVista();
   $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.add('on'));
   desenharQuadro();
 }
 function fecharQuadro() {
-  $('#quadro').hidden = true; guarda('quadro', '');
+  $('#quadro').hidden = true; guarda('quadro', ''); marcarVista();
   $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.remove('on'));
 }
 const passaMarco = (mc) => (!filtroJogo || mc.jogo === filtroJogo) && (!filtroSetor || mc.setor === filtroSetor) && (!pessoaQuadro || mc.responsavel === pessoaQuadro);
@@ -1307,7 +1319,7 @@ const CORES_FIXADO = { amarelo: '#ffe58a', rosa: '#ffc2d4', azul: '#bfe0ff', ver
 const REACOES = ['👍', '❤️', '😂', '🔥', '✅', '👀'];
 let reagindo = null;
 async function mandarRecado(texto, cor) {
-  if (DEMO) { recados.unshift({ id: Date.now(), pessoa: EU.pessoa, texto, cor, criado: new Date().toISOString() }); desenharDupla(); return; }
+  if (DEMO) { recados.unshift({ id: Date.now(), pessoa: EU.pessoa, texto, cor, criado: new Date().toISOString() }); if (cor !== 'reacao') balaoPessoa(EU.pessoa, cor === 'missao' ? '📎 ' + (lerJson(texto).titulo || '') : texto); desenharDupla(); return; }
   await R.recado(texto, cor);
 }
 async function enviarDupla(rapida) {
@@ -1563,7 +1575,7 @@ async function iniciarDemo() {
     { id: 1, pessoa: 'Kenny', texto: 'Reunião de sexta: decidir a loja de classes', cor: 'azul', criado: quando(900) },
     { id: 2, pessoa: 'Kenny', texto: 'Subi o fix do dash na main, pode puxar 🙏', cor: 'msg', criado: quando(40) },
     { id: 3, pessoa: 'Rafael', texto: 'Boa! Vou puxar depois do render do Short', cor: 'msg', criado: quando(38) },
-    { id: 4, pessoa: 'Kenny', texto: JSON.stringify({ id: `Kenny|s3|${ag - 15 * 60e3}`, titulo: 'Desenha o baú do inventário no PixelLab e coloca na tela', frente: 'novo', pessoa: 'Kenny' }), cor: 'missao', criado: quando(9) },
+    { id: 4, pessoa: 'Kenny', texto: JSON.stringify({ id: `Kenny|s3|${ag - 15 * 60e3}`, titulo: 'Desenha o baú do inventário no PixelLab e coloca na tela', frente: 'cook:criacao', pessoa: 'Kenny' }), cor: 'missao', criado: quando(9) },
     { id: 5, pessoa: 'Kenny', texto: 'Olha o baú do jogo novo @Rafael 👀', cor: 'msg', criado: quando(9) },
     { id: 6, pessoa: 'Rafael', texto: '🔥 4', cor: 'reacao', criado: quando(8) },
   ].reverse();

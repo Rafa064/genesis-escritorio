@@ -18,14 +18,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@600;700&family=DotGothic16&family=Inter:wght@400;500;600&family=Playfair+Display:wght@700;900&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
+<link rel="stylesheet" href="estilo-novo.css">
 </head>
 <body>
 <header id="topo">
   <div class="logo"><span class="quad"></span><span class="nome-logo">Estúdio Genesis</span></div>
+  <nav class="vistas" id="vistas"><button data-acao="mapa" class="on">Estúdio</button><button data-acao="quadro">Trabalho</button></nav>
   <div id="gente" class="gente"></div>
   <div id="resumoTopo" class="resumo-topo"></div>
   <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
-  <div class="so-cel acoes-cel"><button id="sinoCel" title="Precisa de você">🔔<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button id="menuCel" title="Menu">☰</button></div>
+  <div class="acoes-topo"><button id="sinoCel" title="Precisa de você">🔔<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button id="menuCel" title="Menu">☰</button></div>
   <div class="espaco"></div>
   <nav class="botoes" id="botoesTopo">
     <button data-acao="quadro" class="btn-quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
@@ -85,7 +87,7 @@
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
-      <div class="seg-conversas so-cel"><button data-seg="chat" class="on">✦ Assistente</button><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button></div>
+      <div class="seg-conversas"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button></div>
       <div class="conversa-topo">
         <select id="selConversa" title="Conversa"></select>
         <button class="btn" id="btnNovaConversa" title="Conversa nova">+ Nova</button>
@@ -105,7 +107,7 @@
       </form>
     </section>
     <section data-painel="dupla" class="painel painel-chat" hidden>
-      <div class="seg-conversas so-cel"><button data-seg="chat" class="">✦ Assistente</button><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button></div>
+      <div class="seg-conversas"><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="">✦ Assistente</button></div>
       <div id="fixados"></div>
       <div id="msgsDupla"></div>
       <div id="rapidasDupla" class="rapidas"></div>
