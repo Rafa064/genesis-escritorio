@@ -3,11 +3,12 @@
   --texto: #efe8dc; --fraco: #a59cb8; --muito-fraco: #6f6788;
   --laranja: #f0973d; --verde: #4fbf82; --amarelo: #ffd23f; --vermelho: #ef6a55; --roxo: #a785f0; --azul: #5aa9e6;
   --rafael: #e0763a; --kenny: #3a86e0;
-  --px: "Pixelify Sans", ui-monospace, monospace;
+  --px: "DotGothic16", ui-monospace, monospace;
+  --titulo: "Pixelify Sans", "DotGothic16", monospace;
   --ui: "Inter", system-ui, sans-serif;
   --gaveta: 380px;
 }
-* { box-sizing: border-box; }
+* { box-sizing: border-box; font-synthesis-weight: none; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fundo); color: var(--texto); font: 14px/1.45 var(--ui); }
 button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
@@ -17,7 +18,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- topo ---------- */
 #topo { height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: linear-gradient(#1f1b2b, #17141f); border-bottom: 2px solid #07060b; box-shadow: inset 0 -2px 0 var(--borda); position: relative; z-index: 5; }
-.logo { font: 700 20px var(--px); letter-spacing: .02em; display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.logo { font: 700 20px var(--titulo); letter-spacing: .02em; display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .logo.grande { font-size: 30px; justify-content: center; }
 .quad { width: 14px; height: 14px; background: var(--laranja); box-shadow: 0 0 0 2px #07060b, 4px 4px 0 0 #b8541c; display: inline-block; }
 .gente { display: flex; gap: 8px; }
