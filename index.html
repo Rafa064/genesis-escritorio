@@ -25,6 +25,7 @@
   <div id="gente" class="gente"></div>
   <div id="resumoTopo" class="resumo-topo"></div>
   <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
+  <div class="so-cel acoes-cel"><button id="sinoCel" title="Precisa de você">🔔<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button id="menuCel" title="Menu">☰</button></div>
   <div class="espaco"></div>
   <nav class="botoes" id="botoesTopo">
     <button data-acao="quadro" class="btn-quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
@@ -46,7 +47,7 @@
     <canvas id="tela" tabindex="0"></canvas>
     <div id="camada"></div>
     <div id="frentes" class="frentes"></div>
-    <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
+    <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
     <div id="barra" class="painel-px">
@@ -84,6 +85,7 @@
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
+      <div class="seg-conversas so-cel"><button data-seg="chat" class="on">✦ Assistente</button><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button></div>
       <div class="conversa-topo">
         <select id="selConversa" title="Conversa"></select>
         <button class="btn" id="btnNovaConversa" title="Conversa nova">+ Nova</button>
@@ -103,6 +105,7 @@
       </form>
     </section>
     <section data-painel="dupla" class="painel painel-chat" hidden>
+      <div class="seg-conversas so-cel"><button data-seg="chat" class="">✦ Assistente</button><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button></div>
       <div id="fixados"></div>
       <div id="msgsDupla"></div>
       <div id="rapidasDupla" class="rapidas"></div>
@@ -129,7 +132,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-acao="quadro"><span>▥</span>Quadro</button><button data-aba="chat"><span>✦</span>Assistente</button><button data-aba="dupla"><span>✉</span>Dupla<b class="badge" id="badgeDuplaCel" hidden>0</b></button><button data-aba="mais"><span>⋯</span>Mais</button></nav>
+<nav id="abasCelular"><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

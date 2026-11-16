@@ -396,3 +396,76 @@ input[type=date] { background: var(--painel2); color: var(--texto); border: 0; b
 .agora.compacto .ac-txt, .agora.compacto .ac-t { display: none; }
 .nav-colunas { display: none; }
 @media (max-width: 760px) { .nav-colunas { display: flex; gap: 4px; margin-bottom: 8px; } .nav-colunas button { flex: 1; background: var(--painel2); border: 0; box-shadow: inset 0 0 0 2px var(--borda); padding: 6px 0; font: 14px var(--px); color: var(--texto); } }
+
+/* ======================= celular: menos botões, toque maior (revisão com o Codex) ======================= */
+.so-cel { display: none !important; }
+@media (max-width: 760px) {
+  .so-cel { display: flex !important; }
+  /* topo: logo, quem está online, sino e menu */
+  #topo .gente .pessoa { padding: 2px 6px 2px 2px; }
+  .acoes-cel { margin-left: auto; gap: 6px; }
+  .acoes-cel button { position: relative; width: 44px; height: 40px; display: grid; place-items: center; background: var(--painel2); border: 0; box-shadow: inset 0 0 0 2px var(--borda); font: 20px var(--px); color: var(--texto); }
+  .acoes-cel .badge { top: -4px; right: -4px; }
+  /* barra de baixo: 3 abas grandes */
+  #abasCelular button { font-size: 13px; min-height: 52px; }
+  #abasCelular button span { font-size: 20px; font-family: "Apple Color Emoji", "Segoe UI Emoji", var(--px); }
+  #abasCelular .badge { right: calc(50% - 30px); }
+  /* mapa limpo: sem filtros, sem barra de emotes, sem minimapa */
+  #barra, #mini, .filtros-hud, #dica { display: none !important; }
+  .frentes { top: 6px; left: 6px; right: 6px; }
+  .agora .agora-card { width: auto; grid-template-columns: 34px; padding: 3px; }
+  .agora .ac-txt, .agora .ac-t { display: none; }
+  .agora .agora-card img { width: 34px; height: 34px; }
+  .agora-tit { font-size: 13px; padding: 8px 10px; letter-spacing: .04em; }
+  #boasVindas { left: 8px; right: 8px; transform: none; top: auto; bottom: 10px; flex-direction: column; align-items: stretch; }
+  #boasVindas .btn { min-height: 44px; }
+  /* gaveta: tela cheia; ficha do agente na metade de baixo */
+  #gaveta.folha { top: auto; height: 58%; box-shadow: 0 -4px 0 #07060b, inset 0 0 0 2px var(--borda-clara); }
+  #gaveta.raiz #fecharGaveta { display: none; }
+  .gaveta-topo { padding: 10px 12px 8px; }
+  .gaveta-topo button, .voltar { min-width: 44px; min-height: 44px; }
+  /* conversas: seletor Assistente | Dupla */
+  .seg-conversas { gap: 0; box-shadow: inset 0 0 0 2px var(--borda); }
+  .seg-conversas button { flex: 1; position: relative; min-height: 42px; background: var(--painel2); border: 0; font: 15px var(--px); color: var(--fraco); }
+  .seg-conversas button.on { background: var(--laranja); color: #15131b; }
+  .seg-conversas .badge { top: 4px; right: 10px; }
+  /* toque: botões e campos maiores */
+  .btn { min-height: 42px; padding: 8px 14px; }
+  .btn.mini { min-height: 40px; min-width: 40px; }
+  .filtros button { min-height: 36px; padding: 4px 12px; }
+  select, input, textarea { font-size: 16px !important; }
+  select { min-height: 42px; }
+  .ag { padding: 10px; }
+  .rapidas button { min-height: 38px; padding: 6px 12px; }
+  .mini-x { min-width: 36px; min-height: 36px; }
+  .etapa-m { min-height: 44px; }
+  .etapa-m input { width: 22px; height: 22px; }
+  /* quadro em lista vertical, Fazendo primeiro */
+  .quadro-topo h2 { font-size: 0; }
+  .quadro-topo h2::before { content: "▥ Trabalho"; font-size: 18px; }
+  #fecharQuadro { display: none; }
+  .quadro-topo .espaco { display: none; }
+  .quadro-topo #novoMarco { margin-left: auto; }
+  .quadro-filtros { display: none; width: 100%; order: 5; }
+  .quadro-filtros.abertos { display: flex; }
+  .quadro-filtros .filtros-hud { display: flex !important; }
+  .nav-colunas { display: none !important; }
+  .colunas-quadro { display: flex; flex-direction: column; overflow: visible; gap: 10px; }
+  .coluna { min-height: 0; }
+  .coluna[data-coluna=fazendo] { order: 1; } .coluna[data-coluna=revisar] { order: 2; } .coluna[data-coluna=afazer] { order: 3; } .coluna[data-coluna=ideias] { order: 4; } .coluna[data-coluna=feito] { order: 5; }
+  .coluna:has(.col-vazia) .col-cartoes { display: none; }
+  .col-cab { margin-bottom: 6px; }
+  .col-novo { width: 36px; height: 36px; }
+  .cartao { padding: 10px 10px 9px 13px; }
+  /* marco: duas colunas de campos */
+  .m-grade { grid-template-columns: 1fr 1fr; }
+}
+.link-perigo { color: var(--vermelho); }
+
+@media (max-width: 760px) {
+  .colunas-quadro { align-items: stretch; }
+  .quadro-topo { flex-wrap: wrap; }
+  .quadro-topo .btn { min-height: 38px; padding: 6px 9px; font-size: 14px; }
+  .quadro-topo h2::before { font-size: 16px; }
+  .quadro-topo #novoMarco { margin-left: 0; }
+}

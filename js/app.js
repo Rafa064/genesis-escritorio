@@ -288,7 +288,8 @@ const cam = { x: 0, y: 0, alvo: null };
 function dimensionar() {
   const p = $('#palco'), w = p.clientWidth, h = p.clientHeight;
   if (!w || !h) return;
-  if (!zoom) zoom = w >= 1500 ? 3 : 2;
+  // no celular (em pé), o mapa preenche a altura da tela; dá para arrastar para os lados
+  if (!zoom) zoom = w >= 1500 ? 3 : w <= 760 ? Math.max(1, h / (MH * T)) : 2;
   zoom = Math.max(1, Math.min(5, zoom));
   VW = Math.ceil(w / zoom); VH = Math.ceil(h / zoom);
   tela.width = VW; tela.height = VH;
@@ -329,15 +330,44 @@ addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
 addEventListener('blur', () => teclas.clear());
 
 function telaParaMundo(ev) { const r = tela.getBoundingClientRect(); return [(ev.clientX - r.left) / zoom + cam.x, (ev.clientY - r.top) / zoom + cam.y]; }
-const boneconoPonto = (x, y) => [...mundo.agentes.values()].filter((b) => Math.abs(b.x - x) < 9 && y > b.y - 30 && y < b.y + 4).sort((a, b) => b.y - a.y)[0];
+const boneconoPonto = (x, y) => [...mundo.agentes.values()].filter((b) => Math.abs(b.x - x) < (zoom < 2 ? 13 : 9) && y > b.y - 32 && y < b.y + 6).sort((a, b) => b.y - a.y)[0];
 // Pontos de interesse do mapa: mural (lousa) e jornal (mesa do salão).
 const PONTOS = [
   { id: 'mural', x: 15 * T, y: 2.4 * T, raio: 26, texto: 'abrir a conversa da dupla (mural)', acao: () => abrirAba('dupla') },
   { id: 'jornal', x: 19 * T, y: 5.2 * T, raio: 30, texto: 'ler o Diário do Estúdio', acao: () => abrirJornal() },
 ];
+const dedos = new Map(); let gesto = null;
 tela.addEventListener('pointerdown', (ev) => {
   if (!mundo) return;
   tela.focus();
+  dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (dedos.size === 2) { const [a, b] = [...dedos.values()]; gesto = { pinca: Math.hypot(a.x - b.x, a.y - b.y), zoom }; return; }
+  gesto = { x0: ev.clientX, y0: ev.clientY, cx: cam.x + VW / 2, cy: cam.y + VH / 2, moveu: false, ev };
+  try { tela.setPointerCapture(ev.pointerId); } catch {}
+});
+tela.addEventListener('pointermove', (ev) => {
+  if (!dedos.has(ev.pointerId) || !gesto) return;
+  dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (gesto.pinca && dedos.size === 2) {
+    const [a, b] = [...dedos.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    const alvo = Math.max(1, Math.min(4, Math.round(gesto.zoom * d / gesto.pinca * 4) / 4));
+    if (alvo !== zoom) { const centro = [cam.x + VW / 2, cam.y + VH / 2]; zoom = alvo; guarda('zoom', zoom); dimensionar(); cam.alvo = centro; }
+    return;
+  }
+  const dx = ev.clientX - gesto.x0, dy = ev.clientY - gesto.y0;
+  if (!gesto.moveu && Math.hypot(dx, dy) < 10) return;
+  gesto.moveu = true;
+  cam.alvo = [gesto.cx - dx / zoom, gesto.cy - dy / zoom];
+});
+const soltar = (ev) => {
+  dedos.delete(ev.pointerId);
+  const g = gesto; if (!dedos.size) gesto = null;
+  if (!g || g.pinca || g.moveu || ev.type === 'pointercancel') return;
+  tocarMapa(g.ev);
+};
+tela.addEventListener('pointerup', soltar);
+tela.addEventListener('pointercancel', soltar);
+function tocarMapa(ev) {
   const [x, y] = telaParaMundo(ev);
   const b = boneconoPonto(x, y);
   if (b) { abrirAgente(b); return; }
@@ -347,7 +377,7 @@ tela.addEventListener('pointerdown', (ev) => {
   if (outro) { toast({ titulo: outro.pessoa, texto: 'Aperte Q para acenar.', cor: corPessoa(outro.pessoa) }); return; }
   cam.alvo = null;
   mundo.irAte(x, y);
-});
+}
 $('#miniTela').addEventListener('pointerdown', (ev) => {
   if (!mundo) return;
   const r = ev.target.getBoundingClientRect();
@@ -431,8 +461,8 @@ function rotulos(c) {
     if (!visivel(b.x, b.y)) continue;
     const sel = b.m?.k === selecionado, foco = sel || b === perto || hoverId === b.id;
     const fixo = b.lugar.assistente || b.lugar.codex;
-    const ativo = TRABALHANDO.includes(b.status) && !b.lugar.copa;
-    if (!(foco || ativo || fixo) && zoom < 3) continue;
+    const ativo = TRABALHANDO.includes(b.status) && !b.lugar.copa, cel = innerWidth <= 760;
+    if (!(foco || (ativo && !cel) || b.status === 'alerta' || (fixo && !cel)) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
     const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}`);
     const nome = nomeNoMapa(b);
@@ -442,7 +472,7 @@ function rotulos(c) {
     let fala = '', curta = false;
     if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && chatOcupado && alvoAtual() === (b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
     else if (b.m?.ult && (foco || b.status === 'alerta')) fala = primeiraFrase(frase(b.m.ult), 80);
-    else if (b.m?.ult && ativo && !foraDoFiltro(b) && b.modo === 'sentado') { const t = D.emSegundoPlano(b.m) ? 'segundo plano…' : primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
+    else if (b.m?.ult && ativo && !cel && !foraDoFiltro(b) && b.modo === 'sentado') { const t = D.emSegundoPlano(b.m) ? 'segundo plano…' : primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
     if (fala) {
       const f = rotulo(b.id + 'f', `fala ${b.status}${curta ? ' curta' : ''}`);
       if (f.textContent !== fala) f.textContent = fala;
@@ -451,7 +481,7 @@ function rotulos(c) {
   }
   // placas das alas, das fileiras (jogo) e da copa
   for (const [i, p] of mundo.planta.placas.entries()) {
-    if (!visivel(p.x, p.y)) continue;
+    if (!visivel(p.x, p.y) || (innerWidth <= 760 && p.jogo)) continue;
     const apagada = (p.setor && filtroSetor && p.setor !== filtroSetor) || (p.jogo && filtroJogo && p.jogo !== filtroJogo);
     const el = rotulo('placa' + i, `placa${p.setor ? ' ' + p.setor : ''}${p.jogo ? ' jogo' : ''}${p.copa ? ' copa' : ''}${apagada ? ' fora' : ''}`);
     const txt = p.jogo ? `${jogoPorId(p.jogo).icone}` : p.texto;
@@ -514,11 +544,15 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  const raizCel = ['equipe', 'agente', 'historico', 'galeria', 'catalogo', 'ajustes', 'missoes', 'missao'].includes(nome) ? 'mais' : raiz;
+  const raizCel = ['chat', 'dupla'].includes(nome) ? 'conversas' : '';
+  if (['chat', 'dupla'].includes(nome)) guarda('abaConversa', nome);
+  $$('[data-seg]').forEach((b) => b.classList.toggle('on', b.dataset.seg === nome));
   $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz || (b.dataset.acao === 'quadro' && !$('#quadro').hidden)));
   $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raizCel));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
+  $('#gaveta').classList.toggle('folha', nome === 'agente');                         // no celular: ficha na metade de baixo
+  $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco'].includes(nome));
   desenharAba();
   setTimeout(dimensionar, 0);
 }
@@ -555,13 +589,18 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else abrirAba(b.dataset.aba); };
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'chat')); else abrirAba(b.dataset.aba); };
+  document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
+  $('#sinoCel').onclick = () => abrirAba('atencao');
+  $('#menuCel').onclick = () => abrirAba('mais');
+  $('#filtrosQuadroCel').onclick = () => $('#quadroFiltros').classList.toggle('abertos');
+  $('#pedidosCel').onclick = () => abrirAba('missoes');
   ligarHud(); ligarQuadro();
   if (guardado('quadro', '')) abrirQuadro();
   $('#btnAjuda').onclick = abrirAjuda;
   $('#fecharAjuda').onclick = () => { $('#ajuda').hidden = true; };
   if (!guardado('boasVindas', '')) {
-    if (matchMedia('(pointer: coarse)').matches) $('#boasVindas span').innerHTML = '<b>Toque no chão</b> para andar · toque num boneco para ver o trabalho dele · <b>Chat</b> embaixo fala com a sua assistente';
+    if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para mover · <b>pinça</b> para zoom';
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   dimensionar();
   if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao', 'mais'].includes(aba) ? 'equipe' : aba);
@@ -590,7 +629,7 @@ async function desenharTopo() {
   $('#badgeAtencao').hidden = !meusAlertas; $('#badgeAtencao').textContent = meusAlertas;
   $('#badgeAtencaoCel').hidden = !meusAlertas; $('#badgeAtencaoCel').textContent = meusAlertas;
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
-  for (const id of ['#badgeMural', '#badgeDuplaCel']) { $(id).hidden = !novosRecados || aba === 'dupla'; $(id).textContent = novosRecados; }
+  for (const el of [$('#badgeMural'), $('#badgeDuplaCel'), ...$$('[data-badge-dupla]')]) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = novosRecados; }
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
 }
 function todosAgentes() {
@@ -880,7 +919,7 @@ async function desenharHud() {
         <span class="ac-acao">${icone} ${esc(acao)}</span></span>
       <span class="ac-t">${desde ? D.ha(desde) : ''}</span></button>`;
   }));
-  $('#frentes').innerHTML = htmlFiltros() + `<div class="agora ${guardado('agoraCompacto', '') ? 'compacto' : ''}"><span class="agora-tit" title="Encolher/abrir">${ativos.length ? `AGORA · ${ativos.length}` : 'AGORA · ninguém trabalhando'}</span>${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12}</span>` : ''}</div>`;
+  $('#frentes').innerHTML = htmlFiltros() + `<div class="agora ${guardado('agoraCompacto', '') ? 'compacto' : ''}"><span class="agora-tit" title="Encolher/abrir">${ativos.length ? `⚙ ${ativos.length} trabalhando${ativos.filter((a) => a.cls === 'alerta').length ? ` · ⚠ ${ativos.filter((a) => a.cls === 'alerta').length}` : ''}` : 'ninguém trabalhando'}</span>${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12}</span>` : ''}</div>`;
 }
 function ligarHud() {
   $('#frentes').onclick = (e) => { if (cliqueFiltro(e)) return; if (e.target.closest('.agora-tit')) { guarda('agoraCompacto', guardado('agoraCompacto', '') ? '' : '1'); desenharHud(); return; } const c = e.target.closest('.agora-card'); if (c) localizar(c.dataset.k); };
@@ -1082,7 +1121,7 @@ async function desenharMarco() {
         <label class="m-lin">Arquivos <input id="mArquivos" maxlength="500" placeholder="ex.: scripts/ui/*, data/classes.json" value="${esc(mc.arquivos)}"></label>
         <label class="m-lin">Branch <input id="mBranch" maxlength="120" placeholder="ex.: gen-190-loja" value="${esc(mc.branch)}"></label>
         <p class="sub" style="text-align:left">As IAs olham Área/Arquivos/Branch para você e o Kenny não mexerem no mesmo lugar ao mesmo tempo.</p></details>
-      <div class="linha">${novo ? '<button class="btn forte" id="criarMarco">Criar marco</button>' : `<button class="btn forte" id="mandarMarco">▶ Mandar para a assistente</button><span class="espaco"></span><button class="btn perigo" id="apagarMarco">Apagar</button>`}</div>
+      <div class="linha">${novo ? '<button class="btn forte" id="criarMarco">Criar marco</button>' : `<button class="btn forte" id="mandarMarco">▶ Mandar para a assistente</button>`}</div>
     </div>
     ${novo ? '' : `
     ${vivos.length ? `<div class="bloco destaque"><h4>⚙️ Trabalhando nele agora</h4>${vivos.join('')}</div>` : ''}
@@ -1090,7 +1129,7 @@ async function desenharMarco() {
     ${urls.filter(Boolean).length ? `<div class="bloco"><h4>Resultados</h4><div class="grade-galeria">${r.minis.slice(0, 8).map((mi, i) => urls[i] ? `<div class="mini-card" data-mini="${i}"><div class="${mi.video ? 'play' : ''}"><img src="${urls[i]}" alt=""></div><div>${esc(mi.nome)}</div></div>` : '').join('')}</div></div>` : ''}
     <div class="bloco"><h4>Comentários</h4>${cms.map((c) => `<div class="coment" style="--cor:${corPessoa(c.pessoa)}"><b>${esc(c.pessoa)}</b> <span class="sub2">${D.ha(new Date(c.criado).getTime())}</span><div>${esc(c.texto)}</div></div>`).join('')}
       <form id="formComent" class="linha"><input id="novoComent" maxlength="2000" placeholder="Comentar…"><button class="btn mini">Enviar</button></form></div>
-    <p class="sub" style="text-align:left">Criado por ${esc(mc.criado_por || '?')} · ${D.ha(new Date(mc.criado).getTime())}${mc.concluido ? ` · concluído ${D.ha(new Date(mc.concluido).getTime())}` : ''}</p>`}`;
+    <p class="sub" style="text-align:left">Criado por ${esc(mc.criado_por || '?')} · ${D.ha(new Date(mc.criado).getTime())}${mc.concluido ? ` · concluído ${D.ha(new Date(mc.concluido).getTime())}` : ''} · <a href="#" id="apagarMarco" class="link-perigo">apagar marco</a></p>`}`;
   const el = $('#detalheMarco');
   const campo = { mTitulo: 'titulo', mColuna: 'coluna', mJogo: 'jogo', mSetor: 'setor', mResp: 'responsavel', mPri: 'prioridade', mPrazo: 'prazo', mDesc: 'descricao', mPalavras: 'palavras', mArea: 'area', mArquivos: 'arquivos', mBranch: 'branch' };
   el.onchange = async (e) => {
@@ -1124,7 +1163,8 @@ async function desenharMarco() {
     try { const d = await salvar(rascunho); marcoAberto = d.id; rascunho = null; desenharMarco(); desenharQuadro(); toast({ titulo: 'Marco criado', texto: d.titulo, cor: jogoPorId(d.jogo).cor }); }
     catch (err) { toast({ titulo: 'Não criei', texto: err.message, cor: '#ef6a55' }); }
   });
-  $('#apagarMarco')?.addEventListener('click', async () => {
+  $('#apagarMarco')?.addEventListener('click', async (ev) => {
+    ev.preventDefault();
     if (!confirm(`Apagar o marco “${mc.titulo}”? Os pedidos continuam no histórico.`)) return;
     try { if (DEMO) marcos = marcos.filter((x) => x !== mc); else await R.apagarMarco(mc.id); marcos = marcos.filter((x) => x.id !== mc.id); mudouMarcos(); fecharGaveta(); desenharQuadro(); } catch (err) { toast({ titulo: 'Não apaguei', texto: err.message, cor: '#ef6a55' }); }
   });
@@ -1291,7 +1331,7 @@ async function reagir(id, emoji) {
 const comMencao = (s) => esc(s).replace(/@(\p{L}+)/gu, '<b class="mencao">@$1</b>');
 function desenharDupla() {
   if (aba !== 'dupla' || !EU) return;
-  guarda('recadosVistos', Date.now()); $('#badgeMural').hidden = true; $('#badgeDuplaCel').hidden = true;
+  guarda('recadosVistos', Date.now()); for (const el of [$('#badgeMural'), $('#badgeDuplaCel'), ...$$('[data-badge-dupla]')]) el.hidden = true;
   const fixados = recados.filter((r) => CORES_FIXADO[r.cor]);
   $('#fixados').innerHTML = fixados.length ? `<details class="fixados" ${fixados.length <= 3 ? 'open' : ''}><summary>📌 Recados fixados (${fixados.length})</summary><div class="recados">${fixados.map((r, i) => `<div class="recado" style="--cor:${CORES_FIXADO[r.cor]};--r:${((i * 37) % 5) - 2}deg"><button data-tirar="${r.id}" title="Tirar do mural">×</button>${comMencao(r.texto)}<small>${esc(r.pessoa)} · ${D.ha(new Date(r.criado).getTime())}</small></div>`).join('')}</div></details>` : '';
   const reacoes = new Map();
