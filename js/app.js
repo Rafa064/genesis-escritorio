@@ -851,7 +851,7 @@ function desenharAjustes() {
   $('#chkSom').onchange = (e) => guarda('som', e.target.checked ? '1' : '0');
   $('#btnNotif').onclick = async () => { await Notification.requestPermission(); desenharAjustes(); };
   $('#btnPausa').onclick = async () => { try { await R.pausar(!st.pausado); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
-  $('#formConvite').onsubmit = async (e) => { e.preventDefault(); try { await R.convidar($('#emailConvite').value, $('#nomeConvite').value.trim()); toast({ titulo: 'Convite feito', texto: 'Quando a pessoa entrar com esse e-mail, já vira membro.', cor: '#4fbf82' }); } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); } };
+  $('#formConvite').onsubmit = async (e) => { e.preventDefault(); try { await R.convidar($('#emailConvite').value, $('#nomeConvite').value.trim()); toast({ titulo: 'Convite feito', texto: 'Nenhum e-mail é enviado agora. Mande o link do site para a pessoa: ela entra com esse e-mail, recebe o código e já vira membro.', cor: '#4fbf82' }); } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); } };
   $('#btnSair').onclick = async () => { await R.sair(); location.reload(); };
 }
 
