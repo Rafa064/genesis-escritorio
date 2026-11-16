@@ -27,6 +27,7 @@
   <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
   <div class="espaco"></div>
   <nav class="botoes" id="botoesTopo">
+    <button data-acao="quadro" class="btn-quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
     <button data-aba="equipe" title="Equipe: quem está fazendo o quê (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
     <button data-aba="atencao" title="Precisa de você"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
     <button data-aba="missoes" title="Missões por frente (H)"><span class="ico">◆</span><span class="txt">Missões</span></button>
@@ -45,6 +46,7 @@
     <canvas id="tela" tabindex="0"></canvas>
     <div id="camada"></div>
     <div id="frentes" class="frentes"></div>
+    <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
     <div id="barra" class="painel-px">
@@ -77,6 +79,7 @@
       <div id="listaHistorico"></div>
     </section>
     <section data-painel="catalogo" class="painel" hidden><div id="listaCatalogo"></div></section>
+    <section data-painel="marco" class="painel" hidden><div id="detalheMarco"></div></section>
     <section data-painel="mais" class="painel" hidden><div id="listaMais" class="mais"></div></section>
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
@@ -126,7 +129,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-aba="missoes"><span>◆</span>Missões</button><button data-aba="chat"><span>✦</span>Assistente</button><button data-aba="dupla"><span>✉</span>Dupla<b class="badge" id="badgeDuplaCel" hidden>0</b></button><button data-aba="mais"><span>⋯</span>Mais</button></nav>
+<nav id="abasCelular"><button data-acao="mapa"><span>▦</span>Mapa</button><button data-aba="atencao"><span>!</span>Atenção<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button data-acao="quadro"><span>▥</span>Quadro</button><button data-aba="chat"><span>✦</span>Assistente</button><button data-aba="dupla"><span>✉</span>Dupla<b class="badge" id="badgeDuplaCel" hidden>0</b></button><button data-aba="mais"><span>⋯</span>Mais</button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

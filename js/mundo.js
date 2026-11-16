@@ -36,7 +36,7 @@ export async function criarMundo() {
   // ---- divisórias das baias (tecido azul-acinzentado com borda clara em cima) ----
   for (const d of planta.divisorias) {
     b.fillStyle = '#1b1a26'; b.fillRect(d.x, d.y, d.w, d.h);
-    b.fillStyle = d.lado ? '#7d8cab' : '#5f6d8c'; b.fillRect(d.x + 1, d.y + 1, d.w - 2, d.h - 2);
+    b.fillStyle = d.cor || '#5f6d8c'; b.fillRect(d.x + 1, d.y + 1, d.w - 2, d.h - 2); if (d.lado) { b.fillStyle = 'rgba(255,255,255,.16)'; b.fillRect(d.x + 1, d.y + 1, d.w - 2, d.h - 2); }
     b.fillStyle = '#b8c3d9'; b.fillRect(d.x + 1, d.y + 1, d.w - 2, 2);
     if (!d.lado) { b.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 6; k < d.w - 4; k += 7) b.fillRect(d.x + k, d.y + 6, 1, d.h - 9); b.fillStyle = 'rgba(10,8,20,.25)'; b.fillRect(d.x + 1, d.y + d.h, d.w - 2, 3); }
   }
@@ -86,11 +86,11 @@ class Mundo {
       let b = this.agentes.get(a.id);
       if (!b) {
         b = await this.boneco(a.id, a.nome);
-        b.lugar = a.lugar; b.x = a.lugar.x; b.y = a.lugar.y; b.dir = a.lugar.dir; b.modo = 'sentado';
+        b.lugar = a.lugar; b.x = a.lugar.x; b.y = a.lugar.y; b.dir = a.lugar.dir; b.modo = a.lugar.copa ? 'parado' : 'sentado'; b.noLugar = a.lugar.id;
         b.sorte = rnd(hash(a.id)); b.espera = 2 + b.sorte() * 8;
         this.agentes.set(a.id, b);
       }
-      Object.assign(b, { status: a.status, ferramenta: a.ferramenta, pessoa: a.pessoa, m: a.m, lugar: a.lugar });
+      Object.assign(b, { status: a.status, ferramenta: a.ferramenta, pessoa: a.pessoa, m: a.m, lugar: a.lugar, anel: a.anel || null });
     }
     for (const id of [...this.agentes.keys()]) if (!vistos.has(id)) this.agentes.delete(id);
   }
@@ -118,23 +118,18 @@ class Mundo {
   }
 
   // ---------- comportamento dos agentes ----------
+  // Cada agente tem um lugar: mesa (trabalhando), copa (livre) ou recepção (assistente/Codex). Se o lugar muda, ele anda até lá.
   pensar(b, dt) {
-    const ocupado = ['trab', 'alerta', 'erro'].includes(b.status) || b.status === 'fim';
-    const sentado = b.modo === 'sentado';
-    if (ocupado || b.lugar.assistente) {
-      if (!sentado && !b.caminho) { if (!this.andarPara(b, ...b.lugar.tile)) { b.x = b.lugar.x; b.y = b.lugar.y; b.modo = 'sentado'; } }
+    const l = b.lugar; if (!l) return;
+    if (b.noLugar === l.id) {
+      // na copa: de vez em quando vira para outro lado (parece que conversa)
+      if (l.copa && b.modo === 'parado') { b.espera -= dt; if (b.espera <= 0) { b.dir = ['esq', 'dir', 'baixo', 'cima'][Math.floor(b.sorte() * 4)]; b.espera = 4 + b.sorte() * 8; } }
       return;
     }
-    // livre: às vezes levanta e passeia, depois volta
-    b.espera -= dt;
-    if (b.espera > 0 || b.caminho) return;
-    if (sentado && b.sorte() < 0.45) {
-      const p = this.planta.passeio[Math.floor(b.sorte() * this.planta.passeio.length)];
-      this.andarPara(b, p[0], p[1]); b.espera = 6 + b.sorte() * 10;
-    } else if (!sentado) {
-      if (b.sorte() < 0.5) this.andarPara(b, ...b.lugar.tile); else { const p = this.planta.passeio[Math.floor(b.sorte() * this.planta.passeio.length)]; this.andarPara(b, p[0], p[1]); }
-      b.espera = 8 + b.sorte() * 14;
-    } else b.espera = 6 + b.sorte() * 12;
+    if (b.caminho) return;
+    b.espera -= dt; if (b.espera > 0) return;
+    if (!this.andarPara(b, ...l.tile)) { b.x = l.x; b.y = l.y; b.dir = l.dir; b.modo = l.copa ? 'parado' : 'sentado'; b.noLugar = l.id; }
+    b.espera = 0.2 + b.sorte() * 0.8;
   }
 
   seguirCaminho(b, dt, vel) {
@@ -149,7 +144,7 @@ class Mundo {
     if (!b.caminho.length) {
       b.caminho = null;
       const [tx, ty] = tileDe(b.x, b.y);
-      if (b.lugar && tx === b.lugar.tile[0] && ty === b.lugar.tile[1]) { b.x = b.lugar.x; b.y = b.lugar.y; b.dir = b.lugar.dir; b.modo = 'sentado'; }
+      if (b.lugar && tx === b.lugar.tile[0] && ty === b.lugar.tile[1]) { b.x = b.lugar.x; b.y = b.lugar.y; b.dir = b.lugar.dir; b.modo = b.lugar.copa ? 'parado' : 'sentado'; b.noLugar = b.lugar.id; }
       else b.modo = 'parado';
     }
     return true;
@@ -203,6 +198,8 @@ class Mundo {
     const x = Math.round(b.x) - 8;
     let y = Math.round(b.y) - 31;
     let q = 1;
+    // anel no chão com a cor do jogo (quem está trabalhando)
+    if (b.anel) { const ax = Math.round(b.x), ay = Math.round(b.y); const pisca = 0.55 + Math.sin(this.t * 4) * 0.2; g.globalAlpha = pisca; g.fillStyle = b.anel; g.fillRect(ax - 8, ay - 2, 16, 4); g.fillRect(ax - 6, ay - 3, 12, 6); g.globalAlpha = 1; }
     // sombra
     g.fillStyle = 'rgba(10,8,20,.28)'; g.fillRect(Math.round(b.x) - 5, Math.round(b.y) - 1, 10, 2); g.fillRect(Math.round(b.x) - 4, Math.round(b.y) - 2, 8, 4);
     if (b.modo === 'sentado') {
@@ -233,7 +230,7 @@ class Mundo {
     g.drawImage(this.fundo, 0, 0);
     // estado das telas: anima o PC de quem está trabalhando
     const statusDaMesa = new Map();
-    for (const b of this.agentes.values()) statusDaMesa.set(`${b.lugar.equipe}|${b.lugar.nome}`, b.modo === 'sentado' ? b.status : 'livre');
+    for (const b of this.agentes.values()) if (b.lugar && !b.lugar.copa) statusDaMesa.set(b.lugar.id, b.modo === 'sentado' ? b.status : 'livre');
     const coisas = [];
     for (const m of this.planta.moveis) {
       coisas.push({ y: m.ordem, f: () => {

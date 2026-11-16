@@ -40,12 +40,15 @@ export async function carregarTudo() {
   for (const r of [ev, rec, est, chat, mem]) if (r.error) throw r.error;
   // partes do SQL 2 (se ainda não rodou, a página funciona sem elas)
   const opcional = async (q) => { const r = await q; return r.error ? null : r.data; };
-  const [conversas, aprovacoes, jornal] = await Promise.all([
+  const [conversas, aprovacoes, jornal, marcos, vinculos, comentarios] = await Promise.all([
     opcional(sb.from('conversas').select('*').order('atualizado', { ascending: false }).limit(200)),
     opcional(sb.from('aprovacoes').select('*').eq('status', 'pendente').order('id')),
     opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
+    opcional(sb.from('marcos').select('*').order('ordem')),
+    opcional(sb.from('marcos_missoes').select('*')),
+    opcional(sb.from('marcos_comentarios').select('*').order('id').limit(2000)),
   ]);
-  return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, temSql2: conversas !== null };
+  return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, marcos, vinculos, comentarios, temSql2: conversas !== null, temQuadro: marcos !== null };
 }
 
 // Histórico: eventos mais antigos que t (para o botão "carregar dias mais antigos").
@@ -66,6 +69,9 @@ export function conectar({ x, y, status }) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'conversas', filter: `user_id=eq.${euId}` }, (p) => emitir('conversa', p))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'aprovacoes', filter: `user_id=eq.${euId}` }, (p) => emitir('aprovacao', p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'jornal' }, (p) => emitir('jornal', p.new))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'marcos' }, (p) => emitir('marco', p))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'marcos_missoes' }, (p) => emitir('vinculo', p))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'marcos_comentarios' }, (p) => emitir('comentario', p))
     .subscribe((s) => emitir('conexao', s));
   canal = sb.channel('escritorio', { config: { private: true, presence: { key: euPessoa }, broadcast: { self: false } } });
   canal
@@ -103,8 +109,8 @@ export async function pedir(texto, conversa_id = null) {
   if (conversa_id) await sb.from('conversas').update({ atualizado: new Date().toISOString() }).eq('id', conversa_id);
   return data;
 }
-export async function novaConversa({ titulo, alvo, projeto }) {
-  const { data, error } = await sb.from('conversas').insert({ titulo: titulo.slice(0, 120), alvo, projeto: projeto || null }).select().single();
+export async function novaConversa({ titulo, alvo, projeto, marco_id }) {
+  const { data, error } = await sb.from('conversas').insert({ titulo: titulo.slice(0, 120), alvo, projeto: projeto || null, ...(marco_id ? { marco_id } : {}) }).select().single();
   if (error) throw error;
   return data;
 }
@@ -136,3 +142,17 @@ export async function urlsMiniaturas(caminhos) {
   }
   return caminhos.map((c) => links.get(c));
 }
+
+// ---------- quadro de marcos ----------
+export async function salvarMarco(m) {
+  const { id, ...campos } = m;
+  campos.atualizado = new Date().toISOString();
+  const q = id ? sb.from('marcos').update(campos).eq('id', id) : sb.from('marcos').insert(campos);
+  const { data, error } = await q.select().single();
+  if (error) throw error;
+  return data;
+}
+export async function apagarMarco(id) { const { error } = await sb.from('marcos').delete().eq('id', id); if (error) throw error; }
+export async function vincular(missao, marco_id) { const { error } = await sb.from('marcos_missoes').upsert({ missao, marco_id }); if (error) throw error; }
+export async function desvincular(missao) { const { error } = await sb.from('marcos_missoes').delete().eq('missao', missao); if (error) throw error; }
+export async function comentar(marco_id, texto) { const { error } = await sb.from('marcos_comentarios').insert({ marco_id, texto }); if (error) throw error; }

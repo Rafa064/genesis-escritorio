@@ -10,6 +10,10 @@ export const COR = {
   salao: { h: 32, s: 30, b: -6, c: -62 },
   tapeteSalao: { h: 352, s: 40, b: -38, c: -70 },
   codex: { h: 152, s: 42, b: -38, c: -68 },
+  criacao: { h: 212, s: 34, b: -30, c: -78 },
+  marketing: { h: 350, s: 26, b: -34, c: -78 },
+  copa: { h: 28, s: 40, b: -14, c: -66 },
+  tapeteCopa: { h: 160, s: 30, b: -40, c: -70 },
   salas: [
     { piso: { h: 25, s: 48, b: -43, c: -88 }, tapete: { h: 18, s: 55, b: -48, c: -70 } },   // Rafael (madeira, tapete terracota)
     { piso: { h: 30, s: 30, b: -50, c: -88 }, tapete: { h: 200, s: 45, b: -40, c: -70 } },  // Kenny (madeira escura, tapete azul)
@@ -21,14 +25,17 @@ export const SALAS = [
   { x0: 1, x1: 11, vidroX: 12, porta: 5, mesaDono: [2, 4], assistente: { mesa: [7, 8], lugar: [8, 7] }, codex: { mesa: [3, 8], lugar: [4, 7] }, dono: [6.5, 6.4] },
   { x0: 28, x1: 38, vidroX: 27, porta: 33, mesaDono: [35, 4], assistente: { mesa: [30, 8], lugar: [31, 7] }, codex: { mesa: [34, 8], lugar: [35, 7] }, dono: [33.5, 6.4] },
 ];
-// Baias: 4 colunas x 3 fileiras por equipe. Cada baia = 3 tiles de mesa + 1 de passagem.
-export const EQUIPES = [{ x0: 2 }, { x0: 22 }];
-export const FILEIRAS = [14, 18, 22];
-export const ORDEM_BAIAS = [
-  ['editor-de-video', 'criador-de-conteudo', 'artista-3d', 'balanceador'],
-  ['explorador', 'revisor-godot', 'PixelLab', '*'],
-  ['Blender', 'Render', 'Godot', '*'],
+// Alas (setor) e fileiras (jogo). Cada fileira tem 4 mesas sem dono: cada baia = 3 tiles de mesa + 1 de passagem.
+export const ALAS = [
+  { setor: 'criacao', x0: 2, divisoria: '#5f6d8c' },
+  { setor: 'marketing', x0: 22, divisoria: '#8c5f6a' },
 ];
+export const FILAS = [
+  { jogo: 'genesis', y: 14, rotulo: '🎮' },
+  { jogo: 'cook', y: 18, rotulo: '🍳' },
+];
+// Agentes conhecidos (aparecem no painel mesmo antes de trabalhar).
+export const AGENTES_CONHECIDOS = ['editor-de-video', 'criador-de-conteudo', 'artista-3d', 'balanceador', 'explorador', 'revisor-godot', 'PixelLab', 'Blender', 'Render', 'Godot'];
 
 export function montarPlanta() {
   const tipo = Array.from({ length: MH }, () => new Array(MW).fill(1));
@@ -90,8 +97,8 @@ export function montarPlanta() {
     m('cacto', cx.mesa[0] + 0.1, cx.mesa[1], 16, 32, { ordem: (cx.mesa[1] + 2) * T + 2, sobre: true, dy: 8 });
     m('cadeiraFrente', cx.lugar[0], cx.lugar[1], 16, 16, { ordem: cx.lugar[1] * T + 4 });
     trava(cx.lugar[0], cx.lugar[1], cx.lugar[0], cx.lugar[1]);
-    lugares.push({ equipe: i, nome: 'Codex', x: cx.lugar[0] * T + 8, y: cx.lugar[1] * T + 21, dir: 'baixo', tile: cx.lugar, pc: null, codex: true });
-    lugares.push({ equipe: i, nome: 'Orquestrador', x: a.lugar[0] * T + 8, y: a.lugar[1] * T + 21, dir: 'baixo', tile: a.lugar, pc: null, assistente: true });
+    lugares.push({ id: `fixo|${i}|Codex`, equipe: i, nome: 'Codex', x: cx.lugar[0] * T + 8, y: cx.lugar[1] * T + 21, dir: 'baixo', tile: cx.lugar, pc: null, codex: true });
+    lugares.push({ id: `fixo|${i}|Orquestrador`, equipe: i, nome: 'Orquestrador', x: a.lugar[0] * T + 8, y: a.lugar[1] * T + 21, dir: 'baixo', tile: a.lugar, pc: null, assistente: true });
   });
 
   // ---------- salão ----------
@@ -114,26 +121,66 @@ export function montarPlanta() {
   m('lixo', 16, 9, 16, 16); trava(16, 9, 16, 9);
   const mural = { x: 14 * T + 16, y: 2 * T + 12, tile: [15, 2] };
 
-  // ---------- baias ----------
-  EQUIPES.forEach((eq, e) => FILEIRAS.forEach((yb, r) => ORDEM_BAIAS[r].forEach((nome, c) => {
-    const dx = eq.x0 + c * 4;
-    divisorias.push({ x: dx * T - 2, y: yb * T - 6, w: 3 * T + 4, h: 18 });         // painel de trás
-    divisorias.push({ x: dx * T - 2, y: yb * T - 6, w: 4, h: 4 * T + 2, lado: true }); // painel da esquerda
+  // ---------- duas alas: Criação (esquerda) e Marketing (direita) ----------
+  // Cada ala tem uma fileira por jogo (Genesis em cima, Cook embaixo), com 4 mesas.
+  // As mesas não têm dono: o agente senta numa mesa livre da ala e do jogo da tarefa.
+  pinta(1, 14, 18, 21, 1, COR.criacao);
+  pinta(21, 14, MW - 2, 21, 1, COR.marketing);
+  pinta(19, 14, 20, 22, 2, COR.corredor);
+  pinta(1, 22, MW - 2, 22, 2, COR.corredor);
+  const assentos = [];
+  ALAS.forEach((ala) => FILAS.forEach((fila) => [0, 1, 2, 3].forEach((c) => {
+    const dx = ala.x0 + c * 4, yb = fila.y;
+    divisorias.push({ x: dx * T - 2, y: yb * T - 6, w: 3 * T + 4, h: 18, cor: ala.divisoria });
+    divisorias.push({ x: dx * T - 2, y: yb * T - 6, w: 4, h: 4 * T + 2, lado: true, cor: ala.divisoria });
     trava(dx, yb, dx + 2, yb); trava(dx, yb, dx, yb + 3);
+    const id = `${ala.setor}|${fila.jogo}|${c}`;
     m('mesa', dx, yb + 1, 48, 32); trava(dx, yb + 1, dx + 2, yb + 2);
-    m('pcFrente', dx + 1, yb, 16, 32, { ordem: (yb + 3) * T + 1, anima: `${e}|${nome}`, sobre: true, dy: 24 });
+    m('pcFrente', dx + 1, yb, 16, 32, { ordem: (yb + 3) * T + 1, anima: id, sobre: true, dy: 24 });
     if (c % 2) m('cafe', dx + 2, yb + 1, 16, 16, { ordem: (yb + 3) * T + 1, sobre: true, dy: 26 });
     else m('vaso', dx + 2, yb + 1, 16, 16, { ordem: (yb + 3) * T + 1, sobre: true, dy: 22 });
     m('cadeiraCostas', dx + 1, yb + 3, 16, 16, { ordem: (yb + 4) * T + 3 });
     trava(dx + 1, yb + 3, dx + 1, yb + 3);
-    lugares.push({ equipe: e, nome, x: (dx + 1) * T + 8, y: (yb + 3) * T + 10, dir: 'cima', tile: [dx + 1, yb + 3], pc: { x: (dx + 1) * T, y: yb * T } });
+    assentos.push({ id, setor: ala.setor, jogo: fila.jogo, x: (dx + 1) * T + 8, y: (yb + 3) * T + 10, dir: 'cima', tile: [dx + 1, yb + 3], pc: { x: (dx + 1) * T, y: yb * T } });
   })));
-  // plantas no corredor do meio e nos cantos
-  for (const [x, y] of [[19, 14], [20, 18], [19, 22], [20, 25], [1, 12], [38, 12], [1, 25], [38, 25]]) { m(x % 2 ? 'planta' : 'planta2', x, y, 16, 32); trava(x, y + 1, x, y + 1); }
+  for (const [x, y] of [[19, 15], [20, 19], [1, 12], [38, 12]]) { m(x % 2 ? 'planta' : 'planta2', x, y, 16, 32); trava(x, y + 1, x, y + 1); }
 
-  // pontos onde os agentes livres gostam de ir
-  const passeio = [[15, 8], [16, 6], [21, 3], [23, 4], [26, 5], [15, 4], [22, 11], [18, 12], [21, 13], [10, 13], [30, 13], [19, 20], [20, 16], [19, 24]];
-  return { tipo, cor, solido, moveis, naParede, vidros, divisorias, lugares, mural, passeio };
+  // ---------- copa: quem está livre fica aqui ----------
+  pinta(1, 23, MW - 2, 26, 4, COR.copa);
+  pinta(15, 24, 24, 26, 2, COR.tapeteCopa);
+  m('mesinha', 2, 23, 32, 32); trava(2, 23, 3, 24);
+  m('cafe', 2.3, 23, 16, 16, { ordem: 25 * T, sobre: true, dy: 18 }); m('cafe', 3, 23, 16, 16, { ordem: 25 * T, sobre: true, dy: 20 });
+  m('sofaFrente', 7, 23, 32, 16); trava(7, 23, 8, 23);
+  m('mesaCentro', 7, 24, 32, 32); trava(7, 24, 8, 25);
+  m('sofaLado', 6, 24, 16, 32); trava(6, 24, 6, 25);
+  m('sofaLado', 9, 24, 16, 32, { espelho: true }); trava(9, 24, 9, 25);
+  m('mesaGrande', 17.5, 23.6, 48, 64); trava(18, 24, 20, 26);
+  for (const [cx, cy] of [[17, 24.2], [17, 25.4], [21, 24.2], [21, 25.4]]) m('cadeiraMadeiraFrente', cx, cy, 16, 32, { espelho: cx > 19 });
+  m('sofaFrente', 30, 23, 32, 16); trava(30, 23, 31, 23);
+  m('mesaCentro', 30, 24, 32, 32); trava(30, 24, 31, 25);
+  m('sofaLado', 29, 24, 16, 32); trava(29, 24, 29, 25);
+  m('sofaLado', 32, 24, 16, 32, { espelho: true }); trava(32, 24, 32, 25);
+  m('mesinha', 36, 23, 32, 32); trava(36, 23, 37, 24);
+  m('cafe', 36.4, 23, 16, 16, { ordem: 25 * T, sobre: true, dy: 18 });
+  for (const [x, y] of [[13, 23], [26, 23], [1, 25], [38, 25]]) { m(x % 2 ? 'planta' : 'planta2', x, y, 16, 32); trava(x, y + 1, x, y + 1); }
+  m('lixo', 12, 26, 16, 16); trava(12, 26, 12, 26);
+  // lugares da copa (em pé, conversando, perto do café e dos sofás)
+  const copa = [[4, 24, 'esq'], [4, 25, 'esq'], [2, 25, 'cima'], [3, 26, 'cima'], [7, 26, 'cima'], [8, 26, 'cima'], [10, 24, 'esq'], [10, 25, 'esq'], [5, 23, 'baixo'],
+    [14, 24, 'dir'], [15, 26, 'dir'], [16, 23, 'baixo'], [22, 23, 'baixo'], [22, 26, 'esq'], [23, 24, 'esq'], [24, 25, 'esq'],
+    [28, 24, 'dir'], [28, 25, 'dir'], [30, 26, 'cima'], [31, 26, 'cima'], [33, 24, 'esq'], [33, 25, 'esq'], [35, 25, 'dir'], [36, 26, 'cima'], [35, 23, 'baixo'], [27, 26, 'cima']]
+    .map(([x, y, dir], i) => ({ id: `copa|${i}`, copa: true, x: x * T + 8, y: y * T + 12, dir, tile: [x, y] }));
+
+  // placas (texto por cima do mapa)
+  const placas = [
+    { texto: '🛠️ CRIAÇÃO', x: 9.5 * T, y: 12.6 * T, setor: 'criacao' },
+    { texto: '📣 MARKETING', x: 30 * T, y: 12.6 * T, setor: 'marketing' },
+    ...ALAS.flatMap((ala) => FILAS.map((f) => ({ texto: f.rotulo, x: (ala.x0 - 1.1) * T, y: (f.y + 2.4) * T, jogo: f.jogo, lado: true }))),
+    { texto: '☕ COPA · quem está livre', x: 19.5 * T, y: 22.55 * T, copa: true },
+  ];
+  // pontos de passeio (só no salão e na copa)
+  const passeio = [[15, 8], [16, 6], [21, 3], [23, 4], [26, 5], [15, 4]];
+  return { tipo, cor, solido, moveis, naParede, vidros, divisorias, lugares, assentos, copa, placas, mural, passeio };
+
 }
 
 // ---------- caminhos (A* em grade, 4 direções) ----------

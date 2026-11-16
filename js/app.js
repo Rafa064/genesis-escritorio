@@ -1,11 +1,11 @@
 // Estúdio Genesis: liga mundo + dados + rede + interface.
 import { ORDEM_PESSOAS, COR_PESSOA, tituloDe } from './config.js';
-import { T, MW, MH, SALAS, ORDEM_BAIAS, tileDe } from './mapa.js';
+import { T, MW, MH, SALAS, AGENTES_CONHECIDOS, tileDe } from './mapa.js';
 import { criarMundo } from './mundo.js';
 import { montarPersonagem, retrato } from './arte.js';
 import { visualDe } from './personagens.js';
 import { frase, passo, iconePasso, resumo, fases, primeiraFrase, categoria } from './humano.js';
-import { FRENTES, todasFrentes, frentePorId } from './frentes.js';
+import { JOGOS, SETORES, jogoPorId, setorPorId, todosJogos, frente, frentePorId } from './frentes.js';
 import { TIPOS, tipoDe, etiquetaTipo, descricaoHumana, conectorDe, nomeConector } from './tipos.js';
 import * as D from './dados.js';
 import * as R from './rede.js';
@@ -22,7 +22,12 @@ let EU = null, mundo = null, membros = [], estados = new Map(), recados = [], pr
 let conversas = [], conversaAtual = null, mensagens = [], aprovacoes = [], jornais = [], temSql2 = false;
 let aba = guardado('aba', 'equipe'), filtroEquipe = 'todos', selecionado = null, missaoAberta = null, chatOcupado = false;
 const pilha = []; // para o botão "voltar" da gaveta
-let filtroFrente = guardado('frente', ''); // '' = todas as frentes
+// Filtros globais (valem para mapa, equipe, missões, histórico e quadro): '' = todos.
+let filtroJogo = guardado('fJogo', ''), filtroSetor = guardado('fSetor', '');
+const temFiltro = () => !!(filtroJogo || filtroSetor);
+const passa = (fr) => (!filtroJogo || fr?.jogo === filtroJogo) && (!filtroSetor || fr?.setor === filtroSetor);
+const nomeFiltro = () => [filtroJogo && `${jogoPorId(filtroJogo).icone} ${jogoPorId(filtroJogo).nome}`, filtroSetor && `${setorPorId(filtroSetor).icone} ${setorPorId(filtroSetor).nome}`].filter(Boolean).join(' · ');
+function mudarFiltro(jogo, setor) { filtroJogo = jogo; filtroSetor = setor; guarda('fJogo', jogo); guarda('fSetor', setor); desenharHud(); desenharAba(); if (!$('#quadro').hidden) desenharQuadro(); }
 if (aba === 'mural') aba = 'dupla';
 
 // ======================= markdown simples (seguro: escapa tudo antes) =======================
@@ -63,6 +68,8 @@ async function iniciar() {
     const tudo = await R.carregarTudo();
     membros = tudo.membros; recados = tudo.recados; temSql2 = tudo.temSql2;
     conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || [];
+    temQuadro = tudo.temQuadro; marcos = tudo.marcos || []; comentarios = tudo.comentarios || [];
+    vinculos = new Map((tudo.vinculos || []).map((v) => [v.missao, v.marco_id]));
     for (const e of tudo.estado) estados.set(e.pessoa, e);
     D.adicionar(tudo.eventos.map(D.deLinha));
     mundo = await criarMundo();
@@ -114,19 +121,41 @@ const agentesInfo = (p) => estados.get(p)?.info?.agentes || [];
 const modelo = (nome, p) => D.modeloDe(nome, agentesInfo(p));
 const tagModelo = (nome, p) => { const m = modelo(nome, p); return `<span class="modelo ${m.familia}" title="${esc(m.descricao || '')}">${esc(m.rotulo)}</span>`; };
 const vazioMesa = (p, nome) => ({ k: `${p}|${nome}`, pessoa: p, nome, titulo: tituloDe(nome), hist: [], miniaturas: [], nomes: [] });
-const CONHECIDOS = new Set(ORDEM_BAIAS.flat().concat('Orquestrador', 'Codex'));
+// Onde cada agente fica: assistente e Codex na recepção da sala do dono; quem está trabalhando
+// senta numa mesa livre da ala (setor) e da fileira (jogo) da tarefa; quem está livre vai para a copa.
+const ocupacao = new Map(); // agente -> id do lugar (para ninguém trocar de mesa à toa)
+const TRABALHANDO = ['trab', 'alerta', 'erro'];
 function mesasDoMundo() {
-  const ps = pessoas(), eq = D.equipes(), lista = [];
-  const extras = new Map(ps.map((p) => [p, [...(eq.get(p) || new Map()).values()].filter((x) => !CONHECIDOS.has(x.nome)).sort((a, b) => b.ult.t - a.ult.t)]));
+  const ps = pessoas(), eq = D.equipes(), lista = [], usados = new Set();
   for (const l of mundo.planta.lugares) {
     const p = ps[l.equipe]; if (!p) continue;
-    const mesas = eq.get(p) || new Map();
-    let m = l.nome === '*' ? extras.get(p).shift() : mesas.get(l.nome);
-    m ||= vazioMesa(p, l.nome === '*' ? 'agente' : l.nome);
-    let st = D.estadoDe(m).cls;
+    const m = eq.get(p)?.get(l.nome) || vazioMesa(p, l.nome);
+    let st = D.estadoDe(m.ult ? m : null).cls;
     if (l.assistente && p === EU.pessoa && chatOcupado && alvoAtual() === 'claude') st = 'trab';
     if (l.codex && p === EU.pessoa && chatOcupado && alvoAtual() === 'codex') st = 'trab';
-    lista.push({ id: `${l.equipe}|${l.nome}|${lista.length}`, nome: m.nome === 'agente' ? '*' : m.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: p, m });
+    const fr = TRABALHANDO.includes(st) ? D.frenteDaMesa(m) : null;
+    lista.push({ id: m.k, nome: l.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: p, m, anel: fr?.cor });
+  }
+  const pega = (k, niveis) => {
+    for (const nivel of niveis) {
+      const livres = nivel.filter((x) => !usados.has(x.id));
+      const l = livres.find((x) => x.id === ocupacao.get(k)) || livres[0];
+      if (l) { usados.add(l.id); ocupacao.set(k, l.id); return l; }
+    }
+    return null;
+  };
+  const outros = ps.flatMap((p) => [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex'));
+  const comEstado = outros.map((m) => ({ m, st: D.estadoDe(m).cls })).sort((a, b) => b.m.ult.t - a.m.ult.t);
+  const A = mundo.planta.assentos;
+  for (const { m, st } of comEstado.filter((x) => TRABALHANDO.includes(x.st))) {
+    const fr = D.frenteDaMesa(m) || frente('genesis', 'criacao');
+    const l = pega(m.k, [A.filter((a) => a.setor === fr.setor && a.jogo === fr.jogo), A.filter((a) => a.setor === fr.setor), A]);
+    if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor });
+  }
+  // Na copa: quem trabalhou nas últimas 24 h (os outros nem aparecem no mapa).
+  for (const { m, st } of comEstado.filter((x) => !TRABALHANDO.includes(x.st) && Date.now() - x.m.ult.t < 24 * 3600e3)) {
+    const l = pega(m.k, [mundo.planta.copa]);
+    if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st === 'fim' ? 'fim' : 'livre', ferramenta: null, pessoa: m.pessoa, m });
   }
   return lista;
 }
@@ -170,6 +199,17 @@ function ligarRede() {
     aprovacoes = [...aprovacoes.filter((x) => x.id !== a.id), a].filter((x) => x.status === 'pendente');
     if (a.status === 'pendente') { som('alerta'); const f = passo(a.ferramenta, null, lerJson(a.detalhe)); notificar('A assistente pede permissão', f); toast({ titulo: 'Pedido de permissão', texto: f, cor: '#ffd23f', acao: () => abrirAba('atencao') }); }
     agendarInterface(); desenharChat();
+  });
+  R.on('marco', (p) => {
+    if (p.eventType === 'DELETE') marcos = marcos.filter((x) => x.id !== p.old.id);
+    else { const i = marcos.findIndex((x) => x.id === p.new.id); if (i >= 0) marcos[i] = p.new; else marcos.push(p.new); if (p.eventType === 'UPDATE' && p.new.coluna === 'feito' && p.old?.coluna !== 'feito') toast({ titulo: `🏁 Marco concluído: ${p.new.titulo}`, cor: '#4fbf82' }); }
+    mudouMarcos(); desenharQuadro(); if (aba === 'marco') desenharMarco(); agendarInterface();
+  });
+  R.on('vinculo', (p) => { if (p.eventType === 'DELETE') vinculos.delete(p.old.missao); else vinculos.set(p.new.missao, p.new.marco_id); mudouMarcos(); desenharQuadro(); if (aba === 'marco') desenharMarco(); if (aba === 'missao') desenharMissao(); agendarInterface(); });
+  R.on('comentario', (p) => {
+    if (p.eventType === 'DELETE') comentarios = comentarios.filter((c) => c.id !== p.old.id);
+    else if (!comentarios.some((c) => c.id === p.new.id)) { comentarios.push(p.new); if (p.new.pessoa !== EU.pessoa) { const mc = marcos.find((x) => x.id === p.new.marco_id); toast({ titulo: `${p.new.pessoa} comentou em 🏁 ${mc?.titulo || 'um marco'}`, texto: p.new.texto, cor: corPessoa(p.new.pessoa), acao: () => abrirMarco(p.new.marco_id) }); som('recado'); } }
+    if (aba === 'marco') desenharMarco();
   });
   R.on('jornal', (j) => { if (!j?.dia) return; jornais = [j, ...jornais.filter((x) => x.dia !== j.dia)].sort((a, b) => b.dia.localeCompare(a.dia)); desenharManchete(); if (!$('#jornal').hidden) abrirJornal(j.dia); });
   R.on('presenca', (st) => { presentes = new Map(Object.entries(st).map(([k, v]) => [k, v[0]])); for (const p of mundo.pessoas.keys()) if (!presentes.has(p)) mundo.pessoas.delete(p); agendarInterface(); });
@@ -251,6 +291,7 @@ function dimensionar() {
   VW = Math.ceil(w / zoom); VH = Math.ceil(h / zoom);
   tela.width = VW; tela.height = VH;
   tela.style.width = `${VW * zoom}px`; tela.style.height = `${VH * zoom}px`;
+  $('#camada').style.setProperty('--z', zoom);
 }
 addEventListener('resize', dimensionar);
 const mudarZoom = (d) => { zoom += d; guarda('zoom', zoom); dimensionar(); };
@@ -272,6 +313,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'm') { alternarAba('dupla'); setTimeout(() => aba === 'dupla' && $('#textoRecado').focus(), 0); }
   else if (k === 'l') alternarAba('historico');
   else if (k === 'i') alternarAba('catalogo');
+  else if (k === 'b') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); }
   else if (k === 'j') abrirJornal();
   else if (k === '?' || k === '/') abrirAjuda();
   else if (k === 'q') acenarParaOutro();
@@ -378,7 +420,7 @@ function nomeNoMapa(b) {
   const fr = ['trab', 'alerta', 'erro'].includes(b.status) ? D.frenteDaMesa(b.m) : null;
   return `${TIPOS[tipo].icone} ${nomeBase(b)}${fr ? ' · ' + fr.icone : ''}`;
 }
-const foraDoFiltro = (b) => filtroFrente && D.frenteDaMesa(b.m)?.id !== filtroFrente;
+const foraDoFiltro = (b) => temFiltro() && !passa(D.frenteDaMesa(b.m));
 function rotulos(c) {
   for (const el of poolRotulos.values()) el.dataset.v = '';
   const visivel = (x, y) => x > c.x - 30 && x < c.x + VW + 30 && y > c.y - 10 && y < c.y + VH + 50;
@@ -386,21 +428,33 @@ function rotulos(c) {
     if (!visivel(b.x, b.y)) continue;
     const sel = b.m?.k === selecionado, foco = sel || b === perto || hoverId === b.id;
     const fixo = b.lugar.assistente || b.lugar.codex;
-    if (!(foco || b.status === 'alerta' || b.status === 'erro' || fixo) && zoom < 3) continue;
+    const ativo = TRABALHANDO.includes(b.status) && !b.lugar.copa;
+    if (!(foco || ativo || fixo) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
     const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}`);
     const nome = nomeNoMapa(b);
     if (el.textContent !== nome) el.textContent = nome;
     colocar(el, b.x, b.y + 2, c);
     const recente = b.m?.ult && Date.now() - b.m.ult.t < 8 * 60e3;
-    let fala = '';
+    let fala = '', curta = false;
     if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && chatOcupado && alvoAtual() === (b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
-    else if (b.m?.ult && (b.status === 'alerta' || foco || (zoom >= 3 && !foraDoFiltro(b) && (b.status === 'trab' || b.status === 'fim') && recente))) fala = primeiraFrase(frase(b.m.ult), 80);
+    else if (b.m?.ult && (foco || b.status === 'alerta')) fala = primeiraFrase(frase(b.m.ult), 80);
+    else if (b.m?.ult && ativo && !foraDoFiltro(b) && b.modo === 'sentado') { const t = primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
     if (fala) {
-      const f = rotulo(b.id + 'f', `fala ${b.status}`);
+      const f = rotulo(b.id + 'f', `fala ${b.status}${curta ? ' curta' : ''}`);
       if (f.textContent !== fala) f.textContent = fala;
       colocar(f, b.x, (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar.dir === 'cima' ? 30 : 14), c, true);
     }
+  }
+  // placas das alas, das fileiras (jogo) e da copa
+  for (const [i, p] of mundo.planta.placas.entries()) {
+    if (!visivel(p.x, p.y)) continue;
+    const apagada = (p.setor && filtroSetor && p.setor !== filtroSetor) || (p.jogo && filtroJogo && p.jogo !== filtroJogo);
+    const el = rotulo('placa' + i, `placa${p.setor ? ' ' + p.setor : ''}${p.jogo ? ' jogo' : ''}${p.copa ? ' copa' : ''}${apagada ? ' fora' : ''}`);
+    const txt = p.jogo ? `${jogoPorId(p.jogo).icone}` : p.texto;
+    if (el.textContent !== txt) { el.textContent = txt; el.title = p.jogo ? jogoPorId(p.jogo).nome : ''; }
+    if (p.jogo) el.style.setProperty('--cor', jogoPorId(p.jogo).cor);
+    colocar(el, p.x, p.y, c);
   }
   const gente = [...mundo.pessoas.values()]; if (mundo.eu) gente.push(mundo.eu);
   for (const p of gente) {
@@ -449,7 +503,7 @@ function irAtePessoa(p) {
 }
 
 // ======================= gaveta =======================
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Precisa de você', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Precisa de você', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (empilhar && aba !== nome && !$('#gaveta').classList.contains('fechada')) pilha.push(aba); else if (!empilhar) pilha.length = 0;
@@ -457,8 +511,8 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  const raizCel = ['equipe', 'agente', 'historico', 'galeria', 'catalogo', 'ajustes'].includes(nome) ? 'mais' : raiz;
-  $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz));
+  const raizCel = ['equipe', 'agente', 'historico', 'galeria', 'catalogo', 'ajustes', 'missoes', 'missao'].includes(nome) ? 'mais' : raiz;
+  $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz || (b.dataset.acao === 'quadro' && !$('#quadro').hidden)));
   $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raizCel));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
@@ -466,13 +520,13 @@ function abrirAba(nome, empilhar = false) {
   setTimeout(dimensionar, 0);
 }
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
-function fecharGaveta() { $('#gaveta').classList.add('fechada'); $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
+function fecharGaveta() { $('#gaveta').classList.add('fechada'); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
-$('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else alternarAba(b.dataset.aba); };
+$('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
 
 let pendenteUI = false;
-function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharFrentes(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
+function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -491,11 +545,6 @@ function montarInterface() {
   $('#textoRecado').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDupla(); } };
   $('#rapidasDupla').innerHTML = RAPIDAS.map((r) => `<button type="button" data-rapida="${esc(r)}">${esc(r)}</button>`).join('');
   $('#rapidasDupla').onclick = (e) => { const b = e.target.closest('[data-rapida]'); if (b) enviarDupla(b.dataset.rapida); };
-  $('#frentes').onclick = (e) => {
-    const c = e.target.closest('[data-frente]'); if (!c) return;
-    filtroFrente = filtroFrente === c.dataset.frente ? '' : c.dataset.frente; guarda('frente', filtroFrente);
-    desenharFrentes(); if (filtroFrente && !['missoes', 'historico', 'equipe'].includes(aba)) abrirAba('missoes'); else desenharAba();
-  };
   $('#fecharResumo').onclick = () => { $('#resumo').hidden = true; };
   $('#fecharLightbox').onclick = () => { $('#lightbox').hidden = true; $('#conteudoLightbox').innerHTML = ''; };
   $('#fecharJornal').onclick = () => { $('#jornal').hidden = true; };
@@ -503,7 +552,9 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') fecharGaveta(); else abrirAba(b.dataset.aba); };
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else abrirAba(b.dataset.aba); };
+  ligarHud(); ligarQuadro();
+  if (guardado('quadro', '')) abrirQuadro();
   $('#btnAjuda').onclick = abrirAjuda;
   $('#fecharAjuda').onclick = () => { $('#ajuda').hidden = true; };
   if (!guardado('boasVindas', '')) {
@@ -511,7 +562,7 @@ function montarInterface() {
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   dimensionar();
   if (innerWidth < 900) fecharGaveta(); else abrirAba(['agente', 'missao', 'mais'].includes(aba) ? 'equipe' : aba);
-  desenharTopo(); desenharFrentes();
+  desenharTopo(); desenharHud();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
 
@@ -542,14 +593,14 @@ async function desenharTopo() {
 function todosAgentes() {
   const out = [];
   for (const [, mesas] of D.equipes()) for (const m of mesas.values()) out.push({ m, st: D.estadoDe(m) });
-  for (const p of pessoas()) for (const nome of [...ORDEM_BAIAS.flat(), 'Orquestrador', 'Codex']) if (nome !== '*' && !D.mesa(p, nome)) out.push({ m: vazioMesa(p, nome), st: D.estadoDe(null) });
+  for (const p of pessoas()) for (const nome of [...AGENTES_CONHECIDOS, 'Orquestrador', 'Codex']) if (nome !== '*' && !D.mesa(p, nome)) out.push({ m: vazioMesa(p, nome), st: D.estadoDe(null) });
   return out;
 }
 
 // ---------- abas ----------
 function desenharAba() {
   if (!mundo || $('#gaveta').classList.contains('fechada')) return;
-  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, catalogo: desenharCatalogo, mais: desenharMais, ajustes: desenharAjustes })[aba]?.();
+  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, catalogo: desenharCatalogo, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco })[aba]?.();
 }
 function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
@@ -579,7 +630,7 @@ async function desenharEquipe() {
     if (filtroEquipe === 't:fora' && !['plugin', 'programa'].includes(t)) return false;
     if (filtroEquipe === 't:ia' && t !== 'ia') return false;
     if (!filtroEquipe.startsWith('t:') && filtroEquipe !== 'todos' && a.m.pessoa !== filtroEquipe) return false;
-    if (filtroFrente && D.frenteDaMesa(a.m)?.id !== filtroFrente) return false;
+    if (temFiltro() && !passa(D.frenteDaMesa(a.m))) return false;
     return true;
   });
   const grupos = [['Precisa de você', ['alerta', 'erro'], 'alerta'], ['Trabalhando', ['trab'], 'trab'], ['Pronto', ['fim'], 'fim'], ['Livre', ['espera', 'livre'], 'livre']];
@@ -590,12 +641,11 @@ async function desenharEquipe() {
     html += `<div class="grupo" style="--cor:${D.ESTADOS[chave].cor}"><i>${D.ESTADOS[chave].glifo}</i>${nome} · ${itens.length}</div>`;
     html += (await Promise.all(itens.map(linhaAgente))).join('');
   }
-  const fr = frentePorId(filtroFrente);
-  $('#listaEquipe').innerHTML = (fr ? avisoFiltro(fr) : '') + (html || `<div class="vazio">${fr ? 'Ninguém trabalhou nesta frente ultimamente.' : 'Ninguém por aqui ainda.'}</div>`);
+  $('#listaEquipe').innerHTML = avisoFiltro() + (html || `<div class="vazio">${temFiltro() ? 'Ninguém trabalhando aqui agora.' : 'Ninguém por aqui ainda.'}</div>`);
   $('#listaEquipe').onclick = (e) => { if (e.target.closest('[data-tirar-filtro]')) return tirarFiltro(); const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k); };
 }
-const avisoFiltro = (fr) => `<div class="aviso-filtro" style="--cor:${fr.cor}">${fr.icone} Só a frente <b>${esc(fr.nome)}</b><button data-tirar-filtro title="Ver todas as frentes">× ver tudo</button></div>`;
-function tirarFiltro() { filtroFrente = ''; guarda('frente', ''); desenharFrentes(); desenharAba(); }
+const avisoFiltro = () => temFiltro() ? `<div class="aviso-filtro" style="--cor:${filtroJogo ? jogoPorId(filtroJogo).cor : setorPorId(filtroSetor).cor}">Só <b>${esc(nomeFiltro())}</b><button data-tirar-filtro title="Ver tudo">× ver tudo</button></div>` : '';
+function tirarFiltro() { mudarFiltro('', ''); }
 
 // ---------- atenção: aprovações + agentes parados ----------
 async function desenharAtencao() {
@@ -660,7 +710,7 @@ const frentesFechadas = new Set(lerJson(guardado('frentesFechadas', '[]')) || []
 function missoesFiltradas() {
   const busca = ($('#buscaMissoes')?.value || '').trim().toLowerCase();
   return D.missoes().filter((m) => {
-    if (filtroFrente && m.frente.id !== filtroFrente) return false;
+    if (!passa(m.frente)) return false;
     if (filtroMissoes === 'abertas') { if (m.fim) return false; }
     else if (filtroMissoes !== 'todos' && m.pessoa !== filtroMissoes) return false;
     if (!busca) return true;
@@ -682,12 +732,12 @@ async function cartaoMissao(m) {
 async function desenharMissoes() {
   filtros($('#filtroMissoes'), filtroMissoes, [['todos', 'Todas'], ...pessoas().map((p) => [p, p]), ['abertas', 'Em andamento']], (f) => { filtroMissoes = f; desenharMissoes(); });
   const lista = missoesFiltradas();
-  const fr = frentePorId(filtroFrente);
-  if (!lista.length) { $('#listaMissoes').innerHTML = (fr ? avisoFiltro(fr) : '') + '<div class="vazio">Nenhuma missão aqui. Cada pedido à assistente (no VS Code ou aqui) vira uma missão e cai sozinho na frente certa.</div>'; return; }
+  const fr = temFiltro();
+  if (!lista.length) { $('#listaMissoes').innerHTML = avisoFiltro() + '<div class="vazio">Nenhuma missão aqui. Cada pedido à assistente (no VS Code ou aqui) vira uma missão e cai sozinho na frente certa.</div>'; return; }
   // Um bloco por frente; a frente com atividade mais recente vem primeiro.
   const grupos = new Map();
   for (const m of lista) { if (!grupos.has(m.frente.id)) grupos.set(m.frente.id, { f: m.frente, ms: [] }); grupos.get(m.frente.id).ms.push(m); }
-  let html = fr ? avisoFiltro(fr) : '';
+  let html = avisoFiltro();
   for (const { f, ms } of grupos.values()) {
     const ativas = ms.filter((m) => !m.fim && m.status !== 'espera').length, fechado = !fr && frentesFechadas.has(f.id);
     html += `<div class="bloco-frente" style="--cor:${f.cor}"><button class="cab-frente" data-dobrar="${esc(f.id)}"><span class="ic">${f.icone}</span><b>${esc(f.nome)}</b><span class="cont">${ms.length} missão(ões)${ativas ? ` · <i>${ativas} em andamento</i>` : ''}</span><span class="espaco"></span>${fechado ? '▸' : '▾'}</button>`;
@@ -700,7 +750,7 @@ async function desenharMissoes() {
     const dob = e.target.closest('[data-dobrar]');
     if (dob) { const id = dob.dataset.dobrar; if (frentesFechadas.has(id)) frentesFechadas.delete(id); else frentesFechadas.add(id); guarda('frentesFechadas', JSON.stringify([...frentesFechadas])); desenharMissoes(); return; }
     const so = e.target.closest('[data-so-frente]');
-    if (so) { filtroFrente = so.dataset.soFrente; guarda('frente', filtroFrente); desenharFrentes(); desenharMissoes(); return; }
+    if (so) { const f = frentePorId(so.dataset.soFrente); mudarFiltro(f.jogo, f.setor); return; }
     const d = e.target.closest('[data-mi]'); if (d) abrirMissao(d.dataset.mi);
   };
 }
@@ -718,6 +768,7 @@ async function desenharMissao() {
     <div class="etqs">${chipFrente(m.frente)}<span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : ''}<span class="sub">${esc(m.projeto || '')}${m.origem ? ` · pelo ${m.origem === 'vscode' ? 'VS Code' : 'site'}` : ''}</span></div>
     <h3 class="titulo-missao">${esc(m.titulo)}</h3>
     <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)} · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+    ${temQuadro ? (() => { const mc = marcoDaMissao(m); const op = marcos.filter((x) => x.coluna !== 'feito' || x === mc); return `<div class="linha-marco">🏁 <select id="marcoDaMissao"><option value="">${mc ? '' : 'sem marco'}</option>${op.map((x) => `<option value="${x.id}" ${x === mc ? 'selected' : ''}>${jogoPorId(x.jogo).icone} ${esc(x.titulo)}</option>`).join('')}<option value="nenhum">não é de marco nenhum</option></select>${mc ? `<a href="#" id="verMarco">ver marco ›</a><span class="sub">${comoPendurou(m)}</span>` : ''}</div>`; })() : ''}
     ${m.resposta ? `<div class="bloco destaque"><h4>✅ Resultado</h4><div class="msg assistente" style="box-shadow:none;background:none;padding:0;max-width:100%">${md(m.resposta)}</div></div>` : ''}
     ${res.length ? `<div class="bloco"><h4>Em resumo</h4><div class="resumo-linhas grande">${res.map((l) => `<div>${l.icone} ${esc(l.texto)}</div>`).join('')}</div></div>` : ''}
     ${quem.length || m.skills.length || m.conectores.length ? `<div class="bloco"><h4>Quem e o quê ajudou</h4>${quem.join('')}
@@ -729,6 +780,12 @@ async function desenharMissao() {
     <details class="bloco tecnico"><summary>Passo a passo (${fs.length} fases, ${m.passos.length} passos)</summary>${linhasFases.join('') || '<div class="sub" style="text-align:left">Sem passos registrados.</div>'}</details>`;
   $$('#detalheMissao [data-mini]').forEach((el) => { el.onclick = () => abrirMidia(m.miniaturas[Number(el.dataset.mini)], urls[Number(el.dataset.mini)], m.pessoa); });
   $('#compartilharMissao').onclick = () => compartilharMissao(m);
+  $('#verMarco')?.addEventListener('click', (e) => { e.preventDefault(); abrirMarco(marcoDaMissao(m).id); });
+  $('#marcoDaMissao')?.addEventListener('change', async (e) => {
+    const v = e.target.value, id = v === 'nenhum' ? null : Number(v) || null;
+    try { if (DEMO) { vinculos.set(m.id, id); mudouMarcos(); desenharMissao(); } else if (!v) await R.desvincular(m.id); else await R.vincular(m.id, id); }
+    catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+  });
   $('#continuarMissao')?.addEventListener('click', () => { abrirChatCom('claude'); setTimeout(() => { $('#entrada').value = `Sobre "${m.titulo}": `; $('#entrada').focus(); }, 50); });
 }
 
@@ -739,11 +796,10 @@ async function desenharHistorico() {
   el.innerHTML = [['1', 'Hoje'], ['7', '7 dias'], ['30', '30 dias'], ['0', 'Tudo']].map(([v, t]) => `<button data-p="${v}" class="${v === periodoHist ? 'on' : ''}">${t}</button>`).join('') + '<span class="sep-f"></span>' + [['todos', 'Os dois'], ...pessoas().map((p) => [p, p])].map(([v, t]) => `<button data-pe="${esc(v)}" class="${v === pessoaHist ? 'on' : ''}">${esc(t)}</button>`).join('');
   el.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.p) { periodoHist = b.dataset.p; guarda('periodoHist', periodoHist); } if (b.dataset.pe) pessoaHist = b.dataset.pe; desenharHistorico(); };
   const desde = periodoHist === '0' ? 0 : periodoHist === '1' ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(periodoHist) * 86400e3;
-  const lista = D.missoes().filter((m) => m.inicio >= desde && (pessoaHist === 'todos' || m.pessoa === pessoaHist) && (!filtroFrente || m.frente.id === filtroFrente));
-  const fr = frentePorId(filtroFrente);
+  const lista = D.missoes().filter((m) => m.inicio >= desde && (pessoaHist === 'todos' || m.pessoa === pessoaHist) && passa(m.frente));
   const placar = new Map();
   for (const m of lista) { const p = placar.get(m.frente.id) || { f: m.frente, n: 0, ms: 0 }; p.n++; p.ms += m.duracao; placar.set(m.frente.id, p); }
-  let html = fr ? avisoFiltro(fr) : '';
+  let html = avisoFiltro();
   html += `<div class="placar">${[...placar.values()].sort((a, b) => b.n - a.n).map((p) => `<button class="placar-item" data-frente-h="${esc(p.f.id)}" style="--cor:${p.f.cor}"><span>${p.f.icone}</span><b>${p.n}</b><small>${esc(p.f.nome)}<br>${D.duracao(p.ms)} de trabalho</small></button>`).join('') || '<div class="vazio">Nada neste período.</div>'}</div>`;
   const dias = new Map();
   for (const m of lista) { const d = new Date(m.inicio).toDateString(); if (!dias.has(d)) dias.set(d, []); dias.get(d).push(m); }
@@ -764,7 +820,7 @@ async function desenharHistorico() {
   $('#listaHistorico').onclick = async (e) => {
     if (e.target.closest('[data-tirar-filtro]')) return tirarFiltro();
     const pf = e.target.closest('[data-frente-h]');
-    if (pf) { filtroFrente = filtroFrente === pf.dataset.frenteH ? '' : pf.dataset.frenteH; guarda('frente', filtroFrente); desenharFrentes(); desenharHistorico(); return; }
+    if (pf) { const f = frentePorId(pf.dataset.frenteH); if (filtroJogo === f.jogo && filtroSetor === f.setor) mudarFiltro('', ''); else mudarFiltro(f.jogo, f.setor); return; }
     const d = e.target.closest('[data-mi]'); if (d) { abrirMissao(d.dataset.mi); return; }
     if (e.target.id === 'maisAntigo' && !carregandoMais) {
       carregandoMais = true; desenharHistorico();
@@ -778,20 +834,311 @@ async function desenharHistorico() {
   };
 }
 
-// ---------- faixa de frentes (HUD em cima do mapa) ----------
-function desenharFrentes() {
+// ---------- HUD em cima do mapa: filtros (jogo/setor) + faixa "Agora" (quem está trabalhando) ----------
+function quemTrabalha() {
+  const out = [];
+  for (const a of todosAgentes()) {
+    let cls = a.st.cls;
+    if (a.m.nome === 'Orquestrador' && a.m.pessoa === EU.pessoa && chatOcupado) cls = 'trab';
+    if (!TRABALHANDO.includes(cls)) continue;
+    const fr = D.frenteDaMesa(a.m);
+    if (temFiltro() && !passa(fr)) continue;
+    out.push({ ...a, cls, fr });
+  }
+  return out.sort((a, b) => (b.cls === 'alerta') - (a.cls === 'alerta') || (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
+}
+function htmlFiltros() {
+  const jogos = todosJogos().filter((j) => j.id !== 'estudio' || D.missoes().some((m) => m.frente.jogo === 'estudio'));
+  const chip = (tipo, id, icone, nome, cor, on) => `<button class="fh ${on ? 'on' : ''}" data-f${tipo}="${esc(id)}" style="--cor:${cor}"><span class="ic">${icone}</span><span class="nm">${esc(nome)}</span></button>`;
+  return `<div class="filtros-hud">${chip('j', '', '◎', 'Tudo', '#9a90a8', !temFiltro())}${jogos.map((j) => chip('j', j.id, j.icone, j.curto || j.nome, j.cor, filtroJogo === j.id)).join('')}<span class="sep-h"></span>${SETORES.map((x) => chip('s', x.id, x.icone, x.nome, x.cor, filtroSetor === x.id)).join('')}</div>`;
+}
+function cliqueFiltro(e) {
+  const j = e.target.closest('[data-fj]'), s = e.target.closest('[data-fs]');
+  if (j) { mudarFiltro(j.dataset.fj === filtroJogo ? '' : j.dataset.fj, j.dataset.fj === '' ? '' : filtroSetor); return true; }
+  if (s) { mudarFiltro(filtroJogo, s.dataset.fs === filtroSetor ? '' : s.dataset.fs); return true; }
+  return false;
+}
+async function desenharHud() {
   if (!EU) return;
-  const semana = Date.now() - 7 * 86400e3, ms = D.missoes();
-  const ag = todosAgentes();
-  const itens = todasFrentes().map((f) => {
-    const doF = ms.filter((m) => m.frente.id === f.id);
-    const trab = ag.filter((a) => a.st.cls === 'trab' && D.frenteDaMesa(a.m)?.id === f.id).length;
-    const alerta = ag.filter((a) => ['alerta', 'erro'].includes(a.st.cls) && D.frenteDaMesa(a.m)?.id === f.id).length;
-    return { f, trab, alerta, semana: doF.filter((m) => m.inicio > semana).length, ult: doF[0]?.inicio || 0 };
-  }).filter((x) => !x.f.auto || x.semana || x.trab);
-  $('#frentes').innerHTML = itens.map(({ f, trab, alerta, semana: n }) => `<button class="frente ${filtroFrente === f.id ? 'on' : ''} ${filtroFrente && filtroFrente !== f.id ? 'apagada' : ''}" data-frente="${esc(f.id)}" style="--cor:${f.cor}" title="${esc(f.descricao)} · clique para ver só esta frente">
-    <span class="ic">${f.icone}</span><span class="nm">${esc(f.nome)}</span>${alerta ? `<i class="cnt alerta">!${alerta}</i>` : ''}${trab ? `<i class="cnt trab">${trab} ⚙</i>` : ''}<small>${n ? `${n}/sem` : '—'}</small></button>`).join('')
-    + (filtroFrente ? '<button class="frente limpar" data-frente="' + esc(filtroFrente) + '" title="Ver todas">× todas</button>' : '');
+  const ativos = quemTrabalha();
+  const cartoes = await Promise.all(ativos.slice(0, 12).map(async ({ m, cls, fr }) => {
+    const acao = m.ult ? primeiraFrase(frase(m.ult), 70) : 'pensando…';
+    const marco = marcoDaMissao(m.ult?._m);
+    const desde = m.pedido?.t || m.ult?.t;
+    const icone = cls === 'alerta' ? '⚠️' : cls === 'erro' ? '❌' : ICONE_CAT[categoria(m.ult || {})] || '⚙️';
+    return `<button class="agora-card ${cls}" data-k="${esc(m.k)}" style="--cor:${fr?.cor || '#9a90a8'};--pessoa:${corPessoa(m.pessoa)}">
+      <img src="${await retratoDe(m.nome)}" alt="">
+      <span class="ac-txt"><span class="ac-nome"><b>${esc(tituloAgente(m))}</b><span class="ac-pes">${esc(m.pessoa)}</span></span>
+        <span class="ac-fr">${fr ? `${fr.icone}${fr.iconeSetor} ${esc(fr.nome)}` : ''}${marco ? ` · 🏁 ${esc(marco.titulo)}` : ''}</span>
+        <span class="ac-acao">${icone} ${esc(acao)}</span></span>
+      <span class="ac-t">${desde ? D.ha(desde) : ''}</span></button>`;
+  }));
+  $('#frentes').innerHTML = htmlFiltros() + `<div class="agora ${guardado('agoraCompacto', '') ? 'compacto' : ''}"><span class="agora-tit" title="Encolher/abrir">${ativos.length ? `AGORA · ${ativos.length}` : 'AGORA · ninguém trabalhando'}</span>${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12}</span>` : ''}</div>`;
+}
+function ligarHud() {
+  $('#frentes').onclick = (e) => { if (cliqueFiltro(e)) return; if (e.target.closest('.agora-tit')) { guarda('agoraCompacto', guardado('agoraCompacto', '') ? '' : '1'); desenharHud(); return; } const c = e.target.closest('.agora-card'); if (c) localizar(c.dataset.k); };
+}
+
+// ======================= QUADRO DE MARCOS (kanban que substitui o Notion) =======================
+// Cartão = um grande marco (ex.: "Trailer de lançamento", "Loja de classes").
+// Os pedidos do dia a dia (missões) se penduram sozinhos no marco certo; dá para corrigir na mão.
+const COLUNAS = [
+  { id: 'ideias', nome: 'Ideias', icone: '💡' },
+  { id: 'afazer', nome: 'A fazer', icone: '📋' },
+  { id: 'fazendo', nome: 'Fazendo', icone: '⚙️' },
+  { id: 'revisar', nome: 'Revisar', icone: '👀' },
+  { id: 'feito', nome: 'Feito', icone: '✅' },
+];
+let marcos = [], vinculos = new Map(), comentarios = [], temQuadro = false, versaoMarcos = 0, marcoAberto = null, agruparPor = guardado('agrupar', ''), pessoaQuadro = '';
+const mudouMarcos = () => { versaoMarcos++; cacheVinculo.v = -1; };
+
+// ---------- pendurar pedidos nos marcos ----------
+const PARADAS = new Set('para como isso esse essa este esta mais fazer quero agora deixa coloca colocar pode voce você tudo todo toda cada depois antes entao então melhor melhora melhorar ainda tambem também porque sobre dele dela pelo pela pelos pelas numa num uma umas uns dos das nos nas com sem que qual quais quando onde aqui jogo genesis cook'.split(' '));
+const palavrasDe = (s) => new Set(String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !PARADAS.has(w)).map((w) => w.replace(/(oes|aes|s)$/, '')));
+let cacheVinculo = { v: -1, mapa: new Map() };
+function marcoDaMissao(m) {
+  if (!m || !temQuadro) return null;
+  const chave = `${D.versaoAtual()}|${versaoMarcos}`;
+  if (cacheVinculo.v !== chave) cacheVinculo = { v: chave, mapa: new Map() };
+  if (cacheVinculo.mapa.has(m.id)) return cacheVinculo.mapa.get(m.id);
+  let achado = null;
+  if (vinculos.has(m.id)) achado = marcos.find((x) => x.id === vinculos.get(m.id)) || null;           // na mão (null = nenhum)
+  else {
+    const cv = conversas.find((c) => c.marco_id && c.sessao && m.sessao && String(c.sessao).startsWith(m.sessao));
+    if (cv) achado = marcos.find((x) => x.id === cv.marco_id) || null;                                 // conversa aberta pelo cartão
+    else {                                                                                               // automático: palavras em comum
+      const pm = palavrasDe(m.pedido), recente = Date.now() - 3 * 86400e3;
+      const notas = marcos.filter((x) => x.coluna !== 'ideias' && (x.coluna !== 'feito' || new Date(x.concluido || x.atualizado).getTime() > recente) && x.jogo === m.frente.jogo)
+        .map((x) => {
+          let n = x.setor === m.frente.setor ? 1 : 0;
+          const chaves = palavrasDe(x.palavras), titulo = palavrasDe(`${x.titulo} ${x.descricao} ${(x.etapas || []).map((e) => e.t).join(' ')}`);
+          for (const w of pm) { if (chaves.has(w)) n += 3; else if (titulo.has(w)) n += 1.5; }
+          if (x.coluna === 'fazendo') n += 0.5;
+          return { x, n };
+        }).sort((a, b) => b.n - a.n);
+      if (notas[0] && notas[0].n >= 3 && (!notas[1] || notas[0].n - notas[1].n >= 1)) achado = notas[0].x;
+    }
+  }
+  cacheVinculo.mapa.set(m.id, achado);
+  return achado;
+}
+const comoPendurou = (m) => vinculos.has(m.id) ? 'na mão' : conversas.some((c) => c.marco_id && c.sessao && String(c.sessao).startsWith(m.sessao)) ? 'pela conversa do cartão' : 'automático';
+function resumoMarco(mc) {
+  const ms = D.missoes().filter((m) => marcoDaMissao(m)?.id === mc.id);
+  const hoje = new Date().setHours(0, 0, 0, 0);
+  const agentes = quemTrabalhaTodos().filter((a) => a.m.ult?._m && marcoDaMissao(a.m.ult._m)?.id === mc.id);
+  return { ms, hoje: ms.filter((m) => m.inicio >= hoje).length, agentes, alertas: ms.filter((m) => m.status === 'alerta').length, ult: ms[0]?.ultimo, minis: ms.flatMap((m) => m.miniaturas.map((mi) => ({ ...mi, pessoa: m.pessoa }))) };
+}
+function quemTrabalhaTodos() { return todosAgentes().filter((a) => TRABALHANDO.includes(a.st.cls)); }
+
+// ---------- tela do quadro ----------
+function abrirQuadro() {
+  $('#quadro').hidden = false; guarda('quadro', '1');
+  $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.add('on'));
+  desenharQuadro();
+}
+function fecharQuadro() {
+  $('#quadro').hidden = true; guarda('quadro', '');
+  $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.remove('on'));
+}
+const passaMarco = (mc) => (!filtroJogo || mc.jogo === filtroJogo) && (!filtroSetor || mc.setor === filtroSetor) && (!pessoaQuadro || mc.responsavel === pessoaQuadro);
+async function cartaoMarco(mc) {
+  const r = resumoMarco(mc), j = jogoPorId(mc.jogo), s = setorPorId(mc.setor);
+  const et = mc.etapas || [], feitas = et.filter((e) => e.feito).length;
+  const atrasado = mc.prazo && mc.coluna !== 'feito' && new Date(mc.prazo + 'T23:59') < new Date();
+  const rostos = await Promise.all(r.agentes.slice(0, 5).map(async (a) => `<img src="${await retratoDe(a.m.nome)}" title="${esc(tituloAgente(a.m))}: ${esc(primeiraFrase(frase(a.m.ult), 60))}" alt="">`));
+  return `<div class="cartao ${r.agentes.length ? 'vivo' : ''} ${r.alertas ? 'atencao' : ''}" draggable="true" data-marco="${mc.id}" style="--cor:${j.cor};--setor:${s.cor}">
+    <div class="ct-topo"><span class="ct-jogo">${j.icone} ${esc(j.curto || j.nome)}</span><span class="ct-setor">${s.icone} ${esc(s.nome)}</span>${mc.prioridade === 1 ? '<span class="ct-pri">🔥 alta</span>' : ''}</div>
+    <div class="ct-tit">${esc(mc.titulo)}</div>
+    ${et.length ? `<div class="ct-prog"><i style="width:${Math.round(feitas / et.length * 100)}%"></i><span>☑ ${feitas}/${et.length}</span></div>` : ''}
+    ${r.agentes.length ? `<div class="ct-vivo">${rostos.join('')}<span>trabalhando agora</span></div>` : ''}
+    ${r.alertas ? '<div class="ct-alerta">⚠️ precisa de você</div>' : ''}
+    <div class="ct-rodape">${mc.responsavel ? `<span class="ct-resp" style="--pessoa:${corPessoa(mc.responsavel)}">${esc(mc.responsavel)}</span>` : '<span class="ct-resp vazio">sem dono</span>'}${mc.prazo ? `<span class="ct-prazo ${atrasado ? 'atrasado' : ''}">📅 ${new Date(mc.prazo + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<span class="espaco"></span>${r.ms.length ? `<span class="ct-ped" title="pedidos pendurados neste marco">▸ ${r.ms.length}${r.hoje ? ` · ${r.hoje} hoje` : ''}</span>` : ''}</div>
+  </div>`;
+}
+async function desenharQuadro() {
+  if ($('#quadro').hidden) return;
+  if (!temQuadro) {
+    $('#quadroCorpo').innerHTML = `<div class="quadro-vazio"><h3>Falta ligar o quadro</h3><p>Rode o arquivo <code>supabase/escritorio-3.sql</code> no Supabase (SQL Editor › New query › colar › Run). É uma vez só.</p></div>`;
+    return;
+  }
+  $('#quadroFiltros').innerHTML = htmlFiltros() + '<div class="filtros">' + [['', 'Os dois'], ...pessoas().map((p) => [p, p])].map(([v, t]) => `<button data-pq="${esc(v)}" class="${pessoaQuadro === v ? 'on' : ''}">${esc(t)}</button>`).join('')
+    + '<span class="sep-f"></span>' + [['', 'Sem faixas'], ['jogo', 'Faixas por jogo'], ['setor', 'Faixas por setor']].map(([v, t]) => `<button data-ag="${v}" class="${agruparPor === v ? 'on' : ''}">${t}</button>`).join('') + '</div>';
+  const lista = marcos.filter(passaMarco);
+  const faixas = agruparPor === 'jogo' ? todosJogos().filter((j) => lista.some((m) => m.jogo === j.id)).map((j) => ({ id: j.id, nome: `${j.icone} ${j.nome}`, cor: j.cor, f: (m) => m.jogo === j.id }))
+    : agruparPor === 'setor' ? SETORES.map((s) => ({ id: s.id, nome: `${s.icone} ${s.nome}`, cor: s.cor, f: (m) => m.setor === s.id }))
+    : [{ id: '', nome: '', f: () => true }];
+  let html = '';
+  for (const fx of faixas) {
+    if (fx.nome) html += `<div class="faixa-nome" style="--cor:${fx.cor}">${esc(fx.nome)}</div>`;
+    if (!fx.nome || fx === faixas[0]) html += `<div class="nav-colunas">${COLUNAS.map((c) => `<button data-ir-coluna="${c.id}">${c.icone} ${lista.filter((m) => m.coluna === c.id).length}</button>`).join('')}</div>`;
+    html += '<div class="colunas-quadro">';
+    for (const c of COLUNAS) {
+      const doC = lista.filter((m) => m.coluna === c.id && fx.f(m)).sort((a, b) => (c.id === 'feito' ? new Date(b.concluido || b.atualizado) - new Date(a.concluido || a.atualizado) : a.prioridade - b.prioridade || a.ordem - b.ordem));
+      const mostrar = c.id === 'feito' ? doC.slice(0, 8) : doC;
+      html += `<div class="coluna" data-coluna="${c.id}" data-faixa="${esc(fx.id)}"><div class="col-cab"><span>${c.icone} ${c.nome}</span><b>${doC.length}</b>${c.id !== 'feito' ? `<button class="col-novo" data-novo="${c.id}" title="Novo marco em ${c.nome}">+</button>` : ''}</div>
+        <div class="col-cartoes">${(await Promise.all(mostrar.map(cartaoMarco))).join('')}${doC.length > mostrar.length ? `<div class="sub">+${doC.length - mostrar.length} mais antigos</div>` : ''}${!doC.length ? '<div class="col-vazia">—</div>' : ''}</div></div>`;
+    }
+    html += '</div>';
+  }
+  // pedidos de hoje que não acharam marco (para pendurar na mão)
+  const soltos = D.missoes().filter((m) => m.inicio > Date.now() - 2 * 86400e3 && passa(m.frente) && !marcoDaMissao(m) && !(vinculos.has(m.id) && vinculos.get(m.id) === null));
+  if (soltos.length) html += `<details class="soltos"><summary>🧷 ${soltos.length} pedido(s) dos últimos 2 dias sem marco <span class="sub">(tudo bem: só pendure o que fizer parte de um marco)</span></summary>${soltos.slice(0, 30).map((m) => `<div class="solto"><span class="chip-frente" style="--cor:${m.frente.cor}">${m.frente.icone}${m.frente.iconeSetor}</span><a href="#" data-abrir-missao="${esc(m.id)}">${esc(m.titulo)}</a><span class="sub">${esc(m.pessoa)} · ${D.ha(m.inicio)}</span><select data-pendurar="${esc(m.id)}"><option value="">pendurar em…</option>${marcos.filter((x) => x.coluna !== 'feito' && x.jogo === m.frente.jogo).map((x) => `<option value="${x.id}">${esc(x.titulo)}</option>`).join('')}<option value="nenhum">não é de marco nenhum</option></select></div>`).join('')}</details>`;
+  $('#quadroCorpo').innerHTML = html || '';
+  if (!marcos.length) $('#quadroCorpo').insertAdjacentHTML('afterbegin', '<div class="quadro-dica">Crie o primeiro marco no <b>+</b> de uma coluna. Só os grandes: “Trailer de lançamento”, “Loja de classes”, “Página da Steam”. Os pedidos do dia a dia se penduram sozinhos.</div>');
+}
+function ligarQuadro() {
+  $('#fecharQuadro').onclick = fecharQuadro;
+  $('#novoMarco').onclick = () => abrirMarco(null, 'afazer');
+  $('#quadroFiltros').onclick = (e) => {
+    if (cliqueFiltro(e)) return;
+    const p = e.target.closest('[data-pq]'), a = e.target.closest('[data-ag]');
+    if (p) { pessoaQuadro = p.dataset.pq; desenharQuadro(); }
+    if (a) { agruparPor = a.dataset.ag; guarda('agrupar', agruparPor); desenharQuadro(); }
+  };
+  const corpo = $('#quadroCorpo');
+  corpo.onclick = (e) => {
+    const n = e.target.closest('[data-novo]'); if (n) return abrirMarco(null, n.dataset.novo);
+    const ic = e.target.closest('[data-ir-coluna]'); if (ic) { corpo.querySelector(`.coluna[data-coluna="${ic.dataset.irColuna}"]`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }); return; }
+    const am = e.target.closest('[data-abrir-missao]'); if (am) { e.preventDefault(); return abrirMissao(am.dataset.abrirMissao); }
+    const c = e.target.closest('[data-marco]'); if (c) abrirMarco(Number(c.dataset.marco));
+  };
+  corpo.onchange = async (e) => {
+    const s = e.target.closest('[data-pendurar]'); if (!s || !s.value) return;
+    try { await R.vincular(s.dataset.pendurar, s.value === 'nenhum' ? null : Number(s.value)); } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+  };
+  // arrastar cartões entre colunas (no PC)
+  corpo.addEventListener('dragstart', (e) => { const c = e.target.closest('[data-marco]'); if (c) { e.dataTransfer.setData('text/plain', c.dataset.marco); c.classList.add('arrastando'); } });
+  corpo.addEventListener('dragend', (e) => e.target.closest?.('[data-marco]')?.classList.remove('arrastando'));
+  corpo.addEventListener('dragover', (e) => { const col = e.target.closest('[data-coluna]'); if (col) { e.preventDefault(); $$('.coluna.sobre').forEach((x) => x !== col && x.classList.remove('sobre')); col.classList.add('sobre'); } });
+  corpo.addEventListener('drop', async (e) => {
+    const col = e.target.closest('[data-coluna]'); $$('.coluna.sobre').forEach((x) => x.classList.remove('sobre'));
+    const id = Number(e.dataTransfer.getData('text/plain')); if (!col || !id) return;
+    e.preventDefault();
+    const mc = marcos.find((x) => x.id === id); if (!mc) return;
+    const mud = { id, coluna: col.dataset.coluna };
+    if (agruparPor && col.dataset.faixa) mud[agruparPor] = col.dataset.faixa;
+    await moverMarco(mc, mud);
+  });
+}
+async function moverMarco(mc, mud) {
+  if (mud.coluna === 'feito' && mc.coluna !== 'feito') mud.concluido = new Date().toISOString();
+  if (mud.coluna && mud.coluna !== 'feito') mud.concluido = null;
+  Object.assign(mc, mud); mudouMarcos(); desenharQuadro();
+  try { await salvar(mud); if (mud.coluna === 'feito') { toast({ titulo: `🏁 Marco concluído: ${mc.titulo}`, cor: '#4fbf82' }); fazerEmote('🎉'); } }
+  catch (err) { toast({ titulo: 'Não salvei', texto: err.message, cor: '#ef6a55' }); }
+}
+async function salvar(campos) {
+  if (DEMO) { const mc = marcos.find((x) => x.id === campos.id); if (mc) Object.assign(mc, campos); else marcos.push({ ...campos, id: Date.now(), ordem: Date.now() / 1000, etapas: campos.etapas || [] }); mudouMarcos(); return marcos.find((x) => x.id === campos.id) || marcos.at(-1); }
+  const d = await R.salvarMarco(campos);
+  const i = marcos.findIndex((x) => x.id === d.id); if (i >= 0) marcos[i] = d; else marcos.push(d);
+  mudouMarcos();
+  return d;
+}
+
+// ---------- detalhe do marco (na gaveta) ----------
+let rascunho = null;
+function abrirMarco(id, coluna = 'afazer') {
+  marcoAberto = id;
+  rascunho = id ? null : { titulo: '', descricao: '', jogo: filtroJogo || 'genesis', setor: filtroSetor || 'criacao', coluna, responsavel: EU.pessoa, prioridade: 2, prazo: null, etapas: [], palavras: '', area: '', arquivos: '', branch: '' };
+  abrirAba('marco', aba !== 'marco');
+}
+async function desenharMarco() {
+  const mc = marcoAberto ? marcos.find((x) => x.id === marcoAberto) : rascunho;
+  if (!mc) { $('#detalheMarco').innerHTML = '<div class="vazio">Marco não encontrado (foi apagado?).</div>'; return; }
+  const novo = !mc.id, r = novo ? null : resumoMarco(mc), j = jogoPorId(mc.jogo);
+  const opt = (lista, atual) => lista.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(atual ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const et = mc.etapas || [];
+  const cms = novo ? [] : comentarios.filter((c) => c.marco_id === mc.id);
+  const pend = novo ? [] : await Promise.all(r.ms.slice(0, 25).map(async (m) => { const st = D.ESTADOS[m.status] || D.ESTADOS.espera; return `<div class="pend"><span class="g" style="--cor:${st.cor}">${st.glifo}</span><a href="#" data-abrir-missao="${esc(m.id)}">${esc(m.titulo)}</a><span class="sub">${esc(m.pessoa)} · ${D.ha(m.inicio)} · ${comoPendurou(m)}</span><button class="mini-x" data-despendurar="${esc(m.id)}" title="Não é deste marco">×</button></div>`; }));
+  const urls = novo || !r.minis.length ? [] : await R.urlsMiniaturas(r.minis.slice(0, 8).map((x) => x.caminho)).catch(() => []);
+  const vivos = novo ? [] : await Promise.all(r.agentes.map(async (a) => `<div class="quem-linha"><img src="${await retratoDe(a.m.nome)}" alt=""><b>${esc(tituloAgente(a.m))}</b><span class="sub2">${esc(primeiraFrase(frase(a.m.ult), 80))}</span></div>`));
+  $('#detalheMarco').innerHTML = `
+    <div class="marco-form" style="--cor:${j.cor}">
+      <input id="mTitulo" class="m-titulo" maxlength="200" placeholder="Nome do marco (ex.: Trailer de lançamento)" value="${esc(mc.titulo)}">
+      <div class="m-grade">
+        <label>Coluna<select id="mColuna">${opt(COLUNAS.map((c) => [c.id, `${c.icone} ${c.nome}`]), mc.coluna)}</select></label>
+        <label>Jogo<select id="mJogo">${opt(todosJogos().map((x) => [x.id, `${x.icone} ${x.nome}`]), mc.jogo)}</select></label>
+        <label>Setor<select id="mSetor">${opt(SETORES.map((x) => [x.id, `${x.icone} ${x.nome}`]), mc.setor)}</select></label>
+        <label>Dono<select id="mResp">${opt([['', '—'], ...pessoas().map((p) => [p, p])], mc.responsavel)}</select></label>
+        <label>Prioridade<select id="mPri">${opt([[1, '🔥 Alta'], [2, 'Normal'], [3, 'Baixa']], mc.prioridade)}</select></label>
+        <label>Prazo<input id="mPrazo" type="date" value="${esc(mc.prazo || '')}"></label>
+      </div>
+      <textarea id="mDesc" rows="3" maxlength="4000" placeholder="O que é este marco? Quando ele está pronto?">${esc(mc.descricao)}</textarea>
+      <div class="bloco"><h4>Etapas ${et.length ? `(${et.filter((e) => e.feito).length}/${et.length})` : ''}</h4>
+        ${et.map((e, i) => `<label class="etapa-m ${e.feito ? 'feita' : ''}"><input type="checkbox" data-etapa="${i}" ${e.feito ? 'checked' : ''}><span>${esc(e.t)}</span>${e.por ? `<small>${esc(e.por)}</small>` : ''}<button type="button" class="mini-x" data-tirar-etapa="${i}">×</button></label>`).join('')}
+        <form id="formEtapa" class="linha"><input id="novaEtapa" maxlength="200" placeholder="+ etapa (ex.: roteiro, gravação, edição…)"><button class="btn mini">+</button></form></div>
+      <details class="bloco"><summary><h4 style="display:inline">Para pendurar sozinho e para as IAs</h4></summary>
+        <label class="m-lin">Palavras-chave <input id="mPalavras" maxlength="300" placeholder="ex.: trailer, lançamento, steam" value="${esc(mc.palavras)}"></label>
+        <p class="sub" style="text-align:left">Pedidos com estas palavras (no mesmo jogo) se penduram neste marco.</p>
+        <label class="m-lin">Área <input id="mArea" maxlength="200" placeholder="ex.: HUD, inimigos, vídeo" value="${esc(mc.area)}"></label>
+        <label class="m-lin">Arquivos <input id="mArquivos" maxlength="500" placeholder="ex.: scripts/ui/*, data/classes.json" value="${esc(mc.arquivos)}"></label>
+        <label class="m-lin">Branch <input id="mBranch" maxlength="120" placeholder="ex.: gen-190-loja" value="${esc(mc.branch)}"></label>
+        <p class="sub" style="text-align:left">As IAs olham Área/Arquivos/Branch para você e o Kenny não mexerem no mesmo lugar ao mesmo tempo.</p></details>
+      <div class="linha">${novo ? '<button class="btn forte" id="criarMarco">Criar marco</button>' : `<button class="btn forte" id="mandarMarco">▶ Mandar para a assistente</button><span class="espaco"></span><button class="btn perigo" id="apagarMarco">Apagar</button>`}</div>
+    </div>
+    ${novo ? '' : `
+    ${vivos.length ? `<div class="bloco destaque"><h4>⚙️ Trabalhando nele agora</h4>${vivos.join('')}</div>` : ''}
+    <div class="bloco"><h4>Pedidos pendurados (${r.ms.length})</h4>${pend.join('') || '<p class="sub" style="text-align:left">Nenhum ainda. Mande pelo botão acima, ou peça algo com as palavras-chave do marco.</p>'}</div>
+    ${urls.filter(Boolean).length ? `<div class="bloco"><h4>Resultados</h4><div class="grade-galeria">${r.minis.slice(0, 8).map((mi, i) => urls[i] ? `<div class="mini-card" data-mini="${i}"><div class="${mi.video ? 'play' : ''}"><img src="${urls[i]}" alt=""></div><div>${esc(mi.nome)}</div></div>` : '').join('')}</div></div>` : ''}
+    <div class="bloco"><h4>Comentários</h4>${cms.map((c) => `<div class="coment" style="--cor:${corPessoa(c.pessoa)}"><b>${esc(c.pessoa)}</b> <span class="sub2">${D.ha(new Date(c.criado).getTime())}</span><div>${esc(c.texto)}</div></div>`).join('')}
+      <form id="formComent" class="linha"><input id="novoComent" maxlength="2000" placeholder="Comentar…"><button class="btn mini">Enviar</button></form></div>
+    <p class="sub" style="text-align:left">Criado por ${esc(mc.criado_por || '?')} · ${D.ha(new Date(mc.criado).getTime())}${mc.concluido ? ` · concluído ${D.ha(new Date(mc.concluido).getTime())}` : ''}</p>`}`;
+  const el = $('#detalheMarco');
+  const campo = { mTitulo: 'titulo', mColuna: 'coluna', mJogo: 'jogo', mSetor: 'setor', mResp: 'responsavel', mPri: 'prioridade', mPrazo: 'prazo', mDesc: 'descricao', mPalavras: 'palavras', mArea: 'area', mArquivos: 'arquivos', mBranch: 'branch' };
+  el.onchange = async (e) => {
+    const k = campo[e.target.id];
+    if (k) {
+      let v = e.target.value; if (k === 'prioridade') v = Number(v); if ((k === 'prazo' || k === 'responsavel') && !v) v = null;
+      if (novo) { rascunho[k] = v; return; }
+      if (k === 'titulo' && !v.trim()) return;
+      if (k === 'coluna') return moverMarco(mc, { id: mc.id, coluna: v });
+      mc[k] = v; try { await salvar({ id: mc.id, [k]: v }); desenharQuadro(); } catch (err) { toast({ titulo: 'Não salvei', texto: err.message, cor: '#ef6a55' }); }
+      return;
+    }
+    const ch = e.target.closest('[data-etapa]');
+    if (ch) { const lista = [...(mc.etapas || [])]; lista[Number(ch.dataset.etapa)] = { ...lista[Number(ch.dataset.etapa)], feito: ch.checked, por: ch.checked ? EU.pessoa : undefined }; mc.etapas = lista; if (!novo) await salvar({ id: mc.id, etapas: lista }).catch(() => {}); desenharMarco(); desenharQuadro(); }
+  };
+  el.onclick = async (e) => {
+    const am = e.target.closest('[data-abrir-missao]'); if (am) { e.preventDefault(); return abrirMissao(am.dataset.abrirMissao); }
+    const te = e.target.closest('[data-tirar-etapa]'); if (te) { e.preventDefault(); const lista = (mc.etapas || []).filter((_, i) => i !== Number(te.dataset.tirarEtapa)); mc.etapas = lista; if (!novo) await salvar({ id: mc.id, etapas: lista }).catch(() => {}); desenharMarco(); return; }
+    const dp = e.target.closest('[data-despendurar]'); if (dp) { if (DEMO) { vinculos.set(dp.dataset.despendurar, null); mudouMarcos(); desenharMarco(); } else R.vincular(dp.dataset.despendurar, null).catch((err) => toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' })); return; }
+    const mi = e.target.closest('[data-mini]'); if (mi) { const i = Number(mi.dataset.mini); abrirMidia(r.minis[i], urls[i], r.minis[i].pessoa); }
+  };
+  $('#formEtapa').onsubmit = async (e) => {
+    e.preventDefault(); const t = $('#novaEtapa').value.trim(); if (!t) return;
+    mc.etapas = [...(mc.etapas || []), { t, feito: false }];
+    if (!novo) await salvar({ id: mc.id, etapas: mc.etapas }).catch((err) => toast({ titulo: 'Não salvei', texto: err.message, cor: '#ef6a55' }));
+    desenharMarco(); setTimeout(() => $('#novaEtapa')?.focus(), 0); desenharQuadro();
+  };
+  $('#criarMarco')?.addEventListener('click', async () => {
+    rascunho.titulo = $('#mTitulo').value.trim(); rascunho.descricao = $('#mDesc').value;
+    if (!rascunho.titulo) { $('#mTitulo').focus(); return; }
+    try { const d = await salvar(rascunho); marcoAberto = d.id; rascunho = null; desenharMarco(); desenharQuadro(); toast({ titulo: 'Marco criado', texto: d.titulo, cor: jogoPorId(d.jogo).cor }); }
+    catch (err) { toast({ titulo: 'Não criei', texto: err.message, cor: '#ef6a55' }); }
+  });
+  $('#apagarMarco')?.addEventListener('click', async () => {
+    if (!confirm(`Apagar o marco “${mc.titulo}”? Os pedidos continuam no histórico.`)) return;
+    try { if (DEMO) marcos = marcos.filter((x) => x !== mc); else await R.apagarMarco(mc.id); marcos = marcos.filter((x) => x.id !== mc.id); mudouMarcos(); fecharGaveta(); desenharQuadro(); } catch (err) { toast({ titulo: 'Não apaguei', texto: err.message, cor: '#ef6a55' }); }
+  });
+  $('#mandarMarco')?.addEventListener('click', () => mandarMarco(mc));
+  $('#formComent')?.addEventListener('submit', async (e) => {
+    e.preventDefault(); const t = $('#novoComent').value.trim(); if (!t) return;
+    try { if (DEMO) comentarios.push({ id: Date.now(), marco_id: mc.id, pessoa: EU.pessoa, texto: t, criado: new Date().toISOString() }); else await R.comentar(mc.id, t); $('#novoComent').value = ''; if (DEMO) desenharMarco(); } catch (err) { toast({ titulo: 'Não enviei', texto: err.message, cor: '#ef6a55' }); }
+  });
+}
+// Abre (ou reaproveita) uma conversa com a assistente presa a este marco.
+async function mandarMarco(mc) {
+  let cv = conversas.find((c) => c.marco_id === mc.id && c.alvo === 'claude');
+  if (!cv && !DEMO) {
+    const projs = estados.get(EU.pessoa)?.info?.projetos || [];
+    const proj = projs.find((p) => jogoPorId(mc.jogo).id === 'cook' ? /cook/i.test(p.nome) : /genesis/i.test(p.nome))?.nome || projs[0]?.nome;
+    try { cv = await R.novaConversa({ titulo: `🏁 ${mc.titulo}`, alvo: 'claude', projeto: proj, marco_id: mc.id }); conversas = [cv, ...conversas]; }
+    catch (err) { toast({ titulo: 'Não abri a conversa', texto: err.message, cor: '#ef6a55' }); return; }
+  }
+  if (mc.coluna === 'afazer' || mc.coluna === 'ideias') moverMarco(mc, { id: mc.id, coluna: 'fazendo' });
+  if (cv) await abrirConversa(cv.id); else abrirAba('chat');
+  setTimeout(() => { $('#entrada').focus(); }, 50);
 }
 
 // ---------- galeria ----------
@@ -951,7 +1298,7 @@ function desenharDupla() {
     const eu = r.pessoa === EU.pessoa;
     let corpo;
     if (r.cor === 'missao') {
-      const c = lerJson(r.texto), f = frentePorId(c.frente) || FRENTES[0], existe = D.missoes().some((m) => m.id === c.id);
+      const c = lerJson(r.texto), f = frentePorId(c.frente) || frente('genesis', 'criacao'), existe = D.missoes().some((m) => m.id === c.id);
       corpo = `<button class="card-missao" data-abrir-missao="${esc(c.id || '')}" ${existe ? '' : 'disabled'} style="--cor:${f.cor}"><span class="cm-f">${f.icone} ${esc(f.nome)} · missão de ${esc(c.pessoa || '?')}</span><b>${esc(c.titulo || 'Missão')}</b><span class="cm-a">${existe ? 'Abrir a missão ›' : 'missão antiga (carregue no Histórico)'}</span></button>`;
     } else corpo = `<span class="txt">${comMencao(r.texto)}</span>`;
     const rs = reacoes.get(String(r.id));
@@ -999,7 +1346,7 @@ function desenharCatalogo() {
 
 // ---------- "Mais" (celular) ----------
 function desenharMais() {
-  const itens = [['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['catalogo', '◎', 'Quem é quem', 'Agentes, skills, conectores'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
+  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['catalogo', '◎', 'Quem é quem', 'Agentes, skills, conectores'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
   $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
   $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
 }
@@ -1044,7 +1391,7 @@ function abrirAjuda() {
       ${Object.keys(TIPOS).map((k) => `<p>${etiquetaTipo(k)} ${esc(TIPOS[k].curta)}</p>`).join('')}
       <p>A lista completa, com as skills e os conectores de cada um, fica em <b>Quem é quem</b> (tecla I).</p>
       <h3>Frentes</h3>
-      <p>${FRENTES.map((f) => `${f.icone} <b>${esc(f.nome)}</b>`).join(' · ')}. Cada missão cai sozinha numa frente. A faixa em cima do mapa mostra quem está trabalhando em cada uma; clique para ver só ela.</p>
+      <p>Dois setores: ${SETORES.map((x) => `${x.icone} <b>${x.nome}</b> (${esc(x.descricao.toLowerCase())})`).join(' e ')}. Dois jogos: ${JOGOS.slice(0, 2).map((j) => `${j.icone} <b>${esc(j.nome)}</b>`).join(' e ')}. Cada missão cai sozinha no jogo e no setor certos.</p><p>No mapa, a ala da esquerda é Criação e a da direita é Marketing; cada fileira é um jogo. <b>Quem está sentado está trabalhando</b>; quem está livre fica na copa. A faixa <b>Agora</b> lista todo mundo que está trabalhando.</p>
       <p>Cada um tem uma sala de vidro com a assistente na recepção. As baias da sua equipe ficam do lado da sua sala.</p>
       <h3>Estados</h3>
       <div class="legenda">${est('alerta')}${est('erro')}${est('trab')}${est('fim')}${est('livre')}</div>
@@ -1173,6 +1520,23 @@ async function iniciarDemo() {
     { id: 5, pessoa: 'Kenny', texto: 'Olha o baú do jogo novo @Rafael 👀', cor: 'msg', criado: quando(9) },
     { id: 6, pessoa: 'Rafael', texto: '🔥 4', cor: 'reacao', criado: quando(8) },
   ].reverse();
+  const dia = (d) => new Date(ag + d * 86400e3).toISOString().slice(0, 10);
+  temQuadro = true;
+  marcos = [
+    { id: 1, titulo: 'Short "Raio + Fogo = ?"', descricao: 'Short de 20 s para o YouTube mostrando o combo.', jogo: 'genesis', setor: 'marketing', coluna: 'fazendo', responsavel: 'Rafael', prioridade: 1, prazo: dia(2), etapas: [{ t: 'Roteiro', feito: true, por: 'Rafael' }, { t: 'Gravação', feito: true }, { t: 'Edição no compasso', feito: false }, { t: 'Nota do Codex', feito: false }], palavras: 'short, raio, fogo', area: 'vídeo', arquivos: 'tools/video/*', branch: 'gen-186-trailer-v2', ordem: 1, criado_por: 'Rafael', criado: quando(3000) },
+    { id: 2, titulo: 'Dash do player', descricao: 'Dash com invencibilidade curta.', jogo: 'genesis', setor: 'criacao', coluna: 'fazendo', responsavel: 'Kenny', prioridade: 2, prazo: dia(-1), etapas: [{ t: 'Mecânica', feito: true }, { t: 'Teste automático', feito: false }], palavras: 'dash, player', area: 'player', arquivos: 'scripts/player/*', branch: 'v0.2-loja-classes', ordem: 2, criado_por: 'Kenny', criado: quando(5000) },
+    { id: 3, titulo: 'Inventário do Cook', descricao: 'Baú, slots e arrastar ingredientes.', jogo: 'cook', setor: 'criacao', coluna: 'fazendo', responsavel: 'Kenny', prioridade: 1, prazo: dia(5), etapas: [{ t: 'Modelo e tela separados', feito: true }, { t: 'Baú', feito: false }, { t: 'Arrastar itens', feito: false }], palavras: 'inventário, baú', area: 'UI', arquivos: '', branch: '', ordem: 3, criado_por: 'Kenny', criado: quando(4000) },
+    { id: 4, titulo: 'Trailer de lançamento', descricao: '60 s, para a página da Steam.', jogo: 'genesis', setor: 'marketing', coluna: 'afazer', responsavel: 'Rafael', prioridade: 1, prazo: dia(14), etapas: [], palavras: 'trailer, lançamento', area: '', arquivos: '', branch: '', ordem: 4, criado_por: 'Rafael', criado: quando(6000) },
+    { id: 5, titulo: 'Página da Steam do Cook', descricao: '', jogo: 'cook', setor: 'marketing', coluna: 'ideias', responsavel: null, prioridade: 2, prazo: null, etapas: [], palavras: 'steam', area: '', arquivos: '', branch: '', ordem: 5, criado_por: 'Kenny', criado: quando(7000) },
+    { id: 6, titulo: 'Balanceamento do Veterano', descricao: 'Taxa de vitória dos bots entre 45% e 55%.', jogo: 'genesis', setor: 'criacao', coluna: 'revisar', responsavel: 'Rafael', prioridade: 2, prazo: null, etapas: [{ t: 'Dragão do Inverno', feito: true }, { t: 'Morvane', feito: true }], palavras: 'balanceia, veterano, dragão', area: 'data/enemies.json', arquivos: '', branch: '', ordem: 6, criado_por: 'Rafael', criado: quando(9000) },
+    { id: 7, titulo: 'Escritório virtual 2.0', descricao: '', jogo: 'estudio', setor: 'criacao', coluna: 'feito', responsavel: 'Rafael', prioridade: 2, prazo: null, etapas: [], palavras: '', area: '', arquivos: '', branch: '', ordem: 7, criado_por: 'Rafael', criado: quando(9000), concluido: quando(160) },
+  ];
+  comentarios = [{ id: 1, marco_id: 1, pessoa: 'Kenny', texto: 'O corte do compasso 2 ficou top!', criado: quando(30) }];
+  D.adicionar([
+    ev(3, 'Kenny', 'Orquestrador', 'inicio', 'Faz o baú do inventário abrir com animação', { sessao: 's6', projeto: 'jogo-novo' }),
+    ev(2.5, 'Kenny', 'explorador', 'pedido', 'Orquestrador pediu: achar onde o baú abre', { sessao: 's6', projeto: 'jogo-novo' }),
+    ev(0.4, 'Kenny', 'explorador', 'atividade', '', { sessao: 's6', projeto: 'jogo-novo', ferramenta: 'Grep', alvo: 'abrir_bau em scripts' }),
+  ]);
   conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }];

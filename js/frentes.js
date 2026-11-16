@@ -1,44 +1,59 @@
-// Frentes de trabalho: os grandes blocos onde cada pedido (missão) se encaixa.
-// A classificação é automática: pela pasta do projeto, por quem trabalhou e pelas palavras do pedido.
-// Projeto desconhecido vira uma frente própria com o nome da pasta (assim o jogo novo do Kenny aparece sozinho).
+// Cada trabalho tem um JOGO (Genesis, Cook your way up…) e um SETOR (Criação ou Marketing).
+// A classificação é automática: o jogo sai da pasta do projeto; o setor, de quem trabalhou e das palavras do pedido.
 
-export const FRENTES = [
-  { id: 'genesis', nome: 'Genesis', icone: '🎮', cor: '#4fbf82', descricao: 'O jogo: código, arte, balanceamento, testes' },
-  { id: 'videos', nome: 'Vídeos do Genesis', icone: '🎬', cor: '#ef6a55', descricao: 'Trailers, Shorts, YouTube, roteiros e renders' },
-  { id: 'novo', nome: 'Jogo novo', icone: '🕹️', cor: '#5aa9e6', descricao: 'O jogo novo do Kenny' },
-  { id: 'estudio', nome: 'Estúdio', icone: '🏢', cor: '#a785f0', descricao: 'Este escritório, a ponte e as ferramentas da casa' },
+export const JOGOS = [
+  { id: 'genesis', nome: 'Genesis', icone: '🎮', cor: '#4fbf82' },
+  { id: 'cook', nome: 'Cook your way up', curto: 'Cook', icone: '🍳', cor: '#f0b43d' },
+  { id: 'estudio', nome: 'Estúdio', icone: '🏢', cor: '#a785f0' },
 ];
-// Para dar nome bonito a uma pasta (ex.: { 'meu-jogo': 'novo' } joga a pasta na frente "Jogo novo").
+export const SETORES = [
+  { id: 'criacao', nome: 'Criação', icone: '🛠️', cor: '#5aa9e6', descricao: 'Concepção, código, arte, desenvolvimento, balanceamento' },
+  { id: 'marketing', nome: 'Marketing', icone: '📣', cor: '#ef6a55', descricao: 'Vídeos, trailers, páginas do jogo, anúncios, redes' },
+];
+// Para amarrar uma pasta a um jogo na mão (ex.: { 'meu-jogo': 'cook' }).
 export const PASTAS = {};
 
-const VIDEO_PASTA = /trailer|reel|short|video|vídeo|aviso|teaser|youtube/i;
-const VIDEO_AGENTES = new Set(['editor-de-video', 'criador-de-conteudo', 'Render']);
-const VIDEO_TEXTO = /\bv[ií]deos?\b|trailer|\bshorts?\b|\breels?\b|youtube|remotion|thumbnail|miniatura do v|roteiro|legenda|render(iza)?|\bcortes?\b|narra[cç][aã]o|tiktok|instagram/i;
+const MKT_PASTA = /trailer|reel|short|video|vídeo|aviso|teaser|youtube|marketing|steam-page|pagina/i;
+const MKT_AGENTES = new Set(['editor-de-video', 'criador-de-conteudo', 'Render']);
+const MKT_TEXTO = /\bv[ií]deos?\b|trailer|\bshorts?\b|\breels?\b|youtube|remotion|thumbnail|roteiro|legenda|\bcortes?\b|narra[cç][aã]o|tiktok|instagram|an[uú]ncio|\bads?\b|campanha|p[aá]gina (da steam|do jogo)|steam page|press ?kit|marketing|divulga|post\b|twitter|\bx\.com|newsletter|influenc/i;
 const ESTUDIO_TEXTO = /escrit[oó]rio|est[uú]dio genesis|\bponte\b|genesis-estudio|supabase/i;
 
+export const jogoPorId = (id) => JOGOS.find((j) => j.id === id) || auto.get(id) || { id, nome: id, icone: '📁', cor: '#9a90a8' };
+export const setorPorId = (id) => SETORES.find((s) => s.id === id) || SETORES[0];
 const auto = new Map();
-function frenteDaPasta(nome, pessoa) {
-  const id = `pasta:${nome}`;
-  if (!auto.has(id)) {
-    const bonito = nome.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    auto.set(id, { id, nome: bonito, icone: '📁', cor: '#c9a34a', descricao: `Pasta ${nome}`, auto: true, pessoa });
-  }
-  return auto.get(id);
-}
-export const frentePorId = (id) => FRENTES.find((f) => f.id === id) || auto.get(id) || null;
-export const todasFrentes = () => [...FRENTES, ...auto.values()];
+export const todosJogos = () => [...JOGOS, ...auto.values()];
 
-// m: { projeto, pessoa, pedido, agentes:Set|[] }
-export function classificar({ projeto, pessoa, pedido, agentes }) {
+export function jogoDaPasta(projeto, pessoa, texto = '') {
   const p = String(projeto || '').toLowerCase();
-  const nomes = [...(agentes || [])];
-  if (PASTAS[p]) return frentePorId(PASTAS[p]) || FRENTES[0];
-  if (p === 'genesis-estudio' || p === 'genesis-escritorio' || ESTUDIO_TEXTO.test(pedido || '')) return FRENTES[3];
-  if (VIDEO_PASTA.test(p) || nomes.some((a) => VIDEO_AGENTES.has(a)) || VIDEO_TEXTO.test(pedido || '')) {
-    if (!p || p.startsWith('genesis')) return FRENTES[1];
-  }
-  if (!p || p.startsWith('genesis') || p === 'rafon') return FRENTES[0];
-  // Pasta que não é do Genesis: no Kenny, é o jogo novo; nos outros, vira frente própria.
-  if (pessoa === 'Kenny') return FRENTES[2];
-  return frenteDaPasta(p, pessoa);
+  if (PASTAS[p]) return PASTAS[p];
+  if (p === 'genesis-estudio' || p === 'genesis-escritorio' || ESTUDIO_TEXTO.test(texto)) return 'estudio';
+  if (/cook/.test(p) || /cook your way/i.test(texto)) return 'cook';
+  if (!p || p.startsWith('genesis') || p === 'rafon') return 'genesis';
+  // Pasta fora do Genesis no PC do Kenny: é o Cook (até alguém dizer outra coisa).
+  if (pessoa === 'Kenny') return 'cook';
+  const id = `pasta:${p}`;
+  if (!auto.has(id)) auto.set(id, { id, nome: p.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), icone: '📁', cor: '#c9a34a', auto: true });
+  return id;
 }
+export function setorDe({ projeto, pedido, agentes }) {
+  const nomes = [...(agentes || [])];
+  if (MKT_PASTA.test(String(projeto || '')) || nomes.some((a) => MKT_AGENTES.has(a)) || MKT_TEXTO.test(pedido || '')) return 'marketing';
+  return 'criacao';
+}
+
+// Frente = jogo + setor. Mantém { id, nome, icone, cor } para o resto da página.
+const cacheFrentes = new Map();
+export function frente(jogo, setor) {
+  const k = `${jogo}:${setor}`;
+  if (!cacheFrentes.has(k)) {
+    const j = jogoPorId(jogo), s = setorPorId(setor);
+    cacheFrentes.set(k, { id: k, jogo, setor, nome: `${j.curto || j.nome} · ${s.nome}`, icone: j.icone, iconeSetor: s.icone, cor: j.cor, corSetor: s.cor, descricao: `${j.nome}: ${s.descricao}` });
+  }
+  return cacheFrentes.get(k);
+}
+export function classificar(m) {
+  return frente(jogoDaPasta(m.projeto, m.pessoa, m.pedido), setorDe(m));
+}
+export const frentePorId = (id) => { if (!id) return null; const [j, s] = id.split(':'); return s ? frente(j, s) : null; };
+export const FRENTES = JOGOS.flatMap((j) => SETORES.map((s) => frente(j.id, s.id)));
+export const todasFrentes = () => [...cacheFrentes.values()];
