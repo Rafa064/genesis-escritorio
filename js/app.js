@@ -72,6 +72,7 @@ async function iniciar() {
     vinculos = new Map((tudo.vinculos || []).map((v) => [v.missao, v.marco_id]));
     for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
     D.adicionar(tudo.eventos.map(D.deLinha));
+    idSincronizado = tudo.eventos.reduce((mx, e) => Math.max(mx, e.id || 0), 0);
     mundo = await criarMundo();
     const minhaSala = SALAS[Math.max(0, pessoas().indexOf(EU.pessoa))];
     await mundo.criarEu(EU.pessoa, [minhaSala.dono[0], minhaSala.dono[1] + 0.8]);
@@ -841,14 +842,15 @@ function abrirDeUrl(u) {
 }
 
 // ---------- volta do celular: busca o que chegou enquanto o app dormia ----------
-let escondidoDesde = 0, ressincronizando = false, ultimaReconexao = 0;
+let escondidoDesde = 0, ressincronizando = false, ultimaReconexao = 0, idSincronizado = 0;
 async function ressincronizar() {
   if (DEMO || ressincronizando || !EU) return;
   ressincronizando = true;
   try {
     const ultimo = D.eventos.at(-1)?.t || Date.now() - 3600e3;
-    const idMax = D.eventos.reduce((mx, e) => (typeof e.id === 'number' && e.id > mx ? e.id : mx), 0);
-    const n = await R.novidadesDesde(ultimo, idMax);
+    // Cursor da última sincronização COMPLETA (eventos avulsos do tempo real não o adiantam).
+    const n = await R.novidadesDesde(ultimo, idSincronizado);
+    idSincronizado = n.eventos.reduce((mx, e) => Math.max(mx, e.id || 0), idSincronizado);
     D.adicionar(n.eventos.map(D.deLinha));
     if (n.recados) recados = n.recados;
     for (const e of n.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
@@ -860,7 +862,8 @@ async function ressincronizar() {
     if (!['joined', 'joining'].includes(R.estadoCanal()) && Date.now() - ultimaReconexao > 30e3) { ultimaReconexao = Date.now(); R.reconectarTabelas(); }
     versaoMundo = -1; sincronizarMundo(); agendarInterface();
     if (['chat', 'dupla', 'atencao'].includes(aba)) desenharAba();
-    if (conversaAtual != null && aba === 'chat') abrirConversa(conversaAtual);
+    chatCarregadoDe = undefined; // a conversa recarrega na próxima vez que for aberta
+    if (aba === 'chat') desenharChatCompleto();
   } catch (e) { console.warn('ressincronizar:', e); }
   ressincronizando = false;
 }
