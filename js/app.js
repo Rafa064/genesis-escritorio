@@ -312,7 +312,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
-  else if (k === 'tab') { e.preventDefault(); alternarAba('equipe'); }
+  else if (k === 'tab') { e.preventDefault(); if ($('#equipeVista').hidden) abrirEquipeVista(); else fecharEquipeVista(); }
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
   else if (k === 'g') alternarAba('galeria');
@@ -326,7 +326,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'k') irAtePessoa(outraPessoa());
   else if (k === '+' || k === '=') mudarZoom(1);
   else if (k === '-') mudarZoom(-1);
-  else if (k === 'escape') fecharGaveta();
+  else if (k === 'escape') { if (!$('#equipeVista').hidden && $('#gaveta').classList.contains('conversa')) fecharEquipeVista(); else fecharGaveta(); }
   else if (/^[1-6]$/.test(k)) fazerEmote(['👋', '✅', '❓', '☕', '🎉', '🔥'][Number(k) - 1]);
 });
 addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
@@ -1638,7 +1638,7 @@ function itensEquipe() {
     if (m.nome === 'Orquestrador') continue;
     const t = tipoDe(m.nome), tipo = t === 'plugin' ? 'conector' : t;
     const nome = tipo === 'conector' ? (m.nome === 'HuggingFace' ? 'hf' : m.nome.toLowerCase()) : m.nome;
-    if (!mapa.has(chaveItem(tipo, nome))) add(tipo, nome, p, { origem: 'visto trabalhando' });
+    add(tipo, nome, p, mapa.has(chaveItem(tipo, nome)) ? {} : { origem: 'visto trabalhando' }); // junta o dono mesmo se já estava na lista de outro
   }
   return [...mapa.values()];
 }
@@ -1651,7 +1651,7 @@ function usoEquipe() {
   for (const m of D.missoes()) {
     if (m.inicio < desde || (filtroPesEq && m.pessoa !== filtroPesEq)) continue;
     const ks = new Set(['assistente|assistente']);
-    for (const x of D.escalacao(m)) ks.add(chaveItem(x.nome === 'Codex' ? 'ia' : x.tipo, x.nome));
+    for (const x of D.escalacao(m)) if (x.estado !== 'planejado') ks.add(chaveItem(x.nome === 'Codex' ? 'ia' : x.tipo, x.nome)); // só o que entrou em campo conta como uso
     for (const k of ks) { if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(m); }
   }
   cacheUsoEq = { v, mapa };
@@ -1663,6 +1663,7 @@ function estadoItem(x) {
     const nome = x.tipo === 'assistente' ? 'Orquestrador' : x.nome;
     let melhor = null;
     for (const p of x.donos) {
+      if (filtroPesEq && p !== filtroPesEq) continue;
       const mesa = x.tipo === 'assistente' ? (D.abas().find((a) => a.pessoa === p) || D.mesa(p, nome)) : D.mesa(p, nome);
       if (!mesa?.ult) continue;
       const st = D.estadoDe(mesa);
@@ -1688,9 +1689,10 @@ function abrirEquipeVista() {
   if (innerWidth <= 760) $('#gaveta').classList.add('fechada');
 }
 function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarVista(); } }
-let pendenteEq = false;
+let pendenteEq = false, deNovoEq = false; // se pedirem enquanto desenha, desenha de novo no fim (não perde o filtro)
 async function desenharEquipeVista() {
-  if (!EU || $('#equipeVista').hidden || pendenteEq) return;
+  if (!EU || $('#equipeVista').hidden) return;
+  if (pendenteEq) { deNovoEq = true; return; }
   pendenteEq = true;
   try {
     const pes = ['', ...pessoas()];
@@ -1708,7 +1710,7 @@ async function desenharEquipeVista() {
       html += `<section class="eq-sec" style="--cor:${info.cor}"><h3>${info.icone} ${info.plural} <small>${doTipo.length}</small></h3><p class="eq-explica">${esc(info.explica)}</p><div class="eq-grade">${(await Promise.all(doTipo.map(cartaoItem))).join('')}</div></section>`;
     }
     $('#equipeCorpo').innerHTML = html + (lista.length ? '' : '<div class="vazio">Nada encontrado.</div>');
-  } finally { pendenteEq = false; }
+  } finally { pendenteEq = false; if (deNovoEq) { deNovoEq = false; desenharEquipeVista(); } }
 }
 function abrirItem(tipo, nome) { itemAberto = chaveItem(tipo, nome); abrirAba('item', true); }
 async function desenharItem() {
@@ -1873,7 +1875,7 @@ async function iniciarDemo() {
     ev(48, 'Rafael', 'editor-de-video', 'pedido', 'Orquestrador pediu: montar Short Raio + Fogo'),
     ev(40, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Bash', alvo: 'Medir cortes ::: node tools/video/beatgrid.mjs', modo: 'executar' }),
     ev(12, 'Rafael', 'Codex', 'fim', 'Nota 8/10: o corte do compasso 3 atrasa; resto limpo.'),
-    ev(5, 'Rafael', 'Orquestrador', 'atividade', '', { ferramenta: 'Write', alvo: 'SKILL.md', modo: 'escrever' }),
+    ev(5, 'Rafael', 'Orquestrador', 'atividade', '', { ferramenta: 'Write', alvo: 'SKILL.md', modo: 'escrever', arq: '.claude/skills/thumbnail-do-short/SKILL.md' }),
     ev(4, 'Rafael', 'Render', 'inicio', 'Orquestrador: npx remotion render ShortRaioFogo', { ferramenta: 'Bash', alvo: 'npx remotion render ShortRaioFogo' }),
     ev(3, 'Rafael', 'artista-3d', 'alerta', 'pediu permissão: generate_3d', { ferramenta: 'mcp__blender__generate_3d' }),
     ev(2, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Edit', alvo: 'ShortRaioFogo.tsx', modo: 'escrever' }),

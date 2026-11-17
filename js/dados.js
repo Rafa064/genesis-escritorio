@@ -213,24 +213,32 @@ export function escalacao(m) {
   const por = (tipo, nome) => itens.get(chave(tipo, nome));
   const add = (tipo, nome, extra = {}) => { const k = chave(tipo, nome); const x = itens.get(k) || { tipo, nome, estado: 'planejado', planejado: false }; itens.set(k, { ...x, ...extra }); return itens.get(k); };
   for (const p of m.plano || []) add(p.tipo === 'conector' ? 'conector' : p.tipo, p.nome, { por: p.por, novo: !!p.novo, planejado: true });
-  const ativoNaSessao = (nome) => { const mesa = equipes().get(m.pessoa)?.get(nome); return !!mesa && [...(mesa.abertas?.keys() || [])].some((k) => k.startsWith((m.sessao || '?') + '|')) && ativos(mesa) > 0; };
+  // Cópia deste agente aberta NESTA sessão e ainda recente (30 min), olhando a mesma entrada.
+  const ativoNaSessao = (nome) => { const mesa = equipes().get(m.pessoa)?.get(nome); if (!mesa?.abertas) return false; for (const [k, t] of mesa.abertas) if (k.startsWith((m.sessao || '?') + '|') && Date.now() - t < 30 * 60e3) return true; return false; };
   for (const e of m.passos) {
     if (e.agente !== 'Orquestrador' && e.agente) {
       const tipo = PROGRAMAS_ESC.has(e.agente) ? 'programa' : ['PixelLab', 'Blender', 'HuggingFace'].includes(e.agente) ? 'conector' : 'agente';
       const nome = tipo === 'conector' ? e.agente.toLowerCase().replace('huggingface', 'hf') : e.agente;
       const x = por(tipo, nome) || add(tipo, nome);
-      x.estado = e.tipo === 'fim' ? 'pronto' : e.tipo === 'erro' ? 'erro' : x.estado === 'pronto' ? 'pronto' : 'trabalhando';
+      x.estado = e.tipo === 'fim' ? 'pronto' : e.tipo === 'erro' ? 'erro' : 'trabalhando'; // chamado de novo depois de pronto = trabalhando de novo
       x.ult = e;
     }
     if (e.ferramenta === 'Skill' && e.alvo) { const nome = String(e.alvo).split(':').pop(); const x = por('skill', nome) || add('skill', nome); x.estado = 'usado'; }
     const con = conectorDe(e.ferramenta);
     if (con) { const k = String(e.ferramenta).split('__')[1]; const x = por('conector', k) || [...itens.values()].find((y) => y.tipo === 'conector' && conectorDe(`mcp__${y.nome}__x`) === con) || add('conector', k); x.estado = 'usado'; }
     // agente/skill NOVO criado nesta missão (arquivo .claude/agents/<nome>.md ou SKILL.md)
-    if (/^(Write|Edit)$/.test(e.ferramenta || '')) for (const x of itens.values()) if (x.novo && (e.alvo === `${x.nome}.md` || (x.tipo === 'skill' && e.alvo === 'SKILL.md'))) x.criado = true;
+    if (/^(Write|Edit)$/.test(e.ferramenta || '') && e.arq) for (const x of itens.values()) {
+      const alvo = x.tipo === 'agente' ? `agents/${x.nome}.md` : x.tipo === 'skill' ? `skills/${x.nome}/SKILL.md` : null;
+      if (x.novo && alvo && e.arq.toLowerCase().endsWith(alvo.toLowerCase())) x.criado = true;
+    }
   }
   for (const x of itens.values()) if (x.novo && x.criado && x.estado === 'planejado') x.estado = 'pronto';
   // quem ainda está "trabalhando" mas a missão acabou (ou a cópia já fechou) vira pronto
-  for (const x of itens.values()) if (x.estado === 'trabalhando' && x.tipo === 'agente' && (m.fim || !ativoNaSessao(x.nome)) && Date.now() - (x.ult?.t || 0) > 60e3) x.estado = 'pronto';
+  for (const x of itens.values()) {
+    if (x.tipo !== 'agente' || !x.ult) continue;
+    if (!m.fim && ativoNaSessao(x.nome)) x.estado = 'trabalhando';                 // ainda tem cópia trabalhando nesta sessão
+    else if (x.estado === 'trabalhando' && Date.now() - x.ult.t > 60e3) x.estado = 'pronto';
+  }
   const ordem = { agente: 0, programa: 1, conector: 2, skill: 3, plugin: 4 };
   return [...itens.values()].sort((a, b) => ordem[a.tipo] - ordem[b.tipo] || (b.planejado - a.planejado));
 }
