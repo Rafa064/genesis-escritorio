@@ -1452,7 +1452,8 @@ function desenharChat() {
     else html += `<div class="msg ${c.de}">${esc(c.texto)}</div>`;
   }
   fecharPassos();
-  const pend = aprovacoes.filter((a) => !conv || a.conversa_id === conv.id || !a.conversa_id);
+  // No chat só as aprovações desta conversa (as do terminal ficam no Resumo).
+  const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && (!conv || a.conversa_id === conv.id || !a.conversa_id));
   html += pend.map(cartaoAprovacao).join('');
   msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Peça algo!` : `Oi, ${esc(EU.pessoa)}! Crie uma conversa (+ Nova) para cada tarefa: com a assistente (Claude) ou com o Codex (GPT).`}</div>`;
   ligarAprovacoes(msgs);
