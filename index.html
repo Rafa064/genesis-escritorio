@@ -61,7 +61,7 @@
       <button id="btnAjuda" title="Ajuda e legenda (?)">?</button>
     </div>
     <div id="toasts"></div>
-    <div id="boasVindas" class="painel-px" hidden><b>Bem-vindo ao Estúdio!</b><span><b>WASD</b> anda · <b>Shift</b> skate · <b>E</b> fala com quem está perto · <b>Tab</b> vê toda a equipe · <b>C</b> chat · <b>?</b> ajuda</span><button class="btn" id="fecharBoasVindas">Entendi</button></div>
+    <div id="boasVindas" class="painel-px" hidden><b>Bem-vindo ao Estúdio!</b><span>Quem está <b>sentado</b> está trabalhando · <b>clique</b> num boneco para ver o que faz · o <b>sino</b> mostra o que precisa de você</span><button class="btn" id="fecharBoasVindas">Entendi</button></div>
   </div>
 
   <aside id="gaveta" class="painel-px">
@@ -134,7 +134,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
+<nav id="abasCelular"><button data-aba="atencao"><span>🔔</span>Resumo<b class="badge" id="badgeResumoCel" hidden>0</b></button><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

@@ -58,9 +58,54 @@ export async function eventosAntes(t, n = 2500) {
   return data.reverse();
 }
 
+// Volta do celular (app suspenso) ou reconexão: busca o que chegou enquanto a página dormia.
+export async function novidadesDesde(t) {
+  const opcional = async (q) => { const r = await q; return r.error ? null : r.data; };
+  // Eventos em páginas de 1000 (o limite da API) até chegar no presente.
+  const eventos = [];
+  let desde = t - 60e3, idMin = 0;
+  for (let i = 0; i < 10; i++) {
+    const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').gte('t', desde).order('t', { ascending: true }).order('id', { ascending: true }).limit(1000);
+    if (error) throw error;
+    const novos = data.filter((x) => x.t > desde || x.id > idMin);
+    eventos.push(...novos);
+    if (data.length < 1000 || !novos.length) break;
+    desde = data.at(-1).t; idMin = data.at(-1).id;
+  }
+  const [rec, est, apr, conversas, marcos, vinculos, comentarios, jornal] = await Promise.all([
+    sb.from('recados').select('*').order('criado', { ascending: false }).limit(500),
+    sb.from('estado').select('*'),
+    opcional(sb.from('aprovacoes').select('*').eq('status', 'pendente').order('id')),
+    opcional(sb.from('conversas').select('*').order('atualizado', { ascending: false }).limit(200)),
+    opcional(sb.from('marcos').select('*').order('ordem')),
+    opcional(sb.from('marcos_missoes').select('*')),
+    opcional(sb.from('marcos_comentarios').select('*').order('id').limit(2000)),
+    opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
+  ]);
+  return { eventos, recados: rec.data, estado: est.data || [], aprovacoes: apr, conversas, marcos, vinculos, comentarios, jornal };
+}
+export async function lerMeuInfo() { const { data } = await sb.from('estado').select('info').eq('user_id', euId).maybeSingle(); return data?.info || {}; }
+// O site grava no MEU estado.info só o que é dele (notificações e modo longe); a ponte preserva.
+export async function mudarMeuInfo(fn) {
+  const { data, error } = await sb.from('estado').select('info').eq('user_id', euId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Sua ponte ainda não ligou nenhuma vez neste login.');
+  const info = fn({ ...(data.info || {}) });
+  const r = await sb.from('estado').update({ info }).eq('user_id', euId);
+  if (r.error) throw r.error;
+  return info;
+}
+
 // ---------- tempo real ----------
+let canalTabelas = null;
+export function reconectarTabelas() { if (canalTabelas) { sb.removeChannel(canalTabelas); canalTabelas = null; } ligarTabelas(); }
+export const estadoCanal = () => canalTabelas?.state || 'fechado';
 export function conectar({ x, y, status }) {
-  sb.channel('tabelas')
+  ligarTabelas();
+  ligarPresenca({ x, y, status });
+}
+function ligarTabelas() {
+  canalTabelas = sb.channel('tabelas-' + Date.now())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'eventos' }, (p) => emitir('evento', p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'recados' }, (p) => emitir('recado', p))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'estado' }, (p) => emitir('estado', p.new))
@@ -73,6 +118,8 @@ export function conectar({ x, y, status }) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'marcos_missoes' }, (p) => emitir('vinculo', p))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'marcos_comentarios' }, (p) => emitir('comentario', p))
     .subscribe((s) => emitir('conexao', s));
+}
+function ligarPresenca({ x, y, status }) {
   canal = sb.channel('escritorio', { config: { private: true, presence: { key: euPessoa }, broadcast: { self: false } } });
   canal
     .on('presence', { event: 'sync' }, () => emitir('presenca', canal.presenceState()))

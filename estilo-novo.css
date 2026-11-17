@@ -265,3 +265,53 @@ select, input[type=date] { border-radius: 8px; box-shadow: none !important; bord
   .quadro-topo #novoMarco::before { content: '+'; font: 600 20px var(--ui); }
   .quadro-topo .btn { padding: 6px 10px; }
 }
+
+/* ---------- Resumo (caixa de entrada) ---------- */
+.cartao-av { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; margin-bottom: 14px; background: var(--painel2); border: 1px solid var(--borda); border-radius: var(--raio); }
+.cartao-av .pc { font: 500 13px var(--ui); }
+.cartao-av .pc.on { color: #7fd6a3; }
+.cartao-av .pc.off { color: #f0b46a; }
+.chave-longe { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.chave-longe input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--laranja); flex: none; }
+.chave-longe b { font: 600 14px var(--ui); display: block; }
+.chave-longe small { color: var(--fraco); font: 12.5px var(--ui); }
+.dica-av { margin: 0; color: var(--fraco); font: 13px var(--ui); }
+.ok-av { color: #7fd6a3; font: 500 13px var(--ui); }
+button.link { background: none; border: 0; padding: 0; color: var(--laranja); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cx { margin-bottom: 18px; }
+.cx h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font: 600 13px var(--ui); color: var(--fraco); text-transform: uppercase; letter-spacing: .04em; }
+.cx h3 small { background: var(--painel3); color: var(--texto); border-radius: 999px; padding: 0 8px; font: 600 11.5px var(--ui); }
+.cx.urgente h3 { color: #ffd23f; }
+.cx .vazio { padding: 10px 2px; color: var(--muito-fraco); }
+.pronto { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; margin-bottom: 8px; padding: 10px 12px 10px 14px; background: var(--painel2); border: 1px solid var(--borda); border-left: 3px solid var(--cor); border-radius: var(--raio-p); color: var(--texto); cursor: pointer; font: 13.5px var(--ui); }
+.pronto:hover { border-color: var(--borda-clara); border-left-color: var(--cor); }
+.pronto .p-top { font: 500 11.5px var(--ui); color: var(--fraco); }
+.pronto b { font: 600 14px/1.35 var(--ui); }
+.pronto .p-txt { color: var(--fraco); font: 13px/1.45 var(--ui); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pronto .p-minis { display: flex; gap: 6px; margin-top: 4px; }
+.pronto .p-minis img { width: 84px; height: 52px; object-fit: cover; border-radius: 6px; image-rendering: auto; }
+.aprovacao pre.det { white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; margin: 6px 0; padding: 8px 10px; background: rgba(0, 0, 0, .3); border-radius: 8px; font: 12px/1.45 ui-monospace, Consolas, monospace; color: var(--texto); }
+.aprovacao .linha .btn { min-height: 42px; flex: 1; }
+
+/* ---------- PC desligado ---------- */
+.pessoa.pc-off img { filter: grayscale(.8) brightness(.8); }
+.pessoa .zz { font-size: 11px; margin-left: 2px; }
+
+/* ---------- menos coisa no mapa ---------- */
+#miniTela { display: none; }
+#mini { padding: 4px; }
+
+@media (max-width: 760px) {
+  #sinoCel { display: none !important; }
+  #abasCelular button .badge { right: calc(50% - 26px); }
+}
+.ag-c { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; margin-bottom: 6px; background: var(--painel2); border: 1px solid var(--borda); border-radius: var(--raio-p); cursor: pointer; }
+.ag-c:hover { border-color: var(--borda-clara); }
+.ag-c img { width: 34px; height: 34px; border-radius: 50%; background: var(--painel3); image-rendering: pixelated; box-shadow: 0 0 0 2px var(--cor); }
+.ag-c b { font: 600 13.5px var(--ui); }
+.ag-c small { color: var(--fraco); font: 12px var(--ui); }
+.ag-c span { display: block; color: var(--fraco); font: 12.5px var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-c > div { min-width: 0; }
+.ag-c i { font: normal 11.5px var(--ui); color: var(--muito-fraco); }
+.ag-c .x2 { background: var(--laranja); color: #15131b; border-radius: 999px; padding: 0 6px; font-weight: 700; }
+.aprovacao .cortado { color: #ffd23f; font: 600 12.5px var(--ui); margin: -2px 0 6px; }

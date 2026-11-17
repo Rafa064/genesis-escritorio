@@ -5,7 +5,7 @@ import { criarMundo } from './mundo.js';
 import { montarPersonagem, retrato } from './arte.js';
 import { visualDe } from './personagens.js';
 import { frase, passo, iconePasso, resumo, fases, primeiraFrase, categoria } from './humano.js';
-import { JOGOS, SETORES, jogoPorId, setorPorId, todosJogos, frente, frentePorId } from './frentes.js';
+import { JOGOS, SETORES, jogoPorId, setorPorId, todosJogos, frente, frentePorId, definirPastas } from './frentes.js';
 import { TIPOS, tipoDe, etiquetaTipo, descricaoHumana, conectorDe, nomeConector } from './tipos.js';
 import * as D from './dados.js';
 import * as R from './rede.js';
@@ -70,7 +70,7 @@ async function iniciar() {
     conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || [];
     temQuadro = tudo.temQuadro; marcos = tudo.marcos || []; comentarios = tudo.comentarios || [];
     vinculos = new Map((tudo.vinculos || []).map((v) => [v.missao, v.marco_id]));
-    for (const e of tudo.estado) estados.set(e.pessoa, e);
+    for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
     D.adicionar(tudo.eventos.map(D.deLinha));
     mundo = await criarMundo();
     const minhaSala = SALAS[Math.max(0, pessoas().indexOf(EU.pessoa))];
@@ -186,7 +186,7 @@ function ligarRede() {
     if (p.eventType === 'DELETE') recados = recados.filter((r) => r.id !== p.old.id);
     if (aba === 'dupla') desenharDupla(); else agendarInterface();
   });
-  R.on('estado', (e) => { estados.set(e.pessoa, { ...estados.get(e.pessoa), ...e }); agendarInterface(); });
+  R.on('estado', (e) => { estados.set(e.pessoa, { ...estados.get(e.pessoa), ...e }); if (e.info?.pastas) { definirPastas(e.pessoa, e.info.pastas); D.mudou(); } agendarInterface(); if (aba === 'atencao') desenharAtencao(); });
   R.on('chat', (c) => {
     if ((c.conversa_id ?? null) === conversaAtual && !(c.de === 'eu' && mensagens.some((m) => m.de === 'eu' && m.texto === c.texto && !m.id))) { mensagens.push(c); desenharChat(); }
     else if (c.de === 'eu') { const m = mensagens.find((x) => x.de === 'eu' && x.texto === c.texto && !x.id); if (m) m.id = c.id; }
@@ -216,6 +216,7 @@ function ligarRede() {
   });
   R.on('jornal', (j) => { if (!j?.dia) return; jornais = [j, ...jornais.filter((x) => x.dia !== j.dia)].sort((a, b) => b.dia.localeCompare(a.dia)); desenharManchete(); if (!$('#jornal').hidden) abrirJornal(j.dia); });
   R.on('presenca', (st) => { presentes = new Map(Object.entries(st).map(([k, v]) => [k, v[0]])); for (const p of mundo.pessoas.keys()) if (!presentes.has(p)) mundo.pessoas.delete(p); agendarInterface(); });
+  R.on('conexao', (s) => { if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(s)) setTimeout(ressincronizar, 4000); });
   R.on('chegou', (p) => { if (p !== EU.pessoa) { toast({ titulo: `${p} entrou no escritório`, cor: corPessoa(p) }); som('chegou'); } });
   R.on('pos', (d) => { if (d.pessoa && d.pessoa !== EU.pessoa) mundo.atualizarPessoa(d.pessoa, d); });
   R.on('pediuPosicao', () => R.enviarPos(posAtual(), true));
@@ -544,7 +545,7 @@ function irAtePessoa(p) {
 }
 
 // ======================= gaveta =======================
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Precisa de você', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Resumo', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (empilhar && aba !== nome && !$('#gaveta').classList.contains('fechada')) pilha.push(aba); else if (!empilhar) pilha.length = 0;
@@ -552,7 +553,7 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  const raizCel = ['chat', 'dupla'].includes(nome) ? 'conversas' : '';
+  const raizCel = ['chat', 'dupla'].includes(nome) ? 'conversas' : nome === 'atencao' ? 'atencao' : '';
   if (['chat', 'dupla'].includes(nome)) guarda('abaConversa', nome);
   $$('[data-seg]').forEach((b) => b.classList.toggle('on', b.dataset.seg === nome));
   $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz || (b.dataset.acao === 'quadro' && !$('#quadro').hidden)));
@@ -599,7 +600,7 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else abrirAba(b.dataset.aba); };
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else { fecharQuadro(); abrirAba(b.dataset.aba); } };
   document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
   $('#sinoCel').onclick = () => abrirAba('atencao');
   $('#menuCel').onclick = () => abrirAba('mais');
@@ -613,7 +614,9 @@ function montarInterface() {
     if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para mover · <b>pinça</b> para zoom';
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   dimensionar();
-  if (innerWidth <= 760) { $('#gaveta').classList.add('fechada'); } else abrirAba(guardado('abaConversa', 'dupla'));
+  if (innerWidth <= 760) abrirAba('atencao'); else abrirAba(guardado('abaConversa', 'dupla'));
+  registrarSw();
+  abrirDeUrl(new URL(location.href));
   $('#vistas').onclick = (e) => { const b = e.target.closest('[data-acao]'); if (!b) return; if (b.dataset.acao === 'quadro') abrirQuadro(); else fecharQuadro(); };
   desenharTopo(); desenharHud();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
@@ -627,8 +630,8 @@ async function desenharTopo() {
     const on = presentes.has(p) || p === EU.pessoa;
     const ponte = st.ponte_visto && Date.now() - new Date(st.ponte_visto).getTime() < 150e3;
     const status = presentes.get(p)?.status || st.status || 'disponivel';
-    const det = [on ? (status === 'focado' ? 'focado' : 'online') : 'fora', st.branch ? `⎇ ${st.branch}` : '', ponte ? '' : 'ponte off'].filter(Boolean).join(' · ');
-    html.push(`<div class="pessoa ${on ? 'on' : ''} ${status === 'focado' ? 'focado' : ''}" data-ir="${esc(p)}" title="${esc(det + (st.commit ? ' · último commit: ' + st.commit : ''))}"><img src="${await retratoDe(p)}" alt=""><span class="ponto"></span>${esc(p)}</div>`);
+    const det = [on ? (status === 'focado' ? 'focado' : 'no site') : 'fora do site', st.branch ? `⎇ ${st.branch}` : '', ponte ? (st.info?.ausente ? 'PC parado' : 'PC ligado') : 'PC desligado (as IAs dele não estão rodando)'].filter(Boolean).join(' · ');
+    html.push(`<div class="pessoa ${on ? 'on' : ''} ${status === 'focado' ? 'focado' : ''} ${ponte ? '' : 'pc-off'}" data-ir="${esc(p)}" title="${esc(det + (st.commit ? ' · último commit: ' + st.commit : ''))}"><img src="${await retratoDe(p)}" alt=""><span class="ponto"></span>${esc(p)}${ponte ? '' : '<span class="zz" title="PC desligado">💤</span>'}</div>`);
   }
   $('#gente').innerHTML = html.join('');
   $('#gente').onclick = (e) => { const d = e.target.closest('[data-ir]'); if (d && d.dataset.ir !== EU.pessoa) irAtePessoa(d.dataset.ir); };
@@ -638,7 +641,7 @@ async function desenharTopo() {
   $('#resumoTopo').innerHTML = [['alerta', 'precisam de você'], ['trab', 'trabalhando'], ['fim', 'prontos']].map(([c, t]) => `<span class="chip-estado" data-ver="${c}" title="${t}" style="--cor:${D.ESTADOS[c].cor}"><i>${D.ESTADOS[c].glifo}</i>${n(c) + (c === 'alerta' ? n('erro') + aprovacoes.length : 0)}</span>`).join('');
   $('#resumoTopo').onclick = (e) => { const c = e.target.closest('[data-ver]'); if (c) abrirAba(c.dataset.ver === 'alerta' ? 'atencao' : 'equipe'); };
   $('#badgeAtencao').hidden = !meusAlertas; $('#badgeAtencao').textContent = meusAlertas;
-  $('#badgeAtencaoCel').hidden = !meusAlertas; $('#badgeAtencaoCel').textContent = meusAlertas;
+  for (const b of [$('#badgeAtencaoCel'), $('#badgeResumoCel')]) { if (b) { b.hidden = !meusAlertas; b.textContent = meusAlertas; } }
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
   for (const el of [$('#badgeMural'), $('#badgeDuplaCel'), ...$$('[data-badge-dupla]')]) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = novosRecados; }
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
@@ -703,22 +706,168 @@ async function desenharEquipe() {
 const avisoFiltro = () => temFiltro() ? `<div class="aviso-filtro" style="--cor:${filtroJogo ? jogoPorId(filtroJogo).cor : setorPorId(filtroSetor).cor}">Só <b>${esc(nomeFiltro())}</b><button data-tirar-filtro title="Ver tudo">× ver tudo</button></div>` : '';
 function tirarFiltro() { mudarFiltro('', ''); }
 
-// ---------- atenção: aprovações + agentes parados ----------
+// ---------- Resumo (caixa de entrada): precisa de você › travou › rodando › pronto ----------
+// É a primeira tela no celular: responde "alguém precisa de mim? o que ficou pronto? o que travou?".
+const pcLigado = (p) => { const st = estados.get(p); return !!st?.ponte_visto && Date.now() - new Date(st.ponte_visto).getTime() < 150e3; };
+const pushSuportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const ehIphoneSemApp = () => /iphone|ipad/i.test(navigator.userAgent) && !navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
+async function cartaoAvisos() {
+  const st = estados.get(EU.pessoa) || {}, info = st.info || {};
+  const ligado = pcLigado(EU.pessoa);
+  const linhaPc = ligado
+    ? `<span class="pc on">🖥️ Seu PC está ligado${info.ausente ? ' · parado há mais de 5 min' : ''}</span>`
+    : `<span class="pc off">💤 Seu PC está desligado ou sem a ponte${st.ponte_visto ? ' (visto ' + D.ha(new Date(st.ponte_visto).getTime()) + ')' : ''}: pedidos pelo chat ficam esperando</span>`;
+  let notif = '';
+  const minhaInscricao = await inscricaoAtual();
+  const temNoPc = (info.push || []).some((x) => x.endpoint === minhaInscricao?.endpoint);
+  if (!pushSuportado()) notif = ehIphoneSemApp() ? '<p class="dica-av">Para receber avisos no iPhone: Safari › Compartilhar › <b>Adicionar à Tela de Início</b> e abra pelo ícone.</p>' : '';
+  else if (Notification.permission === 'denied') notif = '<p class="dica-av">As notificações estão bloqueadas nos ajustes deste aparelho.</p>';
+  else if (!info.vapid) notif = `<p class="dica-av">${ligado ? 'Sua ponte ainda é a versão antiga (sem avisos). Ela atualiza ao reiniciar.' : 'Ligue a ponte no PC para ativar os avisos.'}</p>`;
+  else if (!temNoPc) notif = '<button class="btn forte" id="ativarPush">🔔 Avisar neste aparelho</button>';
+  else notif = '<span class="ok-av">🔔 Avisos ligados neste aparelho <button class="link" id="testarPush">testar</button> · <button class="link" id="desligarPush">desligar</button></span>';
+  return `<div class="cartao-av">${linhaPc}
+    <label class="chave-longe"><input type="checkbox" id="chkLonge" ${info.longe ? 'checked' : ''} ${ligado ? '' : 'disabled'}><span><b>Estou longe do PC</b><small>avisa tudo no celular e deixa aprovar daqui${info.longe ? '' : ' (liga sozinho com o PC parado 5 min)'}</small></span></label>
+    ${notif}</div>`;
+}
 async function desenharAtencao() {
-  $('#listaAprovacoes').innerHTML = aprovacoes.map(cartaoAprovacao).join('');
-  ligarAprovacoes($('#listaAprovacoes'));
-  const itens = todosAgentes().filter((a) => ['alerta', 'erro'].includes(a.st.cls)).sort((a, b) => (b.m.pessoa === EU.pessoa) - (a.m.pessoa === EU.pessoa) || a.st.ordem - b.st.ordem);
-  $('#listaAtencao').innerHTML = itens.length ? (await Promise.all(itens.map(linhaAgente))).join('') : aprovacoes.length ? '' : '<div class="vazio">Nada precisa de você agora. ✓</div>';
-  $('#listaAtencao').onclick = (e) => { const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k); };
+  const el = $('#listaAtencao');
+  $('#listaAprovacoes').innerHTML = '';
+  const meus = (a) => a.m.pessoa === EU.pessoa;
+  const todos = todosAgentes();
+  const alerta = todos.filter((a) => a.st.cls === 'alerta' && meus(a));
+  const travou = todos.filter((a) => a.st.cls === 'erro').sort((a, b) => meus(b) - meus(a));
+  const rodando = todos.filter((a) => a.st.cls === 'trab').sort((a, b) => meus(b) - meus(a) || (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
+  const doze = Date.now() - 12 * 3600e3;
+  const prontos = D.missoes().filter((m) => m.fim && m.fim > doze && m.status === 'fim' && (m.resposta || m.miniaturas.length)).slice(0, 12);
+  const sec = (ic, t, n, corpo, cls = '') => `<section class="cx ${cls}"><h3>${ic} ${t}${n != null ? ` <small>${n}</small>` : ''}</h3>${corpo}</section>`;
+  let html = await cartaoAvisos();
+  if (aprovacoes.length || alerta.length) html += sec('🔐', 'Precisa de você', aprovacoes.length + alerta.length, aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
+  if (travou.length) html += sec('❌', 'Travou', travou.length, (await Promise.all(travou.map(linhaAgente))).join(''));
+  html += sec('⚙️', 'Rodando agora', rodando.length, rodando.length ? (await Promise.all(rodando.slice(0, 8).map(linhaCompacta))).join('') + (rodando.length > 8 ? `<button class="link" data-ir-aba="equipe">ver os ${rodando.length}</button>` : '') : '<div class="vazio">Ninguém trabalhando agora.</div>');
+  html += sec('✅', 'Pronto nas últimas 12 h', prontos.length, prontos.length ? (await Promise.all(prontos.map(cartaoPronto))).join('') : '<div class="vazio">Nada entregue ainda.</div>');
+  el.innerHTML = html;
+  ligarAprovacoes(el);
+  const antes = el.onclick;
+  el.onclick = (e) => {
+    if (e.target.closest('[data-decide]')) return antes?.(e);
+    const ia = e.target.closest('[data-ir-aba]'); if (ia) return abrirAba(ia.dataset.irAba, true);
+    const mi = e.target.closest('[data-missao]'); if (mi) return abrirMissao(mi.dataset.missao);
+    const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k);
+  };
+  $('#ativarPush')?.addEventListener('click', ativarPush);
+  $('#desligarPush')?.addEventListener('click', desligarPush);
+  $('#testarPush')?.addEventListener('click', () => { const r = navigator.serviceWorker?.ready; r?.then((reg) => reg.showNotification('Estúdio Genesis', { body: 'Assim chegam os avisos. Os de verdade vêm da sua ponte, mesmo com o app fechado.', icon: 'icones/icone-180.png' })); });
+  $('#chkLonge')?.addEventListener('change', async (e) => {
+    const quer = e.target.checked, gravar = () => R.mudarMeuInfo((i) => ({ ...i, longe: quer }));
+    try { await gravar(); conferirGravado((info) => !!info.longe === quer, gravar); toast({ titulo: e.target.checked ? 'Modo longe ligado' : 'Modo longe desligado', texto: e.target.checked ? 'Avisos e aprovações vêm para cá.' : 'Volta ao normal (liga sozinho com o PC parado).', cor: '#4fbf82' }); }
+    catch (err) { e.target.checked = !e.target.checked; toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+  });
+}
+async function linhaCompacta({ m, st }) {
+  const fr = D.frenteDaMesa(m);
+  const texto = D.emSegundoPlano(m) ? '⏳ tarefa em segundo plano' : m.ult ? primeiraFrase(frase(m.ult), 90) : '';
+  const n = D.ativos(m);
+  return `<div class="ag-c" data-k="${esc(m.k)}" style="--cor:${corPessoa(m.pessoa)}"><img src="${await retratoDe(m.nome)}" alt=""><div><b>${esc(tituloAgente(m))}${n > 1 ? ` <small class="x2">×${n}</small>` : ''}</b> <small>${esc(m.pessoa)}${fr ? ' · ' + fr.icone + ' ' + esc(fr.nome) : ''}</small><span>${esc(texto)}</span></div><i style="--cor:${st.cor}">${m.ult ? D.ha(m.ult.t) : ''}</i></div>`;
+}
+async function cartaoPronto(m) {
+  const fr = m.frente;
+  const urls = m.miniaturas.length ? await R.urlsMiniaturas(m.miniaturas.slice(0, 3).map((x) => x.caminho)).catch(() => []) : [];
+  return `<button class="pronto" data-missao="${esc(m.id)}" style="--cor:${fr.cor}">
+    <span class="p-top">${fr.icone} ${esc(fr.nome)} · ${esc(m.pessoa)} · ${D.ha(m.fim)}</span>
+    <b>${esc(m.titulo)}</b>
+    ${m.resposta ? `<span class="p-txt">${esc(primeiraFrase(m.resposta, 160))}</span>` : ''}
+    ${urls.filter(Boolean).length ? `<span class="p-minis">${urls.filter(Boolean).map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</span>` : ''}</button>`;
 }
 function cartaoAprovacao(a) {
   const entrada = lerJson(a.detalhe);
+  const { origem, cortado, ...campos } = entrada;
   const cv = conversas.find((c) => c.id === a.conversa_id);
-  return `<div class="aprovacao" data-ap="${a.id}"><b>Posso? ${esc(passo(a.ferramenta, null, entrada))}</b>
-    <div class="det">${esc(Object.values(entrada).join(' · ') || a.ferramenta)}</div>
-    <div class="sub" style="text-align:left">${cv ? 'Conversa: ' + esc(cv.titulo) + ' · ' : ''}${D.ha(new Date(a.criado).getTime())}</div>
+  const de = origem?.terminal ? `Terminal${origem.projeto ? ' · ' + esc(origem.projeto) : ''}${origem.agente && origem.agente !== 'Orquestrador' ? ' · ' + esc(tituloDe(origem.agente)) : ''}` : cv ? 'Conversa: ' + esc(cv.titulo) : 'Assistente';
+  const completo = Object.entries(campos).map(([k, v]) => `${k}: ${v}`).join('\n');
+  return `<div class="aprovacao" data-ap="${a.id}"><b>Posso? ${esc(passo(a.ferramenta, null, campos))}</b>
+    <pre class="det">${esc(completo || a.ferramenta)}</pre>${entrada.cortado ? '<div class="cortado">⚠ O pedido é grande demais e foi cortado aqui. Confira no PC antes de permitir.</div>' : ''}
+    <div class="sub" style="text-align:left">${de} · ${D.ha(new Date(a.criado).getTime())}</div>
     <div class="linha"><button class="btn verde" data-decide="permitido">Permitir</button><button class="btn perigo" data-decide="negado">Negar</button></div></div>`;
 }
+
+// ---------- notificações no aparelho (Web Push mandado pela ponte do PC) ----------
+let registroSw = null;
+async function registrarSw() {
+  if (!('serviceWorker' in navigator) || DEMO) return null;
+  try { registroSw = await navigator.serviceWorker.register('sw.js', { scope: './' }); } catch (e) { console.warn('sw:', e); }
+  navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.abrir) abrirDeUrl(new URL(e.data.abrir)); });
+  return registroSw;
+}
+async function inscricaoAtual() { try { const r = registroSw || await navigator.serviceWorker?.getRegistration(); return await r?.pushManager?.getSubscription(); } catch { return null; } }
+const b64paraBytes = (b) => { const s = atob(b.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b.length + 3) % 4)); return Uint8Array.from(s, (c) => c.charCodeAt(0)); };
+async function ativarPush() {
+  try {
+    const chave = estados.get(EU.pessoa)?.info?.vapid;
+    if (!chave) throw new Error('A ponte do PC ainda não mandou a chave de avisos. Deixe ela ligada e tente de novo.');
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error('Permissão negada neste aparelho.');
+    if (!registroSw) await registrarSw();
+    const reg = await navigator.serviceWorker.ready; // inscrever só com o service worker ativo
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && sub.options?.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== chave) { await sub.unsubscribe(); sub = null; }
+    sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64paraBytes(chave) });
+    const j = sub.toJSON(), aparelho = /iphone/i.test(navigator.userAgent) ? 'iPhone' : /android/i.test(navigator.userAgent) ? 'Android' : 'Computador';
+    const gravar = () => R.mudarMeuInfo((i) => ({ ...i, push: [...(i.push || []).filter((x) => x.endpoint !== j.endpoint), { endpoint: j.endpoint, keys: j.keys, aparelho, desde: new Date().toISOString() }].slice(-5) }));
+    await gravar();
+    conferirGravado((info) => (info.push || []).some((x) => x.endpoint === j.endpoint), gravar);
+    toast({ titulo: '🔔 Avisos ligados', texto: 'Quando você estiver longe do PC, os avisos chegam aqui mesmo com o app fechado.', cor: '#4fbf82' });
+  } catch (e) { toast({ titulo: 'Não consegui ligar os avisos', texto: e.message, cor: '#ef6a55' }); }
+  desenharAtencao();
+}
+// A ponte regrava o estado.info a cada minuto (lendo antes o que é do site). Se as duas gravações
+// cruzarem, a do site pode se perder: confere depois de alguns segundos e grava de novo se sumiu.
+function conferirGravado(ok, gravar, tentativas = 3) {
+  setTimeout(async () => {
+    try {
+      const info = await R.lerMeuInfo();
+      if (!ok(info) && tentativas > 0) { await gravar(); conferirGravado(ok, gravar, tentativas - 1); }
+    } catch {}
+  }, 8000);
+}
+async function desligarPush() {
+  const sub = await inscricaoAtual();
+  if (sub) { await R.mudarMeuInfo((i) => ({ ...i, push: (i.push || []).filter((x) => x.endpoint !== sub.endpoint) })).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+  desenharAtencao();
+}
+function abrirDeUrl(u) {
+  const a = u.searchParams.get('aba');
+  if (!a) return;
+  if (a === 'quadro') return abrirQuadro();
+  fecharQuadro(); abrirAba(a);
+}
+
+// ---------- volta do celular: busca o que chegou enquanto o app dormia ----------
+let escondidoDesde = 0, ressincronizando = false, ultimaReconexao = 0;
+async function ressincronizar() {
+  if (DEMO || ressincronizando || !EU) return;
+  ressincronizando = true;
+  try {
+    const ultimo = D.eventos.at(-1)?.t || Date.now() - 3600e3;
+    const n = await R.novidadesDesde(ultimo);
+    D.adicionar(n.eventos.map(D.deLinha));
+    if (n.recados) recados = n.recados;
+    for (const e of n.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
+    if (n.aprovacoes) aprovacoes = n.aprovacoes;
+    if (n.conversas) conversas = n.conversas;
+    if (n.jornal) jornais = n.jornal;
+    if (n.marcos) { marcos = n.marcos; vinculos = new Map((n.vinculos || []).map((v) => [v.missao, v.marco_id])); comentarios = n.comentarios || comentarios; mudouMarcos(); if (!$('#quadro').hidden) desenharQuadro(); }
+    desenharSeletorConversas();
+    if (!['joined', 'joining'].includes(R.estadoCanal()) && Date.now() - ultimaReconexao > 30e3) { ultimaReconexao = Date.now(); R.reconectarTabelas(); }
+    versaoMundo = -1; sincronizarMundo(); agendarInterface();
+    if (['chat', 'dupla', 'atencao'].includes(aba)) desenharAba();
+    if (conversaAtual != null && aba === 'chat') abrirConversa(conversaAtual);
+  } catch (e) { console.warn('ressincronizar:', e); }
+  ressincronizando = false;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) escondidoDesde = Date.now();
+  else if (escondidoDesde && Date.now() - escondidoDesde > 20e3) ressincronizar();
+});
+addEventListener('online', () => ressincronizar());
 function ligarAprovacoes(el) {
   el.onclick = async (e) => {
     const b = e.target.closest('[data-decide]'); if (!b) return;
@@ -753,7 +902,7 @@ async function desenharAgente() {
     ${m.ult ? `<div class="bloco"><h4>${st.cls === 'fim' ? 'Entregou' : 'Agora'}</h4>${st.cls === 'fim' && m.ult.texto?.length > 160 ? md(m.ult.texto) : esc(frase(m.ult))}</div>` : ''}
     ${urls.filter(Boolean).length ? `<div class="bloco"><h4>Resultados</h4><div class="grade-galeria">${m.miniaturas.map((mi, i) => urls[i] ? `<div class="mini-card" data-mini="${i}"><div class="${mi.video ? 'play' : ''}"><img src="${urls[i]}" alt=""></div><div>${esc(mi.nome)}</div></div>` : '').join('')}</div></div>` : ''}
     <div class="linha"><button class="btn" id="irAoAgente">Ir até a mesa</button>${meu ? `<button class="btn forte" id="pedirAgente">${nome === 'Orquestrador' ? 'Conversar' : nome === 'Codex' ? 'Conversar com o Codex' : 'Pedir algo a este agente'}</button>` : ''}</div>
-    ${linhas.length ? `<div class="bloco"><h4>O que andou fazendo</h4>${fases([...linhas].reverse()).reverse().slice(0, 25).map((f) => `<div class="etapa ${f.tipo}"><span class="h">${D.hora(f.t)}</span><span>${ICONE_CAT[f.cat] || '•'}</span><span>${esc(f.texto)}</span></div>`).join('')}</div>` : ''}`;
+    ${linhas.length ? `<div class="bloco"><h4>O que andou fazendo</h4>${fases([...linhas].reverse()).reverse().slice(0, 25).map((f) => `<div class="etapa ${esc(f.tipo)}"><span class="h">${D.hora(f.t)}</span><span>${ICONE_CAT[f.cat] || '•'}</span><span>${esc(f.texto)}</span></div>`).join('')}</div>` : ''}`;
   $('#detalheAgente [data-abrir-missao]')?.addEventListener('click', (e) => { e.preventDefault(); abrirMissao(e.currentTarget.dataset.abrirMissao); });
   $('#irAoAgente').onclick = () => { const b = [...mundo.agentes.values()].find((x) => x.pessoa === p && (x.m?.nome === nome || x.nome === nome)); if (b) teleportar(b.lugar.x + 24, b.lugar.y); };
   $('#pedirAgente')?.addEventListener('click', () => { if (nome === 'Codex') abrirChatCom('codex'); else { abrirChatCom('claude'); if (nome !== 'Orquestrador') { $('#entrada').value = `Use o sub-agente ${nome} para: `; $('#entrada').focus(); } } });
@@ -818,7 +967,7 @@ async function desenharMissao() {
   const st = D.ESTADOS[m.status] || D.ESTADOS.espera;
   const urls = await R.urlsMiniaturas(m.miniaturas.map((x) => x.caminho)).catch(() => []);
   const fs = fases(m.passos);
-  const linhasFases = await Promise.all(fs.map(async (f) => `<div class="etapa ${f.tipo}"><span class="h">${D.hora(f.t)}</span><img src="${await retratoDe(f.agente)}" title="${esc(tituloDe(f.agente))}" alt=""><span><b>${esc(f.agente === 'Orquestrador' ? 'Assistente' : tituloDe(f.agente))}</b> <span class="sub2">${ICONE_CAT[f.cat] || ''} ${esc(f.texto)}</span></span></div>`));
+  const linhasFases = await Promise.all(fs.map(async (f) => `<div class="etapa ${esc(f.tipo)}"><span class="h">${D.hora(f.t)}</span><img src="${await retratoDe(f.agente)}" title="${esc(tituloDe(f.agente))}" alt=""><span><b>${esc(f.agente === 'Orquestrador' ? 'Assistente' : tituloDe(f.agente))}</b> <span class="sub2">${ICONE_CAT[f.cat] || ''} ${esc(f.texto)}</span></span></div>`));
   const quem = await Promise.all([...m.agentes].map(async (a) => `<div class="quem-linha"><img src="${await retratoDe(a)}" alt=""><b>${esc(tituloDe(a))}</b>${etiquetaTipo(tipoDe(a))}</div>`));
   const res = resumo(m.passos);
   $('#detalheMissao').innerHTML = `
@@ -965,7 +1114,11 @@ function marcoDaMissao(m) {
     if (cv) achado = marcos.find((x) => x.id === cv.marco_id) || null;                                 // conversa aberta pelo cartão
     else {                                                                                               // automático: palavras em comum
       const pm = palavrasDe(m.pedido), recente = Date.now() - 3 * 86400e3;
-      const notas = marcos.filter((x) => x.coluna !== 'ideias' && (x.coluna !== 'feito' || new Date(x.concluido || x.atualizado).getTime() > recente) && x.jogo === m.frente.jogo)
+      // Só marcos que já existiam quando o pedido rodou (criar um cartão novo não reescreve o passado)
+      // e que não estavam encerrados antes dele começar.
+      const notas = marcos.filter((x) => x.coluna !== 'ideias' && x.jogo === m.frente.jogo
+          && new Date(x.criado || 0).getTime() <= m.inicio + 60e3
+          && (x.coluna !== 'feito' || (new Date(x.concluido || x.atualizado).getTime() > Math.max(recente, m.inicio))))
         .map((x) => {
           let n = x.setor === m.frente.setor ? 1 : 0;
           const chaves = palavrasDe(x.palavras), titulo = palavrasDe(`${x.titulo} ${x.descricao} ${(x.etapas || []).map((e) => e.t).join(' ')}`);
@@ -1361,7 +1514,7 @@ function desenharDupla() {
       corpo = `<button class="card-missao" data-abrir-missao="${esc(c.id || '')}" ${existe ? '' : 'disabled'} style="--cor:${f.cor}"><span class="cm-f">${f.icone} ${esc(f.nome)} · missão de ${esc(c.pessoa || '?')}</span><b>${esc(c.titulo || 'Missão')}</b><span class="cm-a">${existe ? 'Abrir a missão ›' : 'missão antiga (carregue no Histórico)'}</span></button>`;
     } else corpo = `<span class="txt">${comMencao(r.texto)}</span>`;
     const rs = reacoes.get(String(r.id));
-    html += `<div class="bolha ${eu ? 'eu' : ''}" data-id="${r.id}" style="--cor:${corPessoa(r.pessoa)}">${eu ? '' : `<span class="quem">${esc(r.pessoa)}</span>`}${corpo}<span class="hora">${D.hora(new Date(r.criado).getTime())}</span>${rs ? `<div class="reacoes">${[...rs].map(([e, ps]) => `<button data-reagir="${e}" class="${ps.includes(EU.pessoa) ? 'minha' : ''}" title="${esc(ps.join(', '))}">${e} ${ps.length}</button>`).join('')}</div>` : ''}${reagindo === r.id ? `<div class="reacoes escolher">${REACOES.map((e) => `<button data-reagir="${e}">${e}</button>`).join('')}</div>` : ''}</div>`;}
+    html += `<div class="bolha ${eu ? 'eu' : ''}" data-id="${r.id}" style="--cor:${corPessoa(r.pessoa)}">${eu ? '' : `<span class="quem">${esc(r.pessoa)}</span>`}${corpo}<span class="hora">${D.hora(new Date(r.criado).getTime())}</span>${rs ? `<div class="reacoes">${[...rs].map(([e, ps]) => `<button data-reagir="${esc(e)}" class="${ps.includes(EU.pessoa) ? 'minha' : ''}" title="${esc(ps.join(', '))}">${esc(e)} ${ps.length}</button>`).join('')}</div>` : ''}${reagindo === r.id ? `<div class="reacoes escolher">${REACOES.map((e) => `<button data-reagir="${e}">${e}</button>`).join('')}</div>` : ''}</div>`;}
   el.innerHTML = html || `<div class="vazio">Aqui é a conversa entre você e ${esc(outraPessoa() || 'a dupla')}. Mande um oi, use as respostas rápidas ou compartilhe uma missão (botão "Mandar para a dupla" dentro de cada missão).</div>`;
   if (noFim || !el.dataset.rolou) { el.scrollTop = el.scrollHeight; el.dataset.rolou = '1'; }
   el.onclick = (e) => {
@@ -1405,7 +1558,7 @@ function desenharCatalogo() {
 
 // ---------- "Mais" (celular) ----------
 function desenharMais() {
-  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['catalogo', '◎', 'Quem é quem', 'Agentes, skills, conectores'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
+  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
   $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
   $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
 }
@@ -1448,7 +1601,6 @@ function abrirAjuda() {
     <div class="ajuda-col">
       <h3>Quem é quem</h3>
       ${Object.keys(TIPOS).map((k) => `<p>${etiquetaTipo(k)} ${esc(TIPOS[k].curta)}</p>`).join('')}
-      <p>A lista completa, com as skills e os conectores de cada um, fica em <b>Quem é quem</b> (tecla I).</p>
       <h3>Frentes</h3>
       <p>Dois setores: ${SETORES.map((x) => `${x.icone} <b>${x.nome}</b> (${esc(x.descricao.toLowerCase())})`).join(' e ')}. Dois jogos: ${JOGOS.slice(0, 2).map((j) => `${j.icone} <b>${esc(j.nome)}</b>`).join(' e ')}. Cada missão cai sozinha no jogo e no setor certos.</p><p>No mapa, a ala da esquerda é Criação e a da direita é Marketing; cada fileira é um jogo. <b>Quem está sentado está trabalhando</b>; quem está livre fica na copa. A faixa <b>Agora</b> lista todo mundo que está trabalhando.</p>
       <p>Cada um tem uma sala de vidro com a assistente na recepção. As baias da sua equipe ficam do lado da sua sala.</p>
@@ -1456,6 +1608,7 @@ function abrirAjuda() {
       <div class="legenda">${est('alerta')}${est('erro')}${est('trab')}${est('fim')}${est('livre')}</div>
       <p>Trabalhando, o boneco digita e a tela do PC anima. Livre, às vezes levanta para tomar café.</p>
       <h3>Onde ver as coisas</h3>
+      <p><b>Resumo</b> (🔔): precisa de você, travou, rodando agora e pronto nas últimas 12 h. É onde ligar os avisos no celular e o modo <b>Estou longe do PC</b>.</p>
       <p><b>Equipe</b>: todo mundo agrupado por atenção. Clique para a câmera ir até a pessoa.</p>
       <p><b>Missões</b>: cada pedido, agrupado por frente, com um resumo em português, quem ajudou e o resultado. O passo a passo técnico fica recolhido.</p>
       <p><b>Histórico</b>: o que vocês fizeram por dia, com o placar de cada frente.</p>
@@ -1463,9 +1616,9 @@ function abrirAjuda() {
       <p><b>Assistente</b>: uma conversa por tarefa, com a assistente (Claude) ou com o Codex (GPT). Pedidos de permissão aparecem com Permitir/Negar.</p>
       <p><b>Diário</b>: o jornal do dia (manchete no topo; o jornal fica na mesa do salão).</p>
       <h3>Atalhos</h3>
-      <p><kbd>WASD</kbd> anda · <kbd>Shift</kbd> skate · clique no chão para ir · <kbd>E</kbd> fala com quem está perto</p>
+      <p>Clique no chão para andar · <kbd>WASD</kbd> também anda</p>
       <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>L</kbd> histórico · <kbd>C</kbd> assistente · <kbd>M</kbd> dupla · <kbd>G</kbd> galeria · <kbd>I</kbd> quem é quem · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
-      <p><kbd>Q</kbd> acena · <kbd>K</kbd> vai até o outro · <kbd>1</kbd>–<kbd>6</kbd> emotes · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>Esc</kbd> fecha</p>
+      <p><kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>Esc</kbd> fecha</p>
     </div>`;
   $('#ajuda').hidden = false;
 }
@@ -1566,7 +1719,7 @@ async function iniciarDemo() {
     ev(1440, 'Rafael', 'balanceador', 'fim', 'Taxa de vitória 38% → 52% com vida -10% e sopro a cada 6 s.', { sessao: 's5' }),
     ev(1438, 'Rafael', 'Orquestrador', 'espera', 'esperando você', { sessao: 's5', resposta: 'Dragão do Inverno ajustado: vitória dos bots subiu de 38% para 52% no Veterano.' }),
   ]);
-  estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], ffmpeg: true, agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku', descricao: 'Lê o projeto e responde perguntas sem mexer em nada.' }, { nome: 'revisor-godot', modelo: 'sonnet', descricao: 'Revisa código GDScript antes do commit.' }, { nome: 'editor-de-video', modelo: 'sonnet', descricao: 'Monta Shorts e trailers no Remotion com cortes no compasso.' }],
+  estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], ffmpeg: true, vapid: 'demo', push: [], longe: false, agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku', descricao: 'Lê o projeto e responde perguntas sem mexer em nada.' }, { nome: 'revisor-godot', modelo: 'sonnet', descricao: 'Revisa código GDScript antes do commit.' }, { nome: 'editor-de-video', modelo: 'sonnet', descricao: 'Monta Shorts e trailers no Remotion com cortes no compasso.' }],
     skills: [{ nome: 'video-do-jogo', descricao: 'Use quando for gravar, montar ou renderizar um vídeo do Genesis', origem: 'projeto' }, { nome: 'balanceamento-com-bots', descricao: 'Use quando for balancear uma dificuldade com bots jogando', origem: 'projeto' }, { nome: 'hud-em-jogo', descricao: 'Use quando for desenhar ou mudar a HUD dentro da partida', origem: 'projeto' }],
     mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official' }] } });
   estados.set('Kenny', { pessoa: 'Kenny', ponte_visto: new Date().toISOString(), branch: 'v0.2-loja-classes', projeto: 'genesis-game' });
@@ -1601,7 +1754,8 @@ async function iniciarDemo() {
   conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }];
-  aprovacoes = [{ id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly' }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' }];
+  aprovacoes = [{ id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly' }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
+    { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];
   mundo = await criarMundo();
   await mundo.criarEu('Rafael', [8.5, 12.6]);

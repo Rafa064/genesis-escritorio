@@ -15,8 +15,13 @@ export function deLinha(l) {
   return { ...d, id: l.id, t: l.t ?? d.t, pessoa: l.pessoa ?? d.pessoa, agente: d.agente === 'Explore' ? 'explorador' : d.agente, texto: String(d.texto ?? '') };
 }
 export function adicionar(lista) {
-  const ids = new Set(eventos.map((e) => e.id));
-  for (const e of lista) if (e.id == null || !ids.has(e.id)) eventos.push(e);
+  // Sem repetidos: pelo id do banco e pelo "eid" que a ponte põe em cada evento (reenvio não duplica).
+  const ids = new Set(eventos.map((e) => e.id)), eids = new Set(eventos.map((e) => e.eid).filter(Boolean));
+  for (const e of lista) {
+    if (e.id != null && ids.has(e.id)) continue;
+    if (e.eid && eids.has(e.eid)) continue;
+    eventos.push(e); if (e.eid) eids.add(e.eid);
+  }
   eventos.sort((a, b) => a.t - b.t);
   if (eventos.length > 5000) eventos.splice(0, eventos.length - 4000);
   mudou();
@@ -45,6 +50,8 @@ export function estadoDe(m) {
   if (m.nome === 'Orquestrador' && e.texto === 'sessão fechada') cls = 'espera';
   // tarefa rodando em segundo plano: o turno acabou, mas o trabalho continua
   if (emSegundoPlano(m) && cls !== 'alerta' && cls !== 'erro') cls = 'trab';
+  // outra cópia do mesmo agente (outra aba ou em paralelo) ainda trabalhando: a mesa continua ocupada
+  if (ativos(m) > 0 && (cls === 'fim' || cls === 'espera' || cls === 'livre')) cls = 'trab';
   return { cls, ...ESTADOS[cls] };
 }
 
@@ -77,6 +84,27 @@ export function abas(janela = 3 * 3600e3) {
   return lista;
 }
 
+// Quantas cópias deste agente estão trabalhando agora (uma por sessão + id do sub-agente).
+export function ativos(m) {
+  if (!m?.abertas) return 0;
+  let n = 0; const agora = Date.now();
+  for (const t of m.abertas.values()) if (agora - t < 30 * 60e3) n++;
+  return n;
+}
+function acompanhar(m, e) {
+  const aid = e.aid || e.id_agente || (typeof e.id === 'string' ? e.id : null);
+  const s = e.sessao || '?';
+  if (['inicio', 'pedido', 'atividade', 'alerta'].includes(e.tipo)) {
+    if (aid) m.abertas.delete(`${s}|?`); // o "pedido" sem id vira a cópia com id quando ela começa
+    m.abertas.set(aid ? `${s}|${aid}` : (m.abertas.size && [...m.abertas.keys()].some((k) => k.startsWith(s + '|') && !k.endsWith('|?')) ? null : `${s}|?`), e.t);
+    m.abertas.delete(null);
+  } else if (['fim', 'erro', 'espera'].includes(e.tipo)) {
+    if (aid) m.abertas.delete(`${s}|${aid}`);
+    const resta = [...m.abertas.keys()].some((k) => k.startsWith(s + '|') && !k.endsWith('|?'));
+    if (!aid || !resta) for (const k of [...m.abertas.keys()]) if (k.startsWith(s + '|') && (!aid || k.endsWith('|?'))) m.abertas.delete(k);
+  }
+}
+
 let cache = { v: -1 };
 // pessoa -> nome do agente -> mesa
 export function equipes() {
@@ -86,8 +114,9 @@ export function equipes() {
     if (!e.agente || !e.pessoa) continue;
     if (!dados.has(e.pessoa)) dados.set(e.pessoa, new Map());
     const mesas = dados.get(e.pessoa);
-    if (!mesas.has(e.agente)) mesas.set(e.agente, { k: `${e.pessoa}|${e.agente}`, pessoa: e.pessoa, nome: e.agente, titulo: tituloDe(e.agente), hist: [], miniaturas: [], nomes: [] });
+    if (!mesas.has(e.agente)) mesas.set(e.agente, { k: `${e.pessoa}|${e.agente}`, pessoa: e.pessoa, nome: e.agente, titulo: tituloDe(e.agente), hist: [], miniaturas: [], nomes: [], abertas: new Map() });
     const m = mesas.get(e.agente);
+    if (e.agente !== 'Orquestrador') acompanhar(m, e);
     m.hist.push(e); if (m.hist.length > 80) m.hist.shift();
     m.ult = e;
     m.modo = e.tipo === 'atividade' ? e.modo || m.modo : null;
