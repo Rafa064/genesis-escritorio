@@ -236,7 +236,7 @@ export function escalacao(m) {
   // quem ainda está "trabalhando" mas a missão acabou (ou a cópia já fechou) vira pronto
   for (const x of itens.values()) {
     if (x.tipo !== 'agente' || !x.ult) continue;
-    if (!m.fim && ativoNaSessao(x.nome)) x.estado = 'trabalhando';                 // ainda tem cópia trabalhando nesta sessão
+    if (ativoNaSessao(x.nome)) x.estado = 'trabalhando'; // inclusive em segundo plano depois do fim do turno                 // ainda tem cópia trabalhando nesta sessão
     else if (x.estado === 'trabalhando' && Date.now() - x.ult.t > 60e3) x.estado = 'pronto';
   }
   const ordem = { agente: 0, programa: 1, conector: 2, skill: 3, plugin: 4 };
