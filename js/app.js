@@ -758,7 +758,7 @@ async function desenharAtencao() {
   $('#desligarPush')?.addEventListener('click', desligarPush);
   $('#testarPush')?.addEventListener('click', () => { const r = navigator.serviceWorker?.ready; r?.then((reg) => reg.showNotification('Estúdio Genesis', { body: 'Assim chegam os avisos. Os de verdade vêm da sua ponte, mesmo com o app fechado.', icon: 'icones/icone-180.png' })); });
   $('#chkLonge')?.addEventListener('change', async (e) => {
-    const quer = e.target.checked, gravar = () => R.mudarMeuInfo((i) => ({ ...i, longe: quer }));
+    const quer = e.target.checked, gravar = () => R.mudarCampoInfo('longe', quer);
     try { await gravar(); conferirGravado((info) => !!info.longe === quer, gravar); toast({ titulo: e.target.checked ? 'Modo longe ligado' : 'Modo longe desligado', texto: e.target.checked ? 'Avisos e aprovações vêm para cá.' : 'Volta ao normal (liga sozinho com o PC parado).', cor: '#4fbf82' }); }
     catch (err) { e.target.checked = !e.target.checked; toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
   });
@@ -795,7 +795,7 @@ let registroSw = null;
 async function registrarSw() {
   if (!('serviceWorker' in navigator) || DEMO) return null;
   try { registroSw = await navigator.serviceWorker.register('sw.js', { scope: './' }); } catch (e) { console.warn('sw:', e); }
-  navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.abrir) abrirDeUrl(new URL(e.data.abrir)); });
+  navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.abrir) { abrirDeUrl(new URL(e.data.abrir)); ressincronizar(); } });
   return registroSw;
 }
 async function inscricaoAtual() { try { const r = registroSw || await navigator.serviceWorker?.getRegistration(); return await r?.pushManager?.getSubscription(); } catch { return null; } }
@@ -811,7 +811,7 @@ async function ativarPush() {
     if (sub && sub.options?.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== chave) { await sub.unsubscribe(); sub = null; }
     sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64paraBytes(chave) });
     const j = sub.toJSON(), aparelho = /iphone/i.test(navigator.userAgent) ? 'iPhone' : /android/i.test(navigator.userAgent) ? 'Android' : 'Computador';
-    const gravar = () => R.mudarMeuInfo((i) => ({ ...i, push: [...(i.push || []).filter((x) => x.endpoint !== j.endpoint), { endpoint: j.endpoint, keys: j.keys, aparelho, desde: new Date().toISOString() }].slice(-5) }));
+    const gravar = async () => { const i = await R.lerMeuInfo(); await R.mudarCampoInfo('push', [...(i.push || []).filter((x) => x.endpoint !== j.endpoint), { endpoint: j.endpoint, keys: j.keys, aparelho, desde: new Date().toISOString() }].slice(-5)); };
     await gravar();
     conferirGravado((info) => (info.push || []).some((x) => x.endpoint === j.endpoint), gravar);
     toast({ titulo: '🔔 Avisos ligados', texto: 'Quando você estiver longe do PC, os avisos chegam aqui mesmo com o app fechado.', cor: '#4fbf82' });
@@ -830,7 +830,7 @@ function conferirGravado(ok, gravar, tentativas = 3) {
 }
 async function desligarPush() {
   const sub = await inscricaoAtual();
-  if (sub) { await R.mudarMeuInfo((i) => ({ ...i, push: (i.push || []).filter((x) => x.endpoint !== sub.endpoint) })).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+  if (sub) { const i = await R.lerMeuInfo().catch(() => ({})); await R.mudarCampoInfo('push', (i.push || []).filter((x) => x.endpoint !== sub.endpoint)).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
   desenharAtencao();
 }
 function abrirDeUrl(u) {
@@ -847,7 +847,8 @@ async function ressincronizar() {
   ressincronizando = true;
   try {
     const ultimo = D.eventos.at(-1)?.t || Date.now() - 3600e3;
-    const n = await R.novidadesDesde(ultimo);
+    const idMax = D.eventos.reduce((mx, e) => (typeof e.id === 'number' && e.id > mx ? e.id : mx), 0);
+    const n = await R.novidadesDesde(ultimo, idMax);
     D.adicionar(n.eventos.map(D.deLinha));
     if (n.recados) recados = n.recados;
     for (const e of n.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
@@ -865,7 +866,7 @@ async function ressincronizar() {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) escondidoDesde = Date.now();
-  else if (escondidoDesde && Date.now() - escondidoDesde > 20e3) ressincronizar();
+  else if (escondidoDesde && Date.now() - escondidoDesde > 2e3) ressincronizar();
 });
 addEventListener('online', () => ressincronizar());
 function ligarAprovacoes(el) {
@@ -1142,7 +1143,11 @@ function resumoMarco(mc) {
 function quemTrabalhaTodos() { return todosAgentes().filter((a) => TRABALHANDO.includes(a.st.cls)); }
 
 // ---------- tela do quadro ----------
-function marcarVista() { const q = !$('#quadro').hidden; $$('#vistas button').forEach((b) => b.classList.toggle('on', (b.dataset.acao === 'quadro') === q)); }
+function marcarVista() {
+  const q = !$('#quadro').hidden, gav = !$('#gaveta').classList.contains('fechada') && innerWidth <= 760;
+  $$('#vistas button').forEach((b) => b.classList.toggle('on', (b.dataset.acao === 'quadro') === q));
+  if (!gav) $$('#abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa'));
+}
 function abrirQuadro() {
   $('#quadro').hidden = false; guarda('quadro', '1'); marcarVista();
   $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.add('on'));

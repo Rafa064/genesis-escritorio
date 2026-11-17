@@ -99,9 +99,11 @@ function acompanhar(m, e) {
     m.abertas.set(aid ? `${s}|${aid}` : (m.abertas.size && [...m.abertas.keys()].some((k) => k.startsWith(s + '|') && !k.endsWith('|?')) ? null : `${s}|?`), e.t);
     m.abertas.delete(null);
   } else if (['fim', 'erro', 'espera'].includes(e.tipo)) {
-    if (aid) m.abertas.delete(`${s}|${aid}`);
-    const resta = [...m.abertas.keys()].some((k) => k.startsWith(s + '|') && !k.endsWith('|?'));
-    if (!aid || !resta) for (const k of [...m.abertas.keys()]) if (k.startsWith(s + '|') && (!aid || k.endsWith('|?'))) m.abertas.delete(k);
+    // Com id: fecha aquela cópia (e o "pedido" sem id, se não sobrou nenhuma). Sem id: fecha só o "pedido" sem id.
+    if (aid) {
+      m.abertas.delete(`${s}|${aid}`);
+      if (![...m.abertas.keys()].some((k) => k.startsWith(s + '|') && !k.endsWith('|?'))) m.abertas.delete(`${s}|?`);
+    } else m.abertas.delete(`${s}|?`);
   }
 }
 

@@ -59,19 +59,21 @@ export async function eventosAntes(t, n = 2500) {
 }
 
 // Volta do celular (app suspenso) ou reconexão: busca o que chegou enquanto a página dormia.
-export async function novidadesDesde(t) {
+export async function novidadesDesde(t, idDesde = 0) {
   const opcional = async (q) => { const r = await q; return r.error ? null : r.data; };
   // Eventos em páginas de 1000 (o limite da API) até chegar no presente.
   const eventos = [];
-  let desde = t - 60e3, idMin = 0;
-  for (let i = 0; i < 10; i++) {
-    const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').gte('t', desde).order('t', { ascending: true }).order('id', { ascending: true }).limit(1000);
+  let cursor = idDesde;
+  for (let i = 0; i < 40; i++) {
+    let q = sb.from('eventos').select('id,t,pessoa,dados').order('id', { ascending: true }).limit(1000);
+    q = cursor ? q.gt('id', cursor) : q.gt('t', t - 60e3);
+    const { data, error } = await q;
     if (error) throw error;
-    const novos = data.filter((x) => x.t > desde || x.id > idMin);
-    eventos.push(...novos);
-    if (data.length < 1000 || !novos.length) break;
-    desde = data.at(-1).t; idMin = data.at(-1).id;
+    eventos.push(...data);
+    if (data.length < 1000) break;
+    cursor = data.at(-1).id;
   }
+  eventos.sort((a, b) => a.t - b.t);
   const [rec, est, apr, conversas, marcos, vinculos, comentarios, jornal] = await Promise.all([
     sb.from('recados').select('*').order('criado', { ascending: false }).limit(500),
     sb.from('estado').select('*'),
@@ -86,6 +88,16 @@ export async function novidadesDesde(t) {
 }
 export async function lerMeuInfo() { const { data } = await sb.from('estado').select('info').eq('user_id', euId).maybeSingle(); return data?.info || {}; }
 // O site grava no MEU estado.info só o que é dele (notificações e modo longe); a ponte preserva.
+let temRpcInfo = null;
+export async function mudarCampoInfo(chave, valor) {
+  if (temRpcInfo !== false) {
+    const { error } = await sb.rpc('info_do_site', { chave, valor });
+    if (!error) { temRpcInfo = true; return; }
+    if (!/PGRST202|function|not find/i.test(error.message + error.code)) throw error;
+    temRpcInfo = false;
+  }
+  await mudarMeuInfo((i) => ({ ...i, [chave]: valor }));
+}
 export async function mudarMeuInfo(fn) {
   const { data, error } = await sb.from('estado').select('info').eq('user_id', euId).maybeSingle();
   if (error) throw error;
@@ -169,7 +181,8 @@ export async function carregarChat(conversa_id) {
   if (error) throw error;
   return data;
 }
-export async function decidir(id, status) { const { error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString() }).eq('id', id); if (error) throw error; }
+// Só decide o que ainda está pendente (se a ponte já deu por vencido, avisa em vez de fingir que valeu).
+export async function decidir(id, status) { const { data, error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString() }).eq('id', id).eq('status', 'pendente').select('id'); if (error) throw error; if (!data?.length) throw new Error('Esse pedido já tinha vencido (ou você voltou ao PC e ele foi para a tela de lá).'); }
 export const pedirJornal = () => sb.from('comandos').insert({ tipo: 'jornal' });
 export const parar = () => sb.from('comandos').insert({ tipo: 'parar' });
 export const conversaNova = () => sb.from('comandos').insert({ tipo: 'nova' });

@@ -298,8 +298,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--laranja); fo
 .pessoa .zz { font-size: 11px; margin-left: 2px; }
 
 /* ---------- menos coisa no mapa ---------- */
-#miniTela { display: none; }
-#mini { padding: 4px; }
+#mini { display: none !important; }
 
 @media (max-width: 760px) {
   #sinoCel { display: none !important; }
