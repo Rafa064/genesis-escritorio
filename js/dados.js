@@ -162,7 +162,7 @@ export function missoes() {
   if (cacheMissoes.v === versao) return cacheMissoes.lista;
   const lista = [], abertas = new Map();
   const nova = (e, chave, alvo) => {
-    const m = { id: `${chave}|${e.t}`, pessoa: e.pessoa, sessao: e.sessao, projeto: e.projeto, pasta: e.pasta, alvo, origem: e.origem, pedido: e.texto, inicio: e.t, ultimo: e.t, passos: [], agentes: new Set(), miniaturas: [], nomes: [], alertas: 0, erros: 0, fim: null, resposta: null };
+    const m = { id: `${chave}|${e.t}`, pessoa: e.pessoa, sessao: e.sessao, projeto: e.projeto, pasta: e.pasta, alvo, origem: e.origem, pedido: e.texto, inicio: e.t, ultimo: e.t, passos: [], agentes: new Set(), miniaturas: [], nomes: [], alertas: 0, erros: 0, fim: null, resposta: null, plano: [] };
     lista.push(m); abertas.set(chave, m); return m;
   };
   for (const e of eventos) {
@@ -177,6 +177,10 @@ export function missoes() {
     if (e.agente !== 'Orquestrador' && !codex) m.agentes.add(e.agente);
     for (const mi of e.miniaturas || []) m.miniaturas.push(mi);
     for (const n of e.nomes || []) if (!m.nomes.includes(n)) m.nomes.push(n);
+    if (e.tipo === 'escalacao') for (const x of e.plano?.itens || []) { // a escalação vai somando (plano + "mais")
+      const i = m.plano.findIndex((y) => y.tipo === x.tipo && y.nome === x.nome);
+      if (i >= 0) m.plano[i] = { ...m.plano[i], ...x }; else m.plano.push({ ...x, t: e.t });
+    }
     if (e.tipo === 'alerta') m.alertas++;
     if (e.tipo === 'erro') m.erros++;
     if ((e.agente === 'Orquestrador' && e.tipo === 'espera' && !codex) || (codex && (e.tipo === 'fim' || e.tipo === 'erro'))) {
@@ -198,6 +202,37 @@ export function missoes() {
   lista.reverse();
   cacheMissoes = { v: versao, lista };
   return lista;
+}
+// Escalação ao vivo: o que a assistente planejou + o que de fato entrou em campo, com o estado de cada um.
+// estado: planejado (ainda não começou) | trabalhando | pronto | usado (skill/conector já aberto) | erro
+const PROGRAMAS_ESC = new Set(['Godot', 'Render', 'Codex', 'ffmpeg']);
+export function escalacao(m) {
+  if (!m) return [];
+  const itens = new Map();
+  const chave = (tipo, nome) => `${tipo}|${String(nome).toLowerCase()}`;
+  const por = (tipo, nome) => itens.get(chave(tipo, nome));
+  const add = (tipo, nome, extra = {}) => { const k = chave(tipo, nome); const x = itens.get(k) || { tipo, nome, estado: 'planejado', planejado: false }; itens.set(k, { ...x, ...extra }); return itens.get(k); };
+  for (const p of m.plano || []) add(p.tipo === 'conector' ? 'conector' : p.tipo, p.nome, { por: p.por, novo: !!p.novo, planejado: true });
+  const ativoNaSessao = (nome) => { const mesa = equipes().get(m.pessoa)?.get(nome); return !!mesa && [...(mesa.abertas?.keys() || [])].some((k) => k.startsWith((m.sessao || '?') + '|')) && ativos(mesa) > 0; };
+  for (const e of m.passos) {
+    if (e.agente !== 'Orquestrador' && e.agente) {
+      const tipo = PROGRAMAS_ESC.has(e.agente) ? 'programa' : ['PixelLab', 'Blender', 'HuggingFace'].includes(e.agente) ? 'conector' : 'agente';
+      const nome = tipo === 'conector' ? e.agente.toLowerCase().replace('huggingface', 'hf') : e.agente;
+      const x = por(tipo, nome) || add(tipo, nome);
+      x.estado = e.tipo === 'fim' ? 'pronto' : e.tipo === 'erro' ? 'erro' : x.estado === 'pronto' ? 'pronto' : 'trabalhando';
+      x.ult = e;
+    }
+    if (e.ferramenta === 'Skill' && e.alvo) { const nome = String(e.alvo).split(':').pop(); const x = por('skill', nome) || add('skill', nome); x.estado = 'usado'; }
+    const con = conectorDe(e.ferramenta);
+    if (con) { const k = String(e.ferramenta).split('__')[1]; const x = por('conector', k) || [...itens.values()].find((y) => y.tipo === 'conector' && conectorDe(`mcp__${y.nome}__x`) === con) || add('conector', k); x.estado = 'usado'; }
+    // agente/skill NOVO criado nesta missão (arquivo .claude/agents/<nome>.md ou SKILL.md)
+    if (/^(Write|Edit)$/.test(e.ferramenta || '')) for (const x of itens.values()) if (x.novo && (e.alvo === `${x.nome}.md` || (x.tipo === 'skill' && e.alvo === 'SKILL.md'))) x.criado = true;
+  }
+  for (const x of itens.values()) if (x.novo && x.criado && x.estado === 'planejado') x.estado = 'pronto';
+  // quem ainda está "trabalhando" mas a missão acabou (ou a cópia já fechou) vira pronto
+  for (const x of itens.values()) if (x.estado === 'trabalhando' && x.tipo === 'agente' && (m.fim || !ativoNaSessao(x.nome)) && Date.now() - (x.ult?.t || 0) > 60e3) x.estado = 'pronto';
+  const ordem = { agente: 0, programa: 1, conector: 2, skill: 3, plugin: 4 };
+  return [...itens.values()].sort((a, b) => ordem[a.tipo] - ordem[b.tipo] || (b.planejado - a.planejado));
 }
 // Frente em que a mesa (agente) está trabalhando agora: a da missão do último passo dele.
 export function frenteDaMesa(m) { missoes(); return m?.ult?._m?.frente || null; }

@@ -105,6 +105,7 @@ export function frase(e) {
   const t = String(e.texto ?? '');
   if (e.tipo === 'pedido') return t.replace(/^(\S+) pediu: /, (_, q) => `${q === 'Orquestrador' ? 'A assistente' : q} pediu: `);
   if (e.tipo === 'alerta') return alertaHumano(t);
+  if (e.tipo === 'escalacao') return 'Montou a escalação: ' + (e.plano?.itens || []).map((x) => (x.novo ? 'novo ' : '') + x.nome).join(', ');
   if (e.tipo === 'erro') return 'Deu erro: ' + primeiraFrase(t.replace(/^(SCRIPT )?ERROR:\s*/i, '').replace(/^não começou: /, 'não conseguiu começar: '), 140);
   if (e.tipo === 'fim' && e.agente !== 'Orquestrador') return (FORA.has(e.agente) ? 'Terminou: ' : 'Entregou: ') + primeiraFrase(t, 160);
   if (e.tipo === 'espera' && e.resposta) return `Respondeu: ${e.resposta}`;
@@ -158,7 +159,7 @@ export function categoria(e) {
   if (e.tipo === 'alerta') return 'alerta';
   if (e.tipo === 'erro') return 'erro';
   if (e.tipo === 'fim') return 'entrega';
-  if (e.tipo === 'pedido') return 'chamar';
+  if (e.tipo === 'pedido' || e.tipo === 'escalacao') return 'chamar';
   if (/^(Read|Grep|Glob|LS|NotebookRead)$/.test(t)) return 'ler';
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(t)) return 'escrever';
   if (/^Web/.test(t)) return 'web';

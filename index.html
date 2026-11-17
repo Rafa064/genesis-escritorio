@@ -23,7 +23,7 @@
 <body>
 <header id="topo">
   <div class="logo"><span class="quad"></span><span class="nome-logo">Estúdio Genesis</span></div>
-  <nav class="vistas" id="vistas"><button data-acao="mapa" class="on">Estúdio</button><button data-acao="quadro">Trabalho</button></nav>
+  <nav class="vistas" id="vistas"><button data-acao="mapa" class="on">Estúdio</button><button data-acao="quadro">Trabalho</button><button data-acao="equipe">Equipe</button></nav>
   <div id="gente" class="gente"></div>
   <div id="resumoTopo" class="resumo-topo"></div>
   <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
@@ -49,6 +49,8 @@
     <canvas id="tela" tabindex="0"></canvas>
     <div id="camada"></div>
     <div id="frentes" class="frentes"></div>
+    <div id="equipeVista" hidden><div class="eq-topo"><h2>Equipe</h2><input id="buscaEquipe" type="search" placeholder="Buscar agente, skill, conector…" autocomplete="off"><div id="filtrosEquipe" class="eq-filtros"></div></div><div id="equipeCorpo"></div></div>
+    <div id="hudMapa" class="hud-mapa" hidden></div>
     <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
@@ -71,6 +73,7 @@
       <div id="listaEquipe"></div>
     </section>
     <section data-painel="agente" class="painel" hidden><div id="detalheAgente"></div></section>
+    <section data-painel="item" class="painel" hidden><div id="detalheItem"></div></section>
     <section data-painel="atencao" class="painel" hidden><div id="listaAprovacoes"></div><div id="listaAtencao"></div></section>
     <section data-painel="missoes" class="painel" hidden>
       <input id="buscaMissoes" class="busca" type="search" placeholder="Buscar em pedidos, respostas, agentes, arquivos…">
@@ -100,6 +103,7 @@
         <div class="linha"><button type="button" class="btn" id="cancelarConversa">Cancelar</button><span class="espaco"></span><button class="btn forte">Criar</button></div>
       </form>
       <div id="estadoPonte" class="estado-ponte"></div>
+      <div id="hudChat" class="hud-chat" hidden></div>
       <div id="msgs"></div>
       <form id="formChat">
         <textarea id="entrada" rows="2" placeholder="Peça algo… (Enter envia, Shift+Enter quebra linha)"></textarea>
@@ -134,7 +138,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-aba="atencao"><span>🔔</span>Resumo<b class="badge" id="badgeResumoCel" hidden>0</b></button><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
+<nav id="abasCelular"><button data-aba="atencao"><span>🔔</span>Resumo<b class="badge" id="badgeResumoCel" hidden>0</b></button><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-acao="equipe"><span>🧩</span>Equipe</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

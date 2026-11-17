@@ -42,7 +42,8 @@ export const nomeConector = (k) => NOMES_MCP[String(k).toLowerCase()] || k;
 
 // Descrição de skill escrita para a IA ("Use quando…") vira frase para gente.
 export function descricaoHumana(d) {
-  return String(d || '').replace(/^(use|usar|use this skill|use when|use quando|quando)\s*(quando|when|for|para)?\s*/i, '').replace(/^\w/, (c) => c.toUpperCase());
+  // "Use quando for gravar…" -> "Gravar…"; "Use para criar…" -> "Criar…"; "Use when the user…" fica em inglês, mas sem o "Use when".
+  return String(d || '').replace(/^(use this skill|use|usar)\s+(quando|when|for|para|to)\s+(for\s+|o usuário\s+|a pessoa\s+)?/i, '').replace(/^quando\s+(for\s+)?/i, '').replace(/^\p{Ll}/u, (c) => c.toUpperCase());
 }
 
 // Etiqueta HTML pequena do tipo (ícone + rótulo).

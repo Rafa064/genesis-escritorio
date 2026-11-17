@@ -546,9 +546,10 @@ function irAtePessoa(p) {
 }
 
 // ======================= gaveta =======================
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Resumo', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Resumo', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
+  if (nome === 'equipe' || nome === 'catalogo') { abrirEquipeVista(); return; }
   if (empilhar && aba !== nome && !$('#gaveta').classList.contains('fechada')) pilha.push(aba); else if (!empilhar) pilha.length = 0;
   aba = nome; if (!['agente', 'missao'].includes(nome)) guarda('aba', nome);
   $('#gaveta').classList.remove('fechada');
@@ -563,7 +564,7 @@ function abrirAba(nome, empilhar = false) {
   $('#voltarGaveta').hidden = !pilha.length;
   $('#gaveta').classList.toggle('folha', nome === 'agente');
   $('#gaveta').classList.toggle('conversa', ['chat', 'dupla'].includes(nome));                         // no celular: ficha na metade de baixo
-  $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco'].includes(nome));
+  $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco', 'item'].includes(nome));
   desenharAba();
   setTimeout(dimensionar, 0);
 }
@@ -575,7 +576,7 @@ $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
 
 let pendenteUI = false;
-function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
+function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -601,7 +602,7 @@ function montarInterface() {
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else { fecharQuadro(); abrirAba(b.dataset.aba); } };
+  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); fecharEquipeVista(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.acao === 'equipe') { fecharGaveta(); abrirEquipeVista(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else { fecharQuadro(); fecharEquipeVista(); abrirAba(b.dataset.aba); } };
   document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
   $('#sinoCel').onclick = () => abrirAba('atencao');
   $('#menuCel').onclick = () => abrirAba('mais');
@@ -618,8 +619,12 @@ function montarInterface() {
   if (innerWidth <= 760) abrirAba('atencao'); else abrirAba(guardado('abaConversa', 'dupla'));
   registrarSw();
   abrirDeUrl(new URL(location.href));
-  $('#vistas').onclick = (e) => { const b = e.target.closest('[data-acao]'); if (!b) return; if (b.dataset.acao === 'quadro') abrirQuadro(); else fecharQuadro(); };
-  desenharTopo(); desenharHud();
+  $('#vistas').onclick = (e) => { const b = e.target.closest('[data-acao]'); if (!b) return; if (b.dataset.acao === 'quadro') abrirQuadro(); else if (b.dataset.acao === 'equipe') abrirEquipeVista(); else { fecharEquipeVista(); fecharQuadro(); } };
+  $('#buscaEquipe').oninput = (e) => { buscaEq = e.target.value; desenharEquipeVista(); };
+  $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
+  $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
+  ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
+  desenharTopo(); desenharHud(); desenharHudMapa();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
 
@@ -658,7 +663,7 @@ function todosAgentes() {
 // ---------- abas ----------
 function desenharAba() {
   if (!mundo || $('#gaveta').classList.contains('fechada')) return;
-  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, catalogo: desenharCatalogo, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco })[aba]?.();
+  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, item: desenharItem, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco })[aba]?.();
 }
 function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
@@ -974,10 +979,12 @@ async function desenharMissao() {
   const linhasFases = await Promise.all(fs.map(async (f) => `<div class="etapa ${esc(f.tipo)}"><span class="h">${D.hora(f.t)}</span><img src="${await retratoDe(f.agente)}" title="${esc(tituloDe(f.agente))}" alt=""><span><b>${esc(f.agente === 'Orquestrador' ? 'Assistente' : tituloDe(f.agente))}</b> <span class="sub2">${ICONE_CAT[f.cat] || ''} ${esc(f.texto)}</span></span></div>`));
   const quem = await Promise.all([...m.agentes].map(async (a) => `<div class="quem-linha"><img src="${await retratoDe(a)}" alt=""><b>${esc(tituloDe(a))}</b>${etiquetaTipo(tipoDe(a))}</div>`));
   const res = resumo(m.passos);
+  const escalacaoHtml = m.alvo === 'codex' ? '' : await htmlEscalacao(m);
   $('#detalheMissao').innerHTML = `
     <div class="etqs">${chipFrente(m.frente)}<span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : ''}<span class="sub">${esc(m.projeto || '')}${m.origem ? ` · pelo ${m.origem === 'vscode' ? 'VS Code' : 'site'}` : ''}</span></div>
     <h3 class="titulo-missao">${esc(m.titulo)}</h3>
     <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)} · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+    ${escalacaoHtml}
     ${temQuadro ? (() => { const mc = marcoDaMissao(m); const op = marcos.filter((x) => x.coluna !== 'feito' || x === mc); return `<div class="linha-marco">🏁 <select id="marcoDaMissao"><option value="">${mc ? '' : 'sem marco'}</option>${op.map((x) => `<option value="${x.id}" ${x === mc ? 'selected' : ''}>${jogoPorId(x.jogo).icone} ${esc(x.titulo)}</option>`).join('')}<option value="nenhum">não é de marco nenhum</option></select>${mc ? `<a href="#" id="verMarco">ver marco ›</a><span class="sub">${comoPendurou(m)}</span>` : ''}</div>`; })() : ''}
     ${m.resposta ? `<div class="bloco destaque"><h4>✅ Resultado</h4><div class="msg assistente" style="box-shadow:none;background:none;padding:0;max-width:100%">${md(m.resposta)}</div></div>` : ''}
     ${res.length ? `<div class="bloco"><h4>Em resumo</h4><div class="resumo-linhas grande">${res.map((l) => `<div>${l.icone} ${esc(l.texto)}</div>`).join('')}</div></div>` : ''}
@@ -1147,11 +1154,13 @@ function quemTrabalhaTodos() { return todosAgentes().filter((a) => TRABALHANDO.i
 
 // ---------- tela do quadro ----------
 function marcarVista() {
-  const q = !$('#quadro').hidden, gav = !$('#gaveta').classList.contains('fechada') && innerWidth <= 760;
-  $$('#vistas button').forEach((b) => b.classList.toggle('on', (b.dataset.acao === 'quadro') === q));
-  if (!gav) $$('#abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa'));
+  const v = !$('#equipeVista').hidden ? 'equipe' : !$('#quadro').hidden ? 'quadro' : 'mapa';
+  const gav = !$('#gaveta').classList.contains('fechada') && innerWidth <= 760;
+  $$('#vistas button').forEach((b) => b.classList.toggle('on', b.dataset.acao === v));
+  if (!gav) $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.acao === v));
 }
 function abrirQuadro() {
+  $('#equipeVista').hidden = true;
   $('#quadro').hidden = false; guarda('quadro', '1'); marcarVista();
   $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.add('on'));
   desenharQuadro();
@@ -1459,6 +1468,7 @@ function desenharChat() {
   ligarAprovacoes(msgs);
   if (noFim) msgs.scrollTop = msgs.scrollHeight;
   $('#btnEnviar').textContent = chatOcupado ? 'Pôr na fila' : 'Enviar';
+  desenharHudChat();
 }
 async function enviarChat() {
   const t = $('#entrada').value.trim();
@@ -1536,38 +1546,203 @@ function desenharDupla() {
 
 // ---------- quem é quem: o catálogo de agentes, skills, conectores e plugins ----------
 let pessoaCatalogo = null;
-function desenharCatalogo() {
-  pessoaCatalogo ||= EU.pessoa;
-  const info = estados.get(pessoaCatalogo)?.info || {};
-  const desde = Date.now() - 30 * 86400e3;
-  const ev = D.eventos.filter((e) => e.pessoa === pessoaCatalogo && e.t > desde);
-  const conta = (fn) => { const c = new Map(); for (const e of ev) { const k = fn(e); if (k) c.set(k, (c.get(k) || 0) + 1); } return c; };
-  const usoSkill = conta((e) => e.ferramenta === 'Skill' ? String(e.alvo || '').split(':').pop() : null);
-  const usoCon = conta((e) => conectorDe(e.ferramenta) || (['PixelLab', 'Blender', 'HuggingFace'].includes(e.agente) && e.tipo === 'inicio' ? nomeConector(e.agente === 'HuggingFace' ? 'hf' : e.agente.toLowerCase()) : null));
-  const usoAg = conta((e) => (e.tipo === 'pedido' || e.tipo === 'inicio') && e.agente !== 'Orquestrador' ? e.agente : null);
-  const uso = (n) => n ? `<span class="uso">usado ${n}× no mês</span>` : '<span class="uso nunca">não usado no mês</span>';
-  const sec = (tipo, conteudo, extra = '') => `<div class="sec-cat" style="--cor:${TIPOS[tipo].cor}"><div class="sec-cab"><span class="ic">${TIPOS[tipo].icone}</span><div><b>${TIPOS[tipo].plural}${extra}</b><p>${esc(TIPOS[tipo].explica)}</p></div></div>${conteudo}</div>`;
-  const item = (nome, desc, extra = '') => `<div class="item-cat"><div><b>${esc(nome)}</b>${extra}</div>${desc ? `<p>${esc(desc)}</p>` : ''}</div>`;
-  const conectores = new Map((info.mcp || []).map((m) => [nomeConector(m.nome), m]));
-  for (const k of usoCon.keys()) if (!conectores.has(k)) conectores.set(k, { nome: k, origem: 'conta Claude' });
-  const velha = !info.skills;
-  let html = `<div class="filtros">${pessoas().map((p) => `<button data-pc="${esc(p)}" class="${p === pessoaCatalogo ? 'on' : ''}">Equipe de ${esc(p)}</button>`).join('')}</div>
-    <div class="legenda-tipos">${Object.entries(TIPOS).map(([k, t]) => `<div style="--cor:${t.cor}"><span>${t.icone}</span><b>${t.rot}</b><small>${t.curta}</small></div>`).join('')}</div>
-    <p class="sub dica-cat">Personagens com mesa: 👑 🤖 🧠 🔌 🛠️. Skills 📘 e plugins 📦 não são pessoas: são receitas e pacotes que os personagens usam.</p>`;
-  html += sec('assistente', item(`Assistente de ${pessoaCatalogo}`, 'Recebe seus pedidos (aqui ou no VS Code) e coordena todo mundo.'));
-  html += sec('agente', (info.agentes || []).map((a) => item(tituloDe(a.nome), descricaoHumana(a.descricao), ` <span class="modelo claude">${esc(/haiku|sonnet|opus|fable/i.exec(a.modelo || '')?.[0] || a.modelo || 'Claude')}</span> ${uso(usoAg.get(a.nome))}`)).join('') || '<p class="sub">Nenhum agente listado ainda (a ponte manda a lista quando liga).</p>');
-  html += sec('ia', item('Codex (GPT, da OpenAI)', 'Revisa, dá nota e faz tarefas separadas. Converse com ele no chat da assistente escolhendo "Codex".', uso(usoAg.get('Codex'))));
-  html += sec('skill', velha ? '<p class="sub">Atualize a ponte deste PC para listar as skills.</p>' : (info.skills || []).sort((a, b) => (usoSkill.get(b.nome) || 0) - (usoSkill.get(a.nome) || 0)).map((s) => item(s.nome, descricaoHumana(s.descricao), ` <span class="origem">${esc(s.origem)}</span> ${uso(usoSkill.get(s.nome))}`)).join(''), ` (${(info.skills || []).length})`);
-  html += sec('plugin', [...conectores.values()].map((c) => item(nomeConector(c.nome), '', ` <span class="origem">${esc(c.origem)}</span> ${uso(usoCon.get(nomeConector(c.nome)))}`)).join('') || '<p class="sub">Nenhum conector.</p>');
-  html += sec('programa', item('Godot', 'Abre e testa o jogo.', uso(usoAg.get('Godot'))) + item('Render (Remotion)', 'Monta e exporta os vídeos.', uso(usoAg.get('Render'))) + item('ffmpeg', 'Corta e converte vídeo e imagem; faz as miniaturas.', info.ffmpeg ? ' <span class="uso">instalado</span>' : ' <span class="uso nunca">não instalado</span>'));
-  if (info.plugins?.length) html += sec('pacote', info.plugins.map((p) => item(p.nome, '', ` <span class="origem">${esc(p.origem)}</span>`)).join(''));
-  $('#listaCatalogo').innerHTML = html;
-  $('#listaCatalogo').onclick = (e) => { const b = e.target.closest('[data-pc]'); if (b) { pessoaCatalogo = b.dataset.pc; desenharCatalogo(); } };
+// ======================= HUD de escalação (quem a assistente chamou, ao vivo) =======================
+// A assistente declara a escalação (escritorio/escalar.mjs); o que entra em campo de verdade também aparece.
+// Estados: na escalação (planejado) → trabalhando → pronto. "novo" = algo que ela vai criar porque faltava.
+const ICONE_TIPO_ESC = { agente: '🤖', skill: '📘', conector: '🔌', programa: '🛠️', plugin: '📦', assistente: '👑', ia: '🧠' };
+const ROT_EST = { planejado: ['○', 'na escalação'], trabalhando: ['●', 'trabalhando'], pronto: ['✓', 'pronto'], usado: ['✓', 'usada'], erro: ['×', 'deu erro'] };
+const nomeBonito = (tipo, nome) => tipo === 'agente' ? tituloDe(nome) : tipo === 'conector' ? nomeConector(nome) : nome;
+async function htmlEscalacao(m, { compacto = false, mapa = false } = {}) {
+  const itens = D.escalacao(m);
+  if (!itens.length) return compacto ? '' : '<div class="esc vazia">A escalação aparece aqui quando a assistente começar: ela diz quem vai chamar, quais skills vai usar e por quê.</div>';
+  const linhas = await Promise.all(itens.map(async (x) => {
+    const [g, r] = ROT_EST[x.estado] || ROT_EST.planejado;
+    const rosto = x.tipo === 'agente' || x.tipo === 'programa' ? `<img src="${await retratoDe(x.nome)}" alt="">` : `<span class="esc-ic">${ICONE_TIPO_ESC[x.tipo] || '•'}</span>`;
+    const selo = x.novo ? `<span class="selo-novo">${x.criado ? '✨ criado' : '✨ novo'}</span>` : '';
+    const fora = !x.planejado && !compacto && (m.plano || []).length ? '<span class="fora-plano" title="Entrou sem estar na escalação">extra</span>' : '';
+    return `<div class="esc-it est-${x.estado}" data-esc-tipo="${esc(x.tipo)}" data-esc-nome="${esc(x.nome)}" title="${esc(x.por || '')}">${rosto}<div class="esc-txt"><b>${esc(nomeBonito(x.tipo, x.nome))}</b>${selo}${fora}${x.por ? `<small>${esc(x.por)}</small>` : ''}</div><i>${g}<span> ${r}</span></i></div>`;
+  }));
+  const n = (...e) => itens.filter((x) => e.includes(x.estado)).length;
+  const placar = [n('trabalhando') && `<em class="t">${n('trabalhando')} trabalhando</em>`, n('pronto', 'usado') && `<em class="p">${n('pronto', 'usado')} pronto</em>`, n('planejado') && `<em>${n('planejado')} na fila</em>`].filter(Boolean).join('');
+  return `<div class="esc ${compacto ? 'compacta' : ''}" data-missao="${esc(m.id)}">
+    <div class="esc-cab"><span class="esc-rei">👑</span><div class="esc-tit"><b>Escalação${m.pessoa !== EU.pessoa ? ' · ' + esc(m.pessoa) : ''}</b><small>${esc(primeiraFrase(m.titulo, 80))}</small></div><span class="esc-placar">${placar}</span>${mapa ? `<button class="esc-abrir" data-abrir-missao="${esc(m.id)}" title="Abrir a missão">›</button><button class="esc-recolher" title="Recolher">${hudFechado ? '▴' : '▾'}</button>` : ''}</div>
+    <div class="esc-arvore">${linhas.join('')}</div></div>`;
+}
+let hudFechado = guardado('hudFechado', innerWidth <= 760 ? '1' : '') === '1'; // no celular começa recolhido
+function ligarEscalacao(el) {
+  if (!el || el.dataset.escLigado) return;
+  el.dataset.escLigado = '1';
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('.esc-recolher')) { hudFechado = !hudFechado; guarda('hudFechado', hudFechado ? '1' : ''); desenharHudMapa(); return; }
+    const am = e.target.closest('.esc-abrir'); if (am) { abrirMissao(am.dataset.abrirMissao); return; }
+    const it = e.target.closest('[data-esc-nome]');
+    if (it) { const t = it.dataset.escTipo, n = it.dataset.escNome; abrirItem(n === 'Codex' ? 'ia' : t, n); return; }
+    const cab = e.target.closest('.esc-cab'), box = e.target.closest('[data-missao]');
+    if (cab && box && !box.closest('#detalheMissao')) abrirMissao(box.dataset.missao);
+  });
+}
+// Missão da conversa aberta no chat (pela sessão do Claude que a conversa guarda).
+function missaoDaConversa(conv) {
+  if (!conv?.sessao || conv.alvo === 'codex') return null;
+  return D.missoes().find((m) => m.pessoa === EU.pessoa && m.sessao && String(conv.sessao).startsWith(m.sessao)) || null;
+}
+async function desenharHudChat() {
+  const el = $('#hudChat'); if (!el || !EU) return;
+  const m = missaoDaConversa(conversas.find((c) => c.id === conversaAtual));
+  const ativa = m && (!m.fim || Date.now() - m.fim < 30 * 60e3);
+  if (!ativa) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false; el.innerHTML = await htmlEscalacao(m, { compacto: true });
+}
+// Cartão sobre o mapa: a escalação da missão que está rodando (a sua primeiro).
+async function desenharHudMapa() {
+  const el = $('#hudMapa'); if (!el || !EU) return;
+  const ativas = D.missoes().filter((m) => ['trab', 'alerta'].includes(m.status) && (m.plano.length || m.agentes.size));
+  const m = ativas.find((x) => x.pessoa === EU.pessoa) || ativas[0];
+  if (!m) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false; el.classList.toggle('fechado', hudFechado);
+  el.innerHTML = await htmlEscalacao(m, { compacto: true, mapa: true }) + (ativas.length > 1 && !hudFechado ? `<div class="esc-mais">+${ativas.length - 1} missão(ões) rodando · veja no Resumo</div>` : '');
+}
+
+// ======================= Equipe: tudo o que a assistente pode chamar =======================
+const TIPO_EQ = { assistente: TIPOS.assistente, agente: TIPOS.agente, ia: TIPOS.ia, programa: TIPOS.programa, conector: TIPOS.plugin, skill: TIPOS.skill, plugin: TIPOS.pacote };
+const ORDEM_EQ = ['assistente', 'agente', 'ia', 'programa', 'conector', 'skill', 'plugin'];
+const FILTROS_TIPO_EQ = [['', 'Tudo'], ['agente', '🤖 Agentes'], ['skill', '📘 Skills'], ['conector', '🔌 Conectores'], ['programa', '🛠️ Programas'], ['plugin', '📦 Plugins']];
+const DESC_CONECTOR = { PixelLab: 'Gera pixel art, personagens animados, tiles, música e efeitos sonoros (gasta créditos: a assistente pergunta antes).', Blender: 'Controla o Blender: modela, importa e renderiza assets 3D.', Notion: 'Lê e escreve páginas e bancos do Notion.', 'Hugging Face': 'Busca modelos, datasets e Spaces de IA; roda alguns direto (ex.: gerar imagem).', 'Claude Docs': 'Documentos vivos do claude.ai.', 'VS Code': 'Integração com o editor (diagnósticos).' };
+const PROGRAMAS_PADRAO = [{ nome: 'Godot', descricao: 'O motor do jogo: abre, roda e testa o Genesis pelo terminal.' }, { nome: 'Render', descricao: 'Remotion: monta e exporta os vídeos a partir de código.' }, { nome: 'Codex', descricao: 'IA da OpenAI (GPT): revisão crítica, nota de vídeo e arte, segunda opinião.' }];
+const chaveItem = (tipo, nome) => `${tipo}|${String(tipo === 'conector' ? nomeConector(nome) : nome).toLowerCase()}`;
+let filtroPesEq = '', filtroTipoEq = '', buscaEq = '', itemAberto = null;
+
+function itensEquipe() {
+  const mapa = new Map();
+  const add = (tipo, nome, pessoa, c = {}) => {
+    const k = chaveItem(tipo, nome);
+    const x = mapa.get(k) || { k, tipo, nome, donos: new Set(), origens: new Set(), descricao: '', falta: new Set() };
+    x.donos.add(pessoa);
+    if (!x.descricao && c.descricao) x.descricao = descricaoHumana(c.descricao);
+    if (!x.modelo && c.modelo && c.modelo !== 'sessão') x.modelo = c.modelo;
+    if (c.origem) x.origens.add(c.origem);
+    if (c.instalado === false) x.falta.add(pessoa);
+    mapa.set(k, x); return x;
+  };
+  for (const p of pessoas()) {
+    const info = estados.get(p)?.info || {};
+    add('assistente', 'Assistente', p, { descricao: TIPOS.assistente.explica });
+    for (const a of info.agentes || []) add('agente', a.nome, p, a);
+    for (const pr of info.programas || PROGRAMAS_PADRAO) add(pr.nome === 'Codex' ? 'ia' : 'programa', pr.nome, p, pr);
+    for (const c of info.mcp || []) add('conector', c.nome, p, { ...c, descricao: DESC_CONECTOR[nomeConector(c.nome)] || '' });
+    for (const s of info.skills || []) add('skill', s.nome, p, s);
+    for (const pl of info.plugins || []) add('plugin', pl.nome, p, pl);
+  }
+  // quem já apareceu trabalhando mas não está na lista de ninguém (ex.: agente de outra pasta)
+  for (const [p, mesas] of D.equipes()) for (const m of mesas.values()) {
+    if (m.nome === 'Orquestrador') continue;
+    const t = tipoDe(m.nome), tipo = t === 'plugin' ? 'conector' : t;
+    const nome = tipo === 'conector' ? (m.nome === 'HuggingFace' ? 'hf' : m.nome.toLowerCase()) : m.nome;
+    if (!mapa.has(chaveItem(tipo, nome))) add(tipo, nome, p, { origem: 'visto trabalhando' });
+  }
+  return [...mapa.values()];
+}
+// Quais missões (30 dias) usaram cada item: um passe só por todas as missões.
+let cacheUsoEq = { v: '' };
+function usoEquipe() {
+  const v = `${D.versaoAtual()}|${filtroPesEq}`;
+  if (cacheUsoEq.v === v) return cacheUsoEq.mapa;
+  const mapa = new Map(), desde = Date.now() - 30 * 86400e3;
+  for (const m of D.missoes()) {
+    if (m.inicio < desde || (filtroPesEq && m.pessoa !== filtroPesEq)) continue;
+    const ks = new Set(['assistente|assistente']);
+    for (const x of D.escalacao(m)) ks.add(chaveItem(x.nome === 'Codex' ? 'ia' : x.tipo, x.nome));
+    for (const k of ks) { if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(m); }
+  }
+  cacheUsoEq = { v, mapa };
+  return mapa;
+}
+// Estado ao vivo do item (agentes e programas têm mesa; skills/conectores: "em uso" numa missão rodando).
+function estadoItem(x) {
+  if (['agente', 'programa', 'ia', 'assistente'].includes(x.tipo)) {
+    const nome = x.tipo === 'assistente' ? 'Orquestrador' : x.nome;
+    let melhor = null;
+    for (const p of x.donos) {
+      const mesa = x.tipo === 'assistente' ? (D.abas().find((a) => a.pessoa === p) || D.mesa(p, nome)) : D.mesa(p, nome);
+      if (!mesa?.ult) continue;
+      const st = D.estadoDe(mesa);
+      if (!melhor || st.ordem < melhor.st.ordem) melhor = { st, mesa, p };
+    }
+    return melhor;
+  }
+  const ativa = (usoEquipe().get(x.k) || []).find((m) => m.status === 'trab' || m.status === 'alerta');
+  return ativa ? { st: { cls: 'trab', ...D.ESTADOS.trab, rot: 'em uso agora' }, missao: ativa } : null;
+}
+async function cartaoItem(x) {
+  const info = TIPO_EQ[x.tipo], uso = (usoEquipe().get(x.k) || []).length, est = estadoItem(x);
+  const rosto = ['agente', 'programa', 'ia', 'assistente'].includes(x.tipo) ? `<img src="${await retratoDe(x.tipo === 'assistente' ? 'Orquestrador' : x.nome)}" alt="">` : `<span class="eq-ic">${info.icone}</span>`;
+  const vivo = est && ['trab', 'alerta', 'erro'].includes(est.st.cls);
+  return `<button class="eq-card ${vivo ? 'vivo' : ''}" data-item="${esc(x.k)}" style="--cor:${info.cor}">
+    ${rosto}<div class="eq-txt"><div class="eq-nome"><b>${esc(nomeBonito(x.tipo, x.nome))}</b>${x.modelo ? `<span class="modelo claude">${esc(/haiku|sonnet|opus|fable/i.exec(x.modelo)?.[0] || x.modelo)}</span>` : ''}</div>
+    <p>${esc(x.descricao || info.curta)}</p>
+    <div class="eq-rod">${[...x.donos].map((p) => `<span class="eq-dono" style="--cor:${corPessoa(p)}">${esc(p)}</span>`).join('')}<span class="eq-uso ${uso ? '' : 'nunca'}">${uso ? `${uso}× no mês` : 'sem uso no mês'}</span>${est ? `<span class="eq-est" style="--cor:${est.st.cor}"><i>${est.st.glifo}</i>${esc(est.st.rot)}</span>` : ''}</div></div></button>`;
+}
+function abrirEquipeVista() {
+  if ($('#quadro') && !$('#quadro').hidden) { $('#quadro').hidden = true; guarda('quadro', ''); }
+  $('#equipeVista').hidden = false; marcarVista(); desenharEquipeVista();
+  if (innerWidth <= 760) $('#gaveta').classList.add('fechada');
+}
+function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarVista(); } }
+let pendenteEq = false;
+async function desenharEquipeVista() {
+  if (!EU || $('#equipeVista').hidden || pendenteEq) return;
+  pendenteEq = true;
+  try {
+    const pes = ['', ...pessoas()];
+    $('#filtrosEquipe').innerHTML = `<div class="eq-grupo">${pes.map((p) => `<button data-fpes="${esc(p)}" class="${p === filtroPesEq ? 'on' : ''}">${p ? esc(p) : 'Os dois'}</button>`).join('')}</div><div class="eq-grupo">${FILTROS_TIPO_EQ.map(([t, r]) => `<button data-ftipo="${t}" class="${t === filtroTipoEq ? 'on' : ''}">${r}</button>`).join('')}</div>`;
+    const q = buscaEq.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const uso = usoEquipe();
+    const lista = itensEquipe().filter((x) => (!filtroPesEq || x.donos.has(filtroPesEq)) && (!filtroTipoEq || x.tipo === filtroTipoEq || (filtroTipoEq === 'programa' && x.tipo === 'ia'))
+      && (!q || `${x.nome} ${nomeBonito(x.tipo, x.nome)} ${x.descricao}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(q)));
+    const vivos = lista.filter((x) => { const e = estadoItem(x); return e && ['trab', 'alerta', 'erro'].includes(e.st.cls); }).length;
+    let html = `<p class="eq-resumo">${lista.length} itens${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ''} · a assistente escolhe daqui quem chamar em cada pedido (e cria o que faltar).</p>`;
+    for (const tipo of ORDEM_EQ) {
+      const doTipo = lista.filter((x) => x.tipo === tipo).sort((a, b) => (uso.get(b.k)?.length || 0) - (uso.get(a.k)?.length || 0) || a.nome.localeCompare(b.nome));
+      if (!doTipo.length) continue;
+      const info = TIPO_EQ[tipo];
+      html += `<section class="eq-sec" style="--cor:${info.cor}"><h3>${info.icone} ${info.plural} <small>${doTipo.length}</small></h3><p class="eq-explica">${esc(info.explica)}</p><div class="eq-grade">${(await Promise.all(doTipo.map(cartaoItem))).join('')}</div></section>`;
+    }
+    $('#equipeCorpo').innerHTML = html + (lista.length ? '' : '<div class="vazio">Nada encontrado.</div>');
+  } finally { pendenteEq = false; }
+}
+function abrirItem(tipo, nome) { itemAberto = chaveItem(tipo, nome); abrirAba('item', true); }
+async function desenharItem() {
+  const x = itensEquipe().find((i) => i.k === itemAberto);
+  if (!x) { $('#detalheItem').innerHTML = '<div class="vazio">Não achei este item no catálogo de ninguém (a ponte manda a lista quando liga).</div>'; return; }
+  const info = TIPO_EQ[x.tipo], ms = (usoEquipe().get(x.k) || []).slice(0, 8), est = estadoItem(x);
+  const rosto = ['agente', 'programa', 'ia', 'assistente'].includes(x.tipo) ? `<img class="it-rosto" src="${await retratoDe(x.tipo === 'assistente' ? 'Orquestrador' : x.nome)}" alt="">` : `<span class="it-ic" style="--cor:${info.cor}">${info.icone}</span>`;
+  const linhasM = await Promise.all(ms.map(async (m) => { const e = D.escalacao(m).find((y) => chaveItem(y.nome === 'Codex' ? 'ia' : y.tipo, y.nome) === x.k); return `<button class="it-missao" data-abrir-missao="${esc(m.id)}" style="--cor:${m.frente.cor}"><span>${m.frente.icone} ${esc(m.pessoa)} · ${D.ha(m.inicio)}</span><b>${esc(m.titulo)}</b>${e?.por ? `<small>${esc(e.por)}</small>` : ''}</button>`; }));
+  $('#detalheItem').innerHTML = `
+    <div class="it-cab">${rosto}<div><h3>${esc(nomeBonito(x.tipo, x.nome))}</h3>${etiquetaTipo(x.tipo === 'conector' ? 'plugin' : x.tipo === 'plugin' ? 'pacote' : x.tipo)}${x.modelo ? ` <span class="modelo claude">${esc(x.modelo)}</span>` : ''}</div></div>
+    ${est ? `<div class="estado" style="--cor:${est.st.cor}"><i>${est.st.glifo}</i>${esc(est.st.rot)}${est.mesa?.ult ? ' · ' + esc(primeiraFrase(frase(est.mesa.ult), 90)) : ''}</div>` : ''}
+    <p class="it-desc">${esc(x.descricao || info.explica)}</p>
+    <div class="it-campos"><span><b>De quem</b>${[...x.donos].map((p) => `<span class="eq-dono" style="--cor:${corPessoa(p)}">${esc(p)}</span>`).join(' ')}</span>
+      ${x.origens.size ? `<span><b>Onde está</b>${esc([...x.origens].join(', '))}</span>` : ''}
+      ${x.falta.size ? `<span><b>Falta instalar</b>${esc([...x.falta].join(', '))}</span>` : ''}
+      <span><b>Uso</b>${ms.length ? `${(usoEquipe().get(x.k) || []).length} missão(ões) no mês` : 'nenhuma missão no mês'}</span></div>
+    <p class="it-oque">${esc(info.explica)}</p>
+    <div class="linha">${x.tipo !== 'assistente' ? '<button class="btn forte" id="pedirComItem">✦ Pedir à assistente usando isto</button>' : '<button class="btn forte" id="pedirComItem">✦ Falar com a assistente</button>'}${['agente', 'programa', 'ia'].includes(x.tipo) && est?.p ? '<button class="btn" id="verNoMapa">Ver no mapa</button>' : ''}</div>
+    ${linhasM.length ? `<div class="bloco"><h4>Últimas missões</h4>${linhasM.join('')}</div>` : ''}`;
+  $('#pedirComItem').onclick = () => pedirCom(x);
+  $('#verNoMapa')?.addEventListener('click', () => { fecharEquipeVista(); fecharQuadro(); localizar(`${est.p}|${x.nome}`); });
+  $('#detalheItem').onclick = (e) => { const b = e.target.closest('[data-abrir-missao]'); if (b) abrirMissao(b.dataset.abrirMissao); };
+}
+async function pedirCom(x) {
+  const nome = nomeBonito(x.tipo, x.nome);
+  const texto = { agente: `Use o agente ${x.nome} para: `, skill: `Use a skill ${x.nome} para: `, conector: `Use o conector ${nome} para: `, programa: `Use o ${nome} para: `, plugin: `Use o plugin ${x.nome} para: `, ia: '', assistente: '' }[x.tipo] || '';
+  fecharEquipeVista();
+  await abrirChatCom(x.tipo === 'ia' ? 'codex' : 'claude');
+  setTimeout(() => { const e = $('#entrada'); if (e && texto && !e.value.trim()) e.value = texto; e?.focus(); }, 120);
 }
 
 // ---------- "Mais" (celular) ----------
 function desenharMais() {
-  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Quem está fazendo o quê agora'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
+  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Agentes, skills, conectores e programas'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
   $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
   $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
 }
@@ -1693,10 +1868,12 @@ async function iniciarDemo() {
   const ag = Date.now(), ev = (min, pessoa, agente, tipo, texto, extra = {}) => ({ id: Math.random(), t: ag - min * 60e3, pessoa, agente, tipo, texto, sessao: pessoa === 'Rafael' ? 's1' : 's2', projeto: 'genesis-game', ...extra });
   D.adicionar([
     ev(50, 'Rafael', 'Orquestrador', 'inicio', 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex'),
+    ev(49.5, 'Rafael', 'Orquestrador', 'escalacao', 'escalou', { plano: { modo: 'plano', itens: [{ tipo: 'agente', nome: 'editor-de-video', por: 'monta o Short no Remotion com cortes no compasso' }, { tipo: 'skill', nome: 'video-do-jogo', por: 'receita de vídeo do Genesis' }, { tipo: 'programa', nome: 'Render', por: 'exporta o vídeo' }, { tipo: 'programa', nome: 'Codex', por: 'dá a nota com folhas de quadros' }, { tipo: 'skill', nome: 'thumbnail-do-short', por: 'não existe receita de capa: vou criar', novo: true }] } }),
     ev(49, 'Rafael', 'Orquestrador', 'atividade', '', { ferramenta: 'Read', alvo: 'shots.json' }),
     ev(48, 'Rafael', 'editor-de-video', 'pedido', 'Orquestrador pediu: montar Short Raio + Fogo'),
     ev(40, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Bash', alvo: 'Medir cortes ::: node tools/video/beatgrid.mjs', modo: 'executar' }),
     ev(12, 'Rafael', 'Codex', 'fim', 'Nota 8/10: o corte do compasso 3 atrasa; resto limpo.'),
+    ev(5, 'Rafael', 'Orquestrador', 'atividade', '', { ferramenta: 'Write', alvo: 'SKILL.md', modo: 'escrever' }),
     ev(4, 'Rafael', 'Render', 'inicio', 'Orquestrador: npx remotion render ShortRaioFogo', { ferramenta: 'Bash', alvo: 'npx remotion render ShortRaioFogo' }),
     ev(3, 'Rafael', 'artista-3d', 'alerta', 'pediu permissão: generate_3d', { ferramenta: 'mcp__blender__generate_3d' }),
     ev(2, 'Rafael', 'editor-de-video', 'atividade', '', { ferramenta: 'Edit', alvo: 'ShortRaioFogo.tsx', modo: 'escrever' }),
@@ -1730,7 +1907,7 @@ async function iniciarDemo() {
   ]);
   estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], ffmpeg: true, vapid: 'demo', push: [], longe: false, agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku', descricao: 'Lê o projeto e responde perguntas sem mexer em nada.' }, { nome: 'revisor-godot', modelo: 'sonnet', descricao: 'Revisa código GDScript antes do commit.' }, { nome: 'editor-de-video', modelo: 'sonnet', descricao: 'Monta Shorts e trailers no Remotion com cortes no compasso.' }],
     skills: [{ nome: 'video-do-jogo', descricao: 'Use quando for gravar, montar ou renderizar um vídeo do Genesis', origem: 'projeto' }, { nome: 'balanceamento-com-bots', descricao: 'Use quando for balancear uma dificuldade com bots jogando', origem: 'projeto' }, { nome: 'hud-em-jogo', descricao: 'Use quando for desenhar ou mudar a HUD dentro da partida', origem: 'projeto' }],
-    mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official' }] } });
+    mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official', descricao: 'Recomenda automações do Claude Code (hooks, skills, MCP, sub-agentes).' }], programas: [{ nome: 'Godot', descricao: 'O motor do jogo: abre, roda e testa o Genesis pelo terminal.', instalado: true }, { nome: 'Render', descricao: 'Remotion: monta e exporta os vídeos a partir de código.' }, { nome: 'ffmpeg', descricao: 'Corta e converte vídeo e imagem; faz miniaturas.', instalado: true }, { nome: 'Codex', descricao: 'IA da OpenAI (GPT): revisão crítica e nota de vídeo/arte.', instalado: true }] } });
   estados.set('Kenny', { pessoa: 'Kenny', ponte_visto: new Date().toISOString(), branch: 'v0.2-loja-classes', projeto: 'genesis-game' });
   const quando = (min) => new Date(ag - min * 60e3).toISOString();
   recados = [
@@ -1760,7 +1937,7 @@ async function iniciarDemo() {
     ev(25, 'Rafael', 'Orquestrador', 'inicio', 'Refaz a voz do devlog com um filtro mais suave', { sessao: 's7', projeto: 'devlog_1mes', pasta: 'C:/Users/rafon/projetos/genesis-game/_video/devlog_1mes' }),
     ev(6, 'Rafael', 'Orquestrador', 'espera', 'esperando você', { sessao: 's7', projeto: 'devlog_1mes', pasta: 'C:/Users/rafon/projetos/genesis-game/_video/devlog_1mes', resposta: 'A rotina está rodando em segundo plano. Te aviso quando terminar.' }),
   ]);
-  conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
+  conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', sessao: 's1-demo', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }];
   aprovacoes = [{ id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly' }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
