@@ -1,6 +1,10 @@
 // Visual de cada personagem, montado com as peças do guarda-roupa (pagina/arte/personagens).
 // Cor: nome de variação do guarda-roupa ("Navy", "White"...) ou "#rrggbb" para tingir.
 // Para mudar o visual de alguém, troque as peças aqui (veja os nomes em arte/personagens/<peça>/).
+// Agente novo não precisa entrar aqui: a ficha dele (frontmatter) pode apontar um "visual" desta
+// lista ou só dar uma "cor"; sem nada, ele ganha um visual pelo nome (visualPeloNome).
+import { fichaDe } from './config.js';
+
 export const VISUAL = {
   // Pessoas (genéricos por enquanto: mesma base, cor da camisa de cada um)
   Rafael: { pele: 'Tan', olhos: '#3a2a20', top: ['tshirt', '#e0763a'], pants: ['jeans', 'Navy'], shoes: ['sneakers', 'White'], hair: ['short', '#2b1d14'] },
@@ -27,4 +31,33 @@ export const VISUAL = {
   // Qualquer outro agente
   '*': { olhos: '#2b1d14', top: ['long_sleeved_shirt', 'White'], pants: ['jeans', 'Navy'], shoes: ['sneakers', 'Black'], hair: ['side_swept', '#6b3f1d'], lanyard: ['lanyard', 'Original'] },
 };
-export const visualDe = (nome) => VISUAL[nome] || VISUAL['*'];
+
+// Agente sem visual próprio ganha um visual montado a partir do NOME: sempre o mesmo para o mesmo
+// nome, e diferente entre agentes (em vez de todos iguais ao '*'). A "cor" da ficha vira a roupa de cima.
+const ESCOLHAS = {
+  pele: [undefined, 'Tan', 'Dark', 'Pale'],
+  olhos: ['#2b1d14', '#3a5a8a', '#2f7f45', '#5a3a8a', '#1d1a22'],
+  top: ['tshirt', 'long_sleeved_shirt', 'turtleneck', 'tank_top'],
+  jacket: [null, null, 'blazer', 'bomber', 'vest', 'open_shirt', 'long_coat'],
+  pants: [['jeans', 'Navy'], ['jeans', 'Original'], ['shorts', 'Dark'], ['shorts', 'Original'], ['skirt', 'Original']],
+  shoes: [['sneakers', 'White'], ['sneakers', 'Black'], ['boots', 'Black'], ['boots', 'Original']],
+  hair: ['short', 'bob', 'mop', 'parted', 'spiky', 'long', 'long_waves', 'high_ponytail', 'side_swept', 'slicked_back', 'shoulder_length', 'bowl_cut'],
+  corCabelo: ['#1d1414', '#2b1d14', '#4a2a1a', '#7a3b26', '#e8c35a', '#d9d9d9', '#6b3f1d', '#3a2a20'],
+  cor: ['#c0503a', '#3a86e0', '#5a9a5a', '#d0a03a', '#8a4ab0', '#3aa79a', '#d04f9a', '#4a5a7a'],
+  extra: [null, null, ['shades', ['glasses', 'Tortoise']], ['lanyard', ['lanyard', 'Original']], ['earrings', ['earrings', 'Silver']], ['beard', ['stubble', '#2b1d14']]],
+};
+function visualPeloNome(nome, cor) {
+  let h = 2166136261; for (const c of String(nome)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const tira = (lista) => { h = Math.imul(h ^ (h >>> 13), 1103515245) + 12345 >>> 0; return lista[h % lista.length]; };
+  const v = { pele: tira(ESCOLHAS.pele), olhos: tira(ESCOLHAS.olhos), pants: tira(ESCOLHAS.pants), shoes: tira(ESCOLHAS.shoes), hair: [tira(ESCOLHAS.hair), tira(ESCOLHAS.corCabelo)] };
+  const top = tira(ESCOLHAS.top), jaqueta = tira(ESCOLHAS.jacket), principal = cor || tira(ESCOLHAS.cor), extra = tira(ESCOLHAS.extra);
+  if (jaqueta) { v.top = [top, '#ecebe6']; v.jacket = [jaqueta, principal]; } else v.top = [top, principal];
+  if (extra) v[extra[0]] = extra[1];
+  if (!v.pele) delete v.pele;
+  return v;
+}
+// Ordem: visual escolhido na ficha > visual feito à mão aqui > visual pelo nome (com a cor da ficha).
+export function visualDe(nome) {
+  const f = fichaDe(nome);
+  return (f?.visual && VISUAL[f.visual]) || VISUAL[nome] || (nome === '*' ? VISUAL['*'] : visualPeloNome(nome, f?.cor));
+}

@@ -12,7 +12,7 @@ export const versaoAtual = () => versao;
 // Linha do banco -> evento plano.
 export function deLinha(l) {
   const d = l.dados || {};
-  return { ...d, id: l.id, t: l.t ?? d.t, pessoa: l.pessoa ?? d.pessoa, agente: d.agente === 'Explore' ? 'explorador' : d.agente, texto: String(d.texto ?? '') };
+  return { ...d, id: l.id, t: l.t ?? d.t, pessoa: l.pessoa ?? d.pessoa, agente: d.agente, texto: String(d.texto ?? '') };
 }
 export function adicionar(lista) {
   // Sem repetidos: pelo id do banco e pelo "eid" que a ponte põe em cada evento (reenvio não duplica).
@@ -27,46 +27,84 @@ export function adicionar(lista) {
   mudou();
 }
 
-// Estados no vocabulário do "claude agents": precisa de você, trabalhando, pronto, livre.
+// Estados baseados em FATOS (eventos), não em relógio. O tempo só serve para dizer "sem sinal"
+// (está rodando, mas faz tempo que não chega nada) e para esquecer cópias que sumiram sem avisar.
+export const TEMPOS = {
+  SEM_SINAL: 5 * 60e3,           // trabalhando sem nenhum evento há mais que isso: "sem sinal" (nunca "pronto")
+  ESQUECER: 12 * 3600e3,         // cópia aberta sem notícia há mais que isso: a sessão morreu, deixa de contar
+  ENTREGA_RECENTE: 2 * 3600e3,   // o placar do topo conta as entregas destas últimas horas
+  SEGUNDO_PLANO: 2 * 3600e3,     // tarefa em segundo plano (Bash/Agent em background) ainda vale
+  SEGUNDO_PLANO_FALA: 90 * 60e3, // a assistente disse "te aviso quando terminar"
+};
 // Cada estado tem cor E forma (glifo), para não depender só da cor.
 export const ESTADOS = {
   alerta: { rot: 'precisa de você', cor: '#ffd23f', glifo: '!', ordem: 0 },
   erro: { rot: 'deu erro', cor: '#ef6a55', glifo: '×', ordem: 1 },
   trab: { rot: 'trabalhando', cor: '#f0973d', glifo: '…', ordem: 2 },
-  fim: { rot: 'pronto', cor: '#4fbf82', glifo: '✓', ordem: 3 },
-  espera: { rot: 'esperando você', cor: '#9a90a8', glifo: '·', ordem: 4 },
-  livre: { rot: 'livre', cor: '#7d7590', glifo: 'z', ordem: 5 },
+  semsinal: { rot: 'sem sinal', cor: '#8fa3c7', glifo: '?', ordem: 3 },
+  fim: { rot: 'entregou', cor: '#4fbf82', glifo: '✓', ordem: 4 },
+  planejado: { rot: 'planejado', cor: '#b9a7e0', glifo: '○', ordem: 5 },
+  espera: { rot: 'esperando você', cor: '#9a90a8', glifo: '·', ordem: 6 },
+  livre: { rot: 'livre', cor: '#7d7590', glifo: 'z', ordem: 7 },
 };
-export function estadoDe(m) {
-  if (!m?.ult) return { cls: 'livre', ...ESTADOS.livre };
-  const e = m.ult;
-  let cls = { inicio: 'trab', pedido: 'trab', atividade: 'trab', fim: 'fim', espera: 'espera', erro: 'erro', alerta: 'alerta' }[e.tipo] || 'trab';
-  const idade = Date.now() - e.t;
-  if (cls === 'trab' && idade > 30 * 60e3) cls = 'espera';
-  if (cls === 'fim' && m.nome !== 'Orquestrador' && idade > 20 * 60e3) cls = 'livre';
-  if (cls === 'fim' && m.nome === 'Orquestrador' && idade > 5 * 60e3) cls = 'espera';
-  if (cls === 'erro' && idade > 60 * 60e3) cls = 'livre';
-  if (cls === 'alerta' && idade > 2 * 3600e3) cls = 'espera';
-  if (m.nome === 'Orquestrador' && e.texto === 'sessão fechada') cls = 'espera';
-  // tarefa rodando em segundo plano: o turno acabou, mas o trabalho continua
-  if (emSegundoPlano(m) && cls !== 'alerta' && cls !== 'erro') cls = 'trab';
-  // outra cópia do mesmo agente (outra aba ou em paralelo) ainda trabalhando: a mesa continua ocupada
-  if (ativos(m) > 0 && (cls === 'fim' || cls === 'espera' || cls === 'livre')) cls = 'trab';
-  return { cls, ...ESTADOS[cls] };
+const est = (cls) => ({ cls, ...ESTADOS[cls] });
+// planejado: declarado na escalação de uma missão ainda aberta e sem ter começado depois disso.
+let cachePlan = { v: -1 };
+function planejados() {
+  if (cachePlan.v === versao) return cachePlan.mapa;
+  const mapa = new Map();
+  for (const mi of missoes()) {
+    if (mi.fim || Date.now() - mi.ultimo > TEMPOS.ESQUECER) continue;
+    for (const x of mi.plano) if (x.tipo === 'agente' || x.tipo === 'programa') {
+      const k = `${mi.pessoa}|${String(x.nome).toLowerCase()}`;
+      mapa.set(k, Math.max(mapa.get(k) || 0, x.t || mi.inicio));
+    }
+  }
+  cachePlan = { v: versao, mapa };
+  return mapa;
 }
+const planejadoEm = (m) => planejados().get(`${m.pessoa}|${String(m.nome).toLowerCase()}`) || 0;
+export function estadoDe(m) {
+  if (!m) return est('livre');
+  const agora = Date.now();
+  if (!m.ult) return est(m.nome && planejadoEm(m) ? 'planejado' : 'livre');
+  const e = m.ult;
+  if (m.nome === 'Orquestrador') {
+    if (e.texto === 'sessão fechada') return est('livre');
+    if (e.tipo === 'alerta') return est(agora - e.t < TEMPOS.ESQUECER ? 'alerta' : 'semsinal');
+    if (e.tipo === 'erro') return est('erro');
+    if (emSegundoPlano(m)) return est('trab'); // o turno acabou, mas o trabalho continua
+    if (e.tipo === 'espera') return est('espera'); // fato: o Claude parou (Stop) e espera você
+    // No meio do pedido: vale qualquer evento da sessão (inclusive dos sub-agentes que ela chamou).
+    const ultimo = Math.max(e.t, m.vivo || 0);
+    return est(agora - ultimo < TEMPOS.SEM_SINAL ? 'trab' : agora - ultimo < TEMPOS.ESQUECER ? 'semsinal' : 'livre');
+  }
+  // Sub-agentes, programas e Codex: olha as cópias abertas (começou e ainda não entregou).
+  const abertas = copiasAbertas(m);
+  if (abertas.length) {
+    if (e.tipo === 'alerta') return est('alerta');
+    return est(agora - Math.max(...abertas) < TEMPOS.SEM_SINAL ? 'trab' : 'semsinal');
+  }
+  if (planejadoEm(m) > e.t) return est('planejado'); // está na escalação de novo e ainda não começou
+  if (e.tipo === 'fim') return est('fim');           // fato: SubagentStop / o programa terminou
+  if (e.tipo === 'erro') return est('erro');
+  return est('livre'); // a cópia sumiu sem avisar há mais de TEMPOS.ESQUECER
+}
+const copiasAbertas = (m) => m?.abertas ? [...m.abertas.values()].filter((t) => Date.now() - t < TEMPOS.ESQUECER) : [];
 
 export function emSegundoPlano(m) {
   const e = m?.ult; if (!e || m.nome !== 'Orquestrador') return false;
-  if (m.fundo > 0 && Date.now() - (m.fundoT || 0) < 2 * 3600e3) return true;
-  return e.tipo === 'espera' && Date.now() - e.t < 90 * 60e3 && /segundo plano|em background|rodando sozinh|te aviso quando (terminar|acabar)/i.test(e.resposta || '');
+  if (m.fundo > 0 && Date.now() - (m.fundoT || 0) < TEMPOS.SEGUNDO_PLANO) return true;
+  return e.tipo === 'espera' && Date.now() - e.t < TEMPOS.SEGUNDO_PLANO_FALA && /segundo plano|em background|rodando sozinh|te aviso quando (terminar|acabar)/i.test(e.resposta || '');
 }
 
 // Cada aba (sessão) do Claude Code de cada pessoa vira uma assistente própria.
 let cacheAbas = { v: -1 };
 export function abas(janela = 3 * 3600e3) {
   if (cacheAbas.v === versao) return cacheAbas.lista;
-  const por = new Map();
+  const por = new Map(), vivo = new Map();
   for (const e of eventos) {
+    if (e.sessao && e.pessoa) vivo.set(`${e.pessoa}|aba|${e.sessao}`, e.t); // último sinal da sessão (de qualquer agente)
     if (e.agente !== 'Orquestrador' || !e.sessao || !e.pessoa) continue;
     const k = `${e.pessoa}|aba|${e.sessao}`;
     let a = por.get(k);
@@ -79,6 +117,7 @@ export function abas(janela = 3 * 3600e3) {
     if (e.texto === 'sessão aberta') a.fundo = 0;
     for (const mi of e.miniaturas || []) a.miniaturas = [{ ...mi, t: e.t }, ...a.miniaturas].slice(0, 12);
   }
+  for (const a of por.values()) a.vivo = vivo.get(a.k) || 0;
   const lista = [...por.values()].filter((a) => Date.now() - a.ult.t < janela && a.ult.texto !== 'sessão fechada').sort((x, y) => y.ult.t - x.ult.t);
   cacheAbas = { v: versao, lista };
   return lista;
@@ -88,7 +127,7 @@ export function abas(janela = 3 * 3600e3) {
 export function ativos(m) {
   if (!m?.abertas) return 0;
   let n = 0; const agora = Date.now();
-  for (const t of m.abertas.values()) if (agora - t < 30 * 60e3) n++;
+  for (const t of m.abertas.values()) if (agora - t < TEMPOS.ESQUECER) n++;
   return n;
 }
 function acompanhar(m, e) {
@@ -192,7 +231,7 @@ export function missoes() {
   }
   for (const m of lista) {
     const idade = Date.now() - m.ultimo;
-    m.status = m.fim ? (m.erros && !m.resposta ? 'erro' : 'fim') : m.passos.at(-1)?.tipo === 'alerta' ? 'alerta' : idade < 30 * 60e3 ? 'trab' : 'espera';
+    m.status = m.fim ? (m.erros && !m.resposta ? 'erro' : 'fim') : m.passos.at(-1)?.tipo === 'alerta' ? 'alerta' : idade < TEMPOS.SEM_SINAL ? 'trab' : idade < TEMPOS.ESQUECER ? 'semsinal' : 'espera';
     m.duracao = (m.fim || m.ultimo) - m.inicio;
     m.titulo = primeiraFrase(m.pedido, 110) || 'Pedido sem texto';
     m.frente = classificar(m);
@@ -204,7 +243,8 @@ export function missoes() {
   return lista;
 }
 // Escalação ao vivo: o que a assistente planejou + o que de fato entrou em campo, com o estado de cada um.
-// estado: planejado (ainda não começou) | trabalhando | pronto | usado (skill/conector já aberto) | erro
+// estado: planejado (ainda não começou) | trabalhando | semsinal (rodando, mas calado) | pronto (entregou de verdade)
+//         | usado (skill/conector aberto: não é entrega) | erro
 const PROGRAMAS_ESC = new Set(['Godot', 'Render', 'Codex', 'ffmpeg']);
 export function escalacao(m) {
   if (!m) return [];
@@ -213,8 +253,8 @@ export function escalacao(m) {
   const por = (tipo, nome) => itens.get(chave(tipo, nome));
   const add = (tipo, nome, extra = {}) => { const k = chave(tipo, nome); const x = itens.get(k) || { tipo, nome, estado: 'planejado', planejado: false }; itens.set(k, { ...x, ...extra }); return itens.get(k); };
   for (const p of m.plano || []) add(p.tipo === 'conector' ? 'conector' : p.tipo, p.nome, { por: p.por, novo: !!p.novo, planejado: true });
-  // Cópia deste agente aberta NESTA sessão e ainda recente (30 min), olhando a mesma entrada.
-  const ativoNaSessao = (nome) => { const mesa = equipes().get(m.pessoa)?.get(nome); if (!mesa?.abertas) return false; for (const [k, t] of mesa.abertas) if (k.startsWith((m.sessao || '?') + '|') && Date.now() - t < 30 * 60e3) return true; return false; };
+  // Última notícia de uma cópia deste agente ainda aberta NESTA sessão (0 = nenhuma aberta).
+  const abertaNaSessao = (nome) => { const mesa = equipes().get(m.pessoa)?.get(nome); let ult = 0; if (!mesa?.abertas) return 0; for (const [k, t] of mesa.abertas) if (k.startsWith((m.sessao || '?') + '|') && Date.now() - t < TEMPOS.ESQUECER) ult = Math.max(ult, t); return ult; };
   for (const e of m.passos) {
     if (e.agente !== 'Orquestrador' && e.agente) {
       const tipo = PROGRAMAS_ESC.has(e.agente) ? 'programa' : ['PixelLab', 'Blender', 'HuggingFace'].includes(e.agente) ? 'conector' : 'agente';
@@ -233,11 +273,13 @@ export function escalacao(m) {
     }
   }
   for (const x of itens.values()) if (x.novo && x.criado && x.estado === 'planejado') x.estado = 'pronto';
-  // quem ainda está "trabalhando" mas a missão acabou (ou a cópia já fechou) vira pronto
+  // Só vira "pronto" com entrega de verdade (SubagentStop / fim do programa). Silêncio não é entrega:
+  // cópia aberta e recente = trabalhando; aberta e calada = sem sinal; sem fim e sem cópia aberta = sem sinal.
   for (const x of itens.values()) {
-    if (x.tipo !== 'agente' || !x.ult) continue;
-    if (ativoNaSessao(x.nome)) x.estado = 'trabalhando'; // inclusive em segundo plano depois do fim do turno                 // ainda tem cópia trabalhando nesta sessão
-    else if (x.estado === 'trabalhando' && Date.now() - x.ult.t > 60e3) x.estado = 'pronto';
+    if ((x.tipo !== 'agente' && x.tipo !== 'programa') || !x.ult) continue;
+    const ult = abertaNaSessao(x.ult.agente || x.nome); // inclusive em segundo plano depois do fim do turno
+    if (ult) x.estado = Date.now() - ult < TEMPOS.SEM_SINAL ? 'trabalhando' : 'semsinal';
+    else if (x.estado === 'trabalhando') x.estado = 'semsinal';
   }
   const ordem = { agente: 0, programa: 1, conector: 2, skill: 3, plugin: 4 };
   return [...itens.values()].sort((a, b) => ordem[a.tipo] - ordem[b.tipo] || (b.planejado - a.planejado));
@@ -248,6 +290,47 @@ export function frenteDaMesa(m) { missoes(); return m?.ult?._m?.frente || null; 
 export function duracao(ms) {
   const s = Math.round(ms / 1000);
   return s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+}
+
+// ---------- "por quê": quem chamou, motivo da escalação, pedido completo e relatório ----------
+// Liga a cópia do sub-agente (aid) ao pedido que a criou: o hook põe o mesmo "ref" no pedido e no começo.
+const ultimoDe = (lista, f) => { for (let i = lista.length - 1; i >= 0; i--) if (f(lista[i])) return lista[i]; return null; };
+export function porqueDe(m) {
+  if (!m?.ult || m.nome === 'Orquestrador') return null;
+  missoes(); // garante o e._m (missão de cada evento)
+  const aid = ultimoDe(m.hist, (e) => e.aid)?.aid;
+  const inicio = aid ? ultimoDe(m.hist, (e) => e.aid === aid && e.tipo === 'inicio') : ultimoDe(m.hist, (e) => e.tipo === 'inicio');
+  let pedido = inicio?.ref ? ultimoDe(eventos, (e) => e.tipo === 'pedido' && e.ref === inicio.ref) : null;
+  if (!pedido) pedido = ultimoDe(m.hist, (e) => e.tipo === 'pedido' && (!inicio || e.t <= inicio.t + 5e3));
+  const fim = aid ? ultimoDe(m.hist, (e) => e.aid === aid && (e.tipo === 'fim' || e.tipo === 'erro')) : ['fim', 'erro'].includes(m.ult.tipo) ? m.ult : null;
+  const base = pedido || inicio || m.ult;
+  const missao = base._m || m.ult._m || null;
+  const plano = missao?.plano?.find((x) => String(x.nome).toLowerCase() === String(m.nome).toLowerCase());
+  return { pedido, inicio, fim, missao, motivo: plano?.por || '', chamou: pedido?.chamou || inicio?.chamou || (pedido ? String(pedido.texto).split(' pediu: ')[0] : ''), sessao: base.sessao, projeto: base.projeto || missao?.projeto };
+}
+
+// ---------- nota fiscal: tempo, tokens e modelo de verdade (nada inventado) ----------
+const modeloCurto = (n) => { const s = String(n || '').toLowerCase(); return /opus/.test(s) ? 'Opus' : /sonnet/.test(s) ? 'Sonnet' : /haiku/.test(s) ? 'Haiku' : /fable/.test(s) ? 'Fable' : /gpt|codex|o\d/.test(s) ? 'GPT' : String(n || ''); };
+const milhar = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+const tempoCurto = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`; };
+// uso = { ms, custo, entrada, saida, cacheCriado, cacheLido, modelos: [nomes] } (o que vier; o resto fica de fora)
+export function notaFiscal(uso) {
+  if (!uso || typeof uso !== 'object') return null;
+  const partes = [], dica = [];
+  if (uso.ms > 0) partes.push(`⏱ ${tempoCurto(uso.ms)}`);
+  const novos = (uso.entrada || 0) + (uso.saida || 0) + (uso.cacheCriado || 0);
+  if (novos > 0) partes.push(`🪙 ${milhar(novos)} tokens`);
+  const mods = [...new Set((uso.modelos || []).map(modeloCurto).filter(Boolean))];
+  if (mods.length) partes.push(mods.join('/'));
+  if (uso.custo > 0) partes.push(`≈ US$ ${uso.custo.toFixed(2).replace('.', ',')}`);
+  if (!partes.length) return null;
+  if (uso.entrada != null) dica.push(`entrada ${milhar(uso.entrada)}`);
+  if (uso.saida != null) dica.push(`saída ${milhar(uso.saida)}`);
+  if (uso.cacheCriado) dica.push(`cache criado ${milhar(uso.cacheCriado)}`);
+  if (uso.cacheLido) dica.push(`lido do cache ${milhar(uso.cacheLido)} (mais barato, fora da soma)`);
+  if (uso.custo > 0) dica.push('custo estimado pelo próprio Claude Code (no plano por assinatura não é cobrado assim)');
+  if ((uso.modelos || []).length) dica.push(`modelos: ${uso.modelos.join(', ')}`);
+  return { texto: partes.join(' · '), dica: dica.join(' · ') };
 }
 
 // ---------- quem é Claude, quem é GPT ----------

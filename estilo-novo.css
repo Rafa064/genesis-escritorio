@@ -492,3 +492,35 @@ body.chat-aberto .barra-comando { display: none; }
 }
 /* crachá da aba no mapa: o agente iniciado por uma conversa leva a cor dela */
 .nome.cracha::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; background: var(--cracha); box-shadow: 0 0 0 1px rgba(0,0,0,.6); vertical-align: middle; }
+
+/* ---------- Fase 1: honestidade (sem sinal, por quê, aprovação clara, nota fiscal) ---------- */
+.fala.semsinal { background: #e4eaf6; }
+.esc-placar em.s { color: #15131b; background: #8fa3c7; }
+.esc-placar em.e { color: #15131b; background: #ef6a55; }
+.esc-it.est-semsinal > i { color: #8fa3c7; }
+.esc-it.est-usado > i { color: var(--fraco); }
+/* cartão "por quê" do sub-agente */
+.porque .pq-linha { display: grid; grid-template-columns: 92px 1fr; gap: 8px; padding: 3px 0; font-size: 13px; }
+.porque .pq-linha > span { color: var(--fraco); font-size: 12px; }
+.porque .fraco { color: var(--muito-fraco); }
+.pq-aba { display: inline-block; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, var(--cor) 22%, transparent); box-shadow: inset 0 0 0 1px var(--cor); white-space: nowrap; }
+.pq-rec { margin-top: 6px; border-radius: 8px; background: rgba(0, 0, 0, .22); padding: 6px 9px; }
+.pq-rec > summary { cursor: pointer; font-size: 13px; list-style: none; }
+.pq-rec > summary::-webkit-details-marker { display: none; }
+.pq-rec > summary span { color: var(--fraco); }
+.pq-rec > summary em { font-style: normal; color: var(--roxo); white-space: nowrap; }
+.pq-rec[open] > summary span { display: none; }
+.pq-rec[open] > summary em { display: none; }
+.pq-txt { margin-top: 6px; max-height: 360px; overflow: auto; overflow-wrap: anywhere; font-size: 13px; }
+.porque-mapa { position: absolute; transform: translate(-50%, 0); max-width: 260px; white-space: normal; text-align: center; font: 500 12px/1.3 var(--ui); color: var(--texto); background: rgba(14, 12, 21, .9); border: 1px solid var(--borda-clara); border-radius: 8px; padding: 3px 8px; pointer-events: none; z-index: 3; }
+/* nota fiscal: rodapé discreto da resposta */
+.nota-fiscal { margin-top: 6px; font: 500 11.5px var(--ui); color: var(--muito-fraco); cursor: help; }
+.nota-fiscal.vazia { font-style: italic; }
+/* aprovação: quem quer fazer o quê, onde */
+.aprovacao .ap-frase { font-size: 14px; line-height: 1.45; }
+.aprovacao .ap-frase code { font-size: 12px; background: rgba(0, 0, 0, .3); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+.aprovacao .ap-o-que { color: var(--fraco); font-size: 12px; margin-top: 2px; }
+.aprovacao .ap-riscos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.aprovacao .ap-riscos span { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: rgba(239, 106, 85, .18); color: #ffb3a6; box-shadow: inset 0 0 0 1px rgba(239, 106, 85, .55); }
+.aprovacao .ap-det > summary { cursor: pointer; font-size: 12px; color: var(--roxo); margin-top: 6px; }
+@media (max-width: 760px) { .porque .pq-linha { grid-template-columns: 1fr; gap: 0; } .porque-mapa { max-width: 200px; } }

@@ -22,4 +22,18 @@ export const TITULOS = {
   Render: 'Render',
   Godot: 'Godot',
 };
-export const tituloDe = (nome) => TITULOS[nome] || nome;
+// Fichas dos agentes (frontmatter de .claude/agents/<nome>.md: titulo, papel, entrega, nao_faz,
+// cor, visual), que a ponte manda em estado.info.agentes. Valem mais que TITULOS/VISUAL.
+export const FICHAS = new Map();
+// Guarda as fichas de uma lista de agentes; devolve true se alguma mudou (para refazer retratos).
+export function registrarFichas(agentes) {
+  let mudou = false;
+  for (const a of agentes || []) {
+    if (!a?.nome || !a.ficha) continue;
+    const j = JSON.stringify(a.ficha);
+    if (JSON.stringify(FICHAS.get(a.nome)) !== j) { FICHAS.set(a.nome, a.ficha); mudou = true; }
+  }
+  return mudou;
+}
+export const fichaDe = (nome) => FICHAS.get(nome) || null;
+export const tituloDe = (nome) => FICHAS.get(nome)?.titulo || TITULOS[nome] || nome;
