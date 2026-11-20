@@ -1427,7 +1427,9 @@ const alvoAtual = () => conversas.find((c) => c.id === conversaAtual)?.alvo || '
 // Cor e ícone de cada aba (tirados do id: a mesma conversa tem sempre o mesmo visual).
 const CORES_ABA = ['#a785f0', '#3fb37f', '#f0973d', '#5aa9e6', '#ef6a8a', '#e8c547', '#5cc8b8', '#c77dd8'];
 const ICONES_ABA = ['🦊', '🐙', '🦉', '🐢', '🐝', '🦋', '🐳', '🦎', '🐞', '🦜', '🌵', '🍄'];
-const visualAba = (c) => { const n = Math.abs(Number(c?.id) || 0); return { cor: CORES_ABA[(n * 3) % CORES_ABA.length], icone: ICONES_ABA[n % ICONES_ABA.length] }; };
+// Nome dado pela IA começa com um emoji do assunto ("🎬 Review trailer"): ele vira o ícone da aba.
+const EMOJI_INICIAL = /^(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*)\s*/u;
+const visualAba = (c) => { const n = Math.abs(Number(c?.id) || 0), m = String(c?.titulo || '').match(EMOJI_INICIAL); return { cor: CORES_ABA[(n * 3) % CORES_ABA.length], icone: m ? m[1] : ICONES_ABA[n % ICONES_ABA.length], nome: m ? String(c.titulo).slice(m[0].length) : String(c?.titulo || '') }; };
 const lerLista = (k) => { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : null; } catch { return null; } };
 let abasAbertas = lerLista('abasAbertas');                  // ids das abas na faixa (fechar só esconde)
 const naoVistas = new Set(lerLista('abasNaoVistas') || []); // responderam e você ainda não viu
@@ -1455,7 +1457,7 @@ function desenharSeletorConversas() {
   const lista = abasVisiveis();
   faixa.innerHTML = lista.length ? lista.map((c) => {
     const v = visualAba(c), selo = seloAba(c.id), on = c.id === conversaAtual;
-    return `<button type="button" role="tab" aria-selected="${on}" class="aba-conv${on ? ' on' : ''}${c.alvo === 'codex' ? ' gpt' : ''}" data-conv="${c.id}" style="--cor:${v.cor}" title="${esc(c.titulo)} · ${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''}${selo ? ' · ' + selo[1] : ''} (duplo clique renomeia)"><span class="ic">${v.icone}</span><span class="nm">${esc(c.titulo)}</span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}<span class="x" data-fechar="${c.id}" title="Fechar aba (a conversa continua no histórico)">×</span></button>`;
+    return `<button type="button" role="tab" aria-selected="${on}" class="aba-conv${on ? ' on' : ''}${c.alvo === 'codex' ? ' gpt' : ''}" data-conv="${c.id}" style="--cor:${v.cor}" title="${esc(c.titulo)} · ${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''}${selo ? ' · ' + selo[1] : ''} (duplo clique renomeia)"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}</span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}<span class="x" data-fechar="${c.id}" title="Fechar aba (a conversa continua no histórico)">×</span></button>`;
   }).join('') : '<span class="vazio-abas">Nenhuma aba aberta: crie com o + ou reabra pelo 🕘</span>';
   // O 🕘 avisa se alguma aba fechada precisa de você.
   const fechadas = conversas.filter((c) => !abasAbertas.includes(c.id));
@@ -1470,7 +1472,7 @@ function desenharAbasFechadas() {
   const lista = [...conversas].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado)).slice(0, 80);
   el.innerHTML = `<div class="af-topo"><b>Abas fechadas / histórico</b><button type="button" class="btn mini" data-af-fechar title="Fechar">×</button></div>` + (lista.length ? lista.map((c) => {
     const v = visualAba(c), selo = seloAba(c.id), aberta = abasAbertas?.includes(c.id);
-    return `<button type="button" class="af-item${aberta ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(c.titulo)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${aberta ? ' · aberta' : ''}</small></span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}</button>`;
+    return `<button type="button" class="af-item${aberta ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${aberta ? ' · aberta' : ''}</small></span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}</button>`;
   }).join('') : '<p class="sub">Nenhuma conversa ainda.</p>');
 }
 function fecharAbaConversa(id) {
