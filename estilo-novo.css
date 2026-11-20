@@ -443,9 +443,52 @@ button.link { background: none; border: 0; padding: 0; color: var(--laranja); fo
   .hud-mapa { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
 
-/* no PC a barra de comando é a única caixa de pedido (o painel fica com a conversa e o "Parar") */
-@media (min-width: 761px) {
-  #formChat textarea, #formChat #btnEnviar, #formChat #alvoAtual { display: none; }
-  #formChat { padding-top: 0; }
-  #formChat .linha { justify-content: flex-start; }
+/* Com o painel do chat aberto, a caixa de pedido é a de baixo da conversa (envia para a aba aberta):
+   a barra central some para não ter duas caixas. Nas outras telas a barra mostra para qual aba vai. */
+body.chat-aberto .barra-comando { display: none; }
+.barra-comando { border-color: color-mix(in srgb, var(--cor-aba, #a785f0) 45%, var(--borda-clara)); }
+.bc-aba { display: inline-flex; align-items: center; gap: 4px; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 1px 8px; border-radius: 999px; font-weight: 600; color: var(--texto); background: color-mix(in srgb, var(--cor) 28%, transparent); border: 1px solid color-mix(in srgb, var(--cor) 60%, transparent); margin-right: 4px; }
+.bc-aba.nova { --cor: #a785f0; }
+
+/* ======================= Abas de conversa (como no VS Code) ======================= */
+.painel-chat { overflow-x: hidden; }
+.conversa-topo { gap: 4px; min-width: 0; }
+.abas-conversa { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 2px 0 4px; }
+.aba-conv { --cor: #a785f0; flex: none; display: inline-flex; align-items: center; gap: 5px; max-width: 160px; min-height: 34px; padding: 4px 4px 4px 9px; border: 1px solid var(--borda); border-bottom: 3px solid color-mix(in srgb, var(--cor) 45%, transparent); border-radius: 10px 10px 4px 4px; background: var(--painel2); color: var(--fraco); font: 600 12.5px var(--ui); cursor: pointer; }
+.aba-conv.on { background: color-mix(in srgb, var(--cor) 22%, var(--painel3)); color: var(--texto); border-color: color-mix(in srgb, var(--cor) 55%, transparent); border-bottom-color: var(--cor); }
+.aba-conv .ic { font-size: 14px; }
+.aba-conv .nm { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.aba-conv.gpt .nm::after { content: ' ◆'; color: var(--gpt, #3fb37f); font-size: 10px; }
+.aba-conv .selo { font-size: 12px; }
+.aba-conv .x { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--muito-fraco); font-size: 15px; line-height: 1; opacity: .55; }
+.aba-conv.on .x { opacity: 1; }
+.aba-conv .x:hover { background: rgba(255,255,255,.1); color: var(--texto); opacity: 1; }
+.vazio-abas { font: 12.5px var(--ui); color: var(--muito-fraco); padding: 8px 2px; white-space: nowrap; }
+#btnAbasFechadas { position: relative; }
+#btnAbasFechadas.aviso::after { content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--amarelo); }
+.abas-fechadas { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow: auto; padding: 8px; background: var(--painel2); border: 1px solid var(--borda-clara); border-radius: 12px; }
+.abas-fechadas[hidden] { display: none; }
+.af-topo { display: flex; align-items: center; justify-content: space-between; font: 600 13px var(--ui); padding: 0 2px 4px; }
+.af-item { --cor: #a785f0; display: flex; align-items: center; gap: 8px; text-align: left; padding: 7px 8px; border: 0; border-left: 3px solid var(--cor); border-radius: 8px; background: var(--painel3); color: var(--texto); font: 600 13px var(--ui); cursor: pointer; }
+.af-item.aberta { opacity: .6; }
+.af-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.af-item small { display: block; font: 400 11.5px var(--ui); color: var(--fraco); }
+/* a caixa de pedido fica embaixo da conversa, com a cor da aba */
+#formChat textarea { border-left: 3px solid var(--cor-aba, var(--borda-clara)); }
+#btnParar:disabled { opacity: .45; }
+/* resposta limpa: texto final primeiro, o resto em "detalhes" */
+.msg .detalhes { margin-top: 8px; font: 12.5px var(--ui); color: var(--fraco); }
+.msg .detalhes summary { cursor: pointer; list-style: none; user-select: none; }
+.msg .detalhes summary::-webkit-details-marker { display: none; }
+.msg .detalhes summary::before { content: '▸ '; }
+.msg .detalhes[open] summary::before { content: '▾ '; }
+.msg .detalhes .det-passo { padding: 2px 0 2px 12px; overflow-wrap: anywhere; }
+.msg .detalhes .det-fala { padding: 4px 0 4px 12px; border-left: 2px solid var(--borda); margin: 4px 0; }
+.msg .detalhes .det-fala p { margin: 0 0 4px; }
+.msg.parcial .detalhes { margin-top: 2px; }
+@media (max-width: 760px) {
+  .aba-conv { max-width: 150px; min-height: 40px; }
+  .aba-conv .x { width: 28px; height: 28px; }
 }
+/* crachá da aba no mapa: o agente iniciado por uma conversa leva a cor dela */
+.nome.cracha::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; background: var(--cracha); box-shadow: 0 0 0 1px rgba(0,0,0,.6); vertical-align: middle; }

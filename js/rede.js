@@ -40,15 +40,22 @@ export async function carregarTudo() {
   for (const r of [ev, rec, est, chat, mem]) if (r.error) throw r.error;
   // partes do SQL 2 (se ainda não rodou, a página funciona sem elas)
   const opcional = async (q) => { const r = await q; return r.error ? null : r.data; };
-  const [conversas, aprovacoes, jornal, marcos, vinculos, comentarios] = await Promise.all([
+  const [conversas, aprovacoes, jornal, marcos, vinculos, comentarios, comandos] = await Promise.all([
     opcional(sb.from('conversas').select('*').order('atualizado', { ascending: false }).limit(200)),
     opcional(sb.from('aprovacoes').select('*').eq('status', 'pendente').order('id')),
     opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
     opcional(sb.from('marcos').select('*').order('ordem')),
     opcional(sb.from('marcos_missoes').select('*')),
     opcional(sb.from('marcos_comentarios').select('*').order('id').limit(2000)),
+    comandosAbertos(),
   ]);
-  return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, marcos, vinculos, comentarios, temSql2: conversas !== null, temQuadro: marcos !== null };
+  return { comandos, eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, marcos, vinculos, comentarios, temSql2: conversas !== null, temQuadro: marcos !== null };
+}
+
+// Pedidos de chat ainda na fila ou rodando (para saber quais abas estão ocupadas).
+export async function comandosAbertos() {
+  const { data, error } = await sb.from('comandos').select('id,conversa_id,status,tipo').eq('tipo', 'chat').in('status', ['novo', 'rodando']).order('id').limit(50);
+  return error ? null : data;
 }
 
 // Resumo leve dos últimos dias: só os eventos que contam a história (pedido, resposta, entrega, erro,
@@ -95,7 +102,7 @@ export async function novidadesDesde(t, idDesde = 0) {
     cursor = data.at(-1).id;
   }
   eventos.sort((a, b) => a.t - b.t);
-  const [rec, est, apr, conversas, marcos, vinculos, comentarios, jornal] = await Promise.all([
+  const [rec, est, apr, conversas, marcos, vinculos, comentarios, jornal, comandos] = await Promise.all([
     sb.from('recados').select('*').order('criado', { ascending: false }).limit(500),
     sb.from('estado').select('*'),
     opcional(sb.from('aprovacoes').select('*').eq('status', 'pendente').order('id')),
@@ -104,8 +111,9 @@ export async function novidadesDesde(t, idDesde = 0) {
     opcional(sb.from('marcos_missoes').select('*')),
     opcional(sb.from('marcos_comentarios').select('*').order('id').limit(2000)),
     opcional(sb.from('jornal').select('*').order('dia', { ascending: false }).limit(10)),
+    comandosAbertos(),
   ]);
-  return { eventos, recados: rec.data, estado: est.data || [], aprovacoes: apr, conversas, marcos, vinculos, comentarios, jornal };
+  return { comandos, eventos, recados: rec.data, estado: est.data || [], aprovacoes: apr, conversas, marcos, vinculos, comentarios, jornal };
 }
 export async function lerMeuInfo() { const { data } = await sb.from('estado').select('info').eq('user_id', euId).maybeSingle(); return data?.info || {}; }
 // O site grava no MEU estado.info só o que é dele (notificações e modo longe); a ponte preserva.
@@ -205,7 +213,9 @@ export async function carregarChat(conversa_id) {
 // Só decide o que ainda está pendente (se a ponte já deu por vencido, avisa em vez de fingir que valeu).
 export async function decidir(id, status) { const { data, error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString() }).eq('id', id).eq('status', 'pendente').select('id'); if (error) throw error; if (!data?.length) throw new Error('Esse pedido já tinha vencido (ou você voltou ao PC e ele foi para a tela de lá).'); }
 export const pedirJornal = () => sb.from('comandos').insert({ tipo: 'jornal' });
-export const parar = () => sb.from('comandos').insert({ tipo: 'parar' });
+// Com conversa: a ponte para só aquela conversa (sem: para tudo).
+export const parar = (conversa_id = null) => sb.from('comandos').insert({ tipo: 'parar', ...(conversa_id ? { conversa_id } : {}) });
+export const reiniciarPonte = () => sb.from('comandos').insert({ tipo: 'parar', texto: 'reiniciar' });
 export const conversaNova = () => sb.from('comandos').insert({ tipo: 'nova' });
 export async function pausar(sim) { const { error } = await sb.from('estado').update({ pausado: sim }).eq('user_id', euId); if (error) throw error; }
 export async function mudarStatus(status) { await sb.from('estado').update({ status }).eq('user_id', euId); atualizarPresenca(status); }

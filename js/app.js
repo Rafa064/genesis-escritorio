@@ -20,7 +20,12 @@ const DEMO = new URLSearchParams(location.search).has('demo');
 
 let EU = null, mundo = null, membros = [], estados = new Map(), recados = [], presentes = new Map();
 let conversas = [], conversaAtual = null, mensagens = [], aprovacoes = [], jornais = [], temSql2 = false;
-let aba = guardado('aba', 'equipe'), filtroEquipe = 'todos', selecionado = null, missaoAberta = null, chatOcupado = false;
+let aba = guardado('aba', 'equipe'), filtroEquipe = 'todos', selecionado = null, missaoAberta = null;
+// Pedidos de chat na fila ou rodando: id do comando -> id da conversa (cada aba tem o seu "ocupado").
+const comandosAbertos = new Map();
+const convOcupada = (id) => [...comandosAbertos.values()].some((c) => (c ?? null) === (id ?? null));
+const algumaOcupada = (alvo) => [...comandosAbertos.values()].some((id) => !alvo || (conversas.find((c) => c.id === id)?.alvo || 'claude') === alvo);
+const lembrarComandos = (lista) => { if (!lista) return; comandosAbertos.clear(); for (const c of lista) comandosAbertos.set(c.id, c.conversa_id ?? null); };
 const pilha = []; // para o botão "voltar" da gaveta
 // Filtros globais (valem para mapa, equipe, missões, histórico e quadro): '' = todos.
 let filtroJogo = guardado('fJogo', ''), filtroSetor = guardado('fSetor', '');
@@ -67,7 +72,7 @@ async function iniciar() {
     $('#textoCarregando').textContent = 'Carregando o escritório…';
     const tudo = await R.carregarTudo();
     membros = tudo.membros; recados = tudo.recados; temSql2 = tudo.temSql2;
-    conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || [];
+    conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || []; lembrarComandos(tudo.comandos);
     temQuadro = tudo.temQuadro; marcos = tudo.marcos || []; comentarios = tudo.comentarios || [];
     vinculos = new Map((tudo.vinculos || []).map((v) => [v.missao, v.marco_id]));
     for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
@@ -135,8 +140,8 @@ function mesasDoMundo() {
     const p = ps[l.equipe]; if (!p) continue;
     const m = (l.nome === 'Orquestrador' ? D.abas().find((a) => a.pessoa === p) : null) || eq.get(p)?.get(l.nome) || vazioMesa(p, l.nome);
     let st = D.estadoDe(m.ult ? m : null).cls;
-    if (l.assistente && p === EU.pessoa && chatOcupado && alvoAtual() === 'claude') st = 'trab';
-    if (l.codex && p === EU.pessoa && chatOcupado && alvoAtual() === 'codex') st = 'trab';
+    if (l.assistente && p === EU.pessoa && algumaOcupada('claude')) st = 'trab';
+    if (l.codex && p === EU.pessoa && algumaOcupada('codex')) st = 'trab';
     const fr = TRABALHANDO.includes(st) ? D.frenteDaMesa(m) : null;
     lista.push({ id: m.k, nome: l.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: p, m, anel: fr?.cor });
   }
@@ -192,11 +197,20 @@ function ligarRede() {
   });
   R.on('estado', (e) => { estados.set(e.pessoa, { ...estados.get(e.pessoa), ...e }); if (e.info?.pastas) { definirPastas(e.pessoa, e.info.pastas); D.mudou(); } agendarInterface(); if (aba === 'atencao') desenharAtencao(); });
   R.on('chat', (c) => {
-    if ((c.conversa_id ?? null) === conversaAtual && !(c.de === 'eu' && mensagens.some((m) => m.de === 'eu' && m.texto === c.texto && !m.id))) { mensagens.push(c); desenharChat(); }
-    else if (c.de === 'eu') { const m = mensagens.find((x) => x.de === 'eu' && x.texto === c.texto && !x.id); if (m) m.id = c.id; }
+    // Vai para a lista da aba dela (a aberta ou uma já carregada antes): a aba volta de onde parou.
+    const atual = (c.conversa_id ?? null) === conversaAtual, lista = atual ? mensagens : cacheMsgs.get(c.conversa_id);
+    if (lista && !lista.some((m) => m.id === c.id)) {
+      const minha = c.de === 'eu' && lista.find((x) => x.de === 'eu' && x.texto === c.texto && !x.id);
+      if (minha) minha.id = c.id; else { lista.push(c); if (atual) desenharChat(); }
+    }
+    if (['assistente', 'erro'].includes(c.de) && c.conversa_id && !vendoConversa(c.conversa_id)) { naoVistas.add(c.conversa_id); salvarAbas(); desenharSeletorConversas(); }
     if (c.de === 'assistente' && (aba !== 'chat' || c.conversa_id !== conversaAtual)) { const cv = conversas.find((x) => x.id === c.conversa_id); toast({ titulo: `${cv?.alvo === 'codex' ? 'O Codex' : 'Sua assistente'} respondeu${cv ? ' · ' + cv.titulo : ''}`, texto: c.texto.slice(0, 140), cor: cv?.alvo === 'codex' ? '#3fb37f' : '#a785f0', acao: () => abrirConversa(c.conversa_id) }); som('fim'); notificar('Resposta da assistente', c.texto); }
   });
-  R.on('comando', (c) => { chatOcupado = c.status === 'rodando'; versaoMundo = -1; sincronizarMundo(); desenharChat(); });
+  R.on('comando', (c) => {
+    if (c.tipo && c.tipo !== 'chat') return;
+    if (['novo', 'rodando'].includes(c.status)) comandosAbertos.set(c.id, c.conversa_id ?? null); else comandosAbertos.delete(c.id);
+    versaoMundo = -1; sincronizarMundo(); desenharSeletorConversas(); desenharChat(); desenharBarra();
+  });
   R.on('conversa', (p) => {
     if (p.eventType === 'DELETE') conversas = conversas.filter((c) => c.id !== p.old.id);
     else conversas = [p.new, ...conversas.filter((c) => c.id !== p.new.id)].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado));
@@ -315,7 +329,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
-  else if (k === '/') { e.preventDefault(); $('#bcTexto')?.focus(); }
+  else if (k === '/') { e.preventDefault(); (document.body.classList.contains('chat-aberto') ? $('#entrada') : $('#bcTexto'))?.focus(); }
   else if (k === 'tab') { e.preventDefault(); if ($('#equipeVista').hidden) abrirEquipeVista(); else fecharEquipeVista(); }
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
@@ -460,6 +474,13 @@ function nomeNoMapa(b) {
   const fr = ['trab', 'alerta', 'erro'].includes(b.status) ? D.frenteDaMesa(b.m) : null;
   return `${TIPOS[tipo].icone} ${nomeBase(b)}${fr ? ' · ' + fr.icone : ''}`;
 }
+// Crachá no mapa: agente (ou aba da assistente) que nasceu de uma aba do chat leva a cor dela (pela sessão do Claude).
+function corCracha(b) {
+  if (b.pessoa !== EU.pessoa || b.lugar.assistente || b.lugar.codex) return null;
+  const s = b.m?.ult?.sessao || b.m?.sessao; if (!s) return null;
+  const cv = conversas.find((c) => c.sessao && c.alvo !== 'codex' && String(c.sessao).startsWith(s));
+  return cv ? visualAba(cv).cor : null;
+}
 const foraDoFiltro = (b) => temFiltro() && !passa(D.frenteDaMesa(b.m));
 function rotulos(c) {
   for (const el of poolRotulos.values()) el.dataset.v = '';
@@ -471,13 +492,15 @@ function rotulos(c) {
     const ativo = TRABALHANDO.includes(b.status) && !b.lugar.copa, cel = innerWidth <= 760;
     if (!(foco || (ativo && !cel) || b.status === 'alerta' || (fixo && !cel)) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
-    const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}`);
+    const cracha = corCracha(b);
+    const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}${cracha ? ' cracha' : ''}`);
+    if (cracha && el.style.getPropertyValue('--cracha') !== cracha) el.style.setProperty('--cracha', cracha);
     const nome = nomeNoMapa(b);
     if (el.textContent !== nome) el.textContent = nome;
     colocar(el, b.x, b.y + 2, c);
     const recente = b.m?.ult && Date.now() - b.m.ult.t < 8 * 60e3;
     let fala = '', curta = false;
-    if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && chatOcupado && alvoAtual() === (b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
+    if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && algumaOcupada(b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
     else if (b.m?.ult && (foco || b.status === 'alerta')) fala = primeiraFrase(frase(b.m.ult), 80);
     else if (b.m?.ult && ativo && !cel && !foraDoFiltro(b) && b.modo === 'sentado') { const t = D.emSegundoPlano(b.m) ? 'segundo plano…' : primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
     if (fala) {
@@ -569,12 +592,14 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.toggle('folha', nome === 'agente');
   $('#gaveta').classList.toggle('conversa', ['chat', 'dupla'].includes(nome));                         // no celular: ficha na metade de baixo
   $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco', 'item'].includes(nome));
-  desenharAba();
+  desenharAba(); marcarChatAberto();
   setTimeout(dimensionar, 0);
 }
+// No PC, com o painel do chat aberto, a caixa de pedido é a de baixo da conversa (a barra central some).
+const marcarChatAberto = () => document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada'));
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
 function fecharGaveta() {
-  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
+  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); marcarChatAberto(); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
@@ -589,11 +614,11 @@ function montarInterface() {
   $('#btnIrAte').onclick = () => irAtePessoa(outraPessoa());
   $('#formChat').onsubmit = (e) => { e.preventDefault(); enviarChat(); };
   $('#entrada').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarChat(); } };
-  $('#btnParar').onclick = () => R.parar();
+  $('#btnParar').onclick = () => { if (DEMO) return; R.parar(temSql2 ? conversaAtual : null).then(({ error }) => { if (error) toast({ titulo: 'Não consegui parar', texto: error.message, cor: '#ef6a55' }); }); };
   $('#btnNovaConversa').onclick = () => mostrarNovaConversa();
   $('#cancelarConversa').onclick = () => { $('#formNovaConversa').hidden = true; };
   $('#formNovaConversa').onsubmit = (e) => { e.preventDefault(); criarConversa(); };
-  $('#selConversa').onchange = (e) => abrirConversa(Number(e.target.value) || null);
+  ligarAbasConversa();
   $('#btnMaisConversa').onclick = menuConversa;
   $('#formRecado').onsubmit = (e) => { e.preventDefault(); enviarDupla(); };
   $('#textoRecado').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDupla(); } };
@@ -865,13 +890,14 @@ async function ressincronizar() {
     for (const e of n.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
     if (n.aprovacoes) aprovacoes = n.aprovacoes;
     if (n.conversas) conversas = n.conversas;
+    lembrarComandos(n.comandos);
     if (n.jornal) jornais = n.jornal;
     if (n.marcos) { marcos = n.marcos; vinculos = new Map((n.vinculos || []).map((v) => [v.missao, v.marco_id])); comentarios = n.comentarios || comentarios; mudouMarcos(); if (!$('#quadro').hidden) desenharQuadro(); }
     desenharSeletorConversas();
     if (!['joined', 'joining'].includes(R.estadoCanal()) && Date.now() - ultimaReconexao > 30e3) { ultimaReconexao = Date.now(); R.reconectarTabelas(); }
     versaoMundo = -1; sincronizarMundo(); agendarInterface();
     if (['chat', 'dupla', 'atencao'].includes(aba)) desenharAba();
-    chatCarregadoDe = undefined; // a conversa recarrega na próxima vez que for aberta
+    chatCarregadoDe = undefined; cacheMsgs.clear(); // as conversas recarregam na próxima vez que forem abertas
     if (aba === 'chat') desenharChatCompleto();
   } catch (e) { console.warn('ressincronizar:', e); }
   ressincronizando = false;
@@ -1060,7 +1086,7 @@ function quemTrabalha() {
   const out = [];
   for (const a of todosAgentes()) {
     let cls = a.st.cls;
-    if (a.m.nome === 'Orquestrador' && a.m.pessoa === EU.pessoa && chatOcupado) cls = 'trab';
+    if (a.m.nome === 'Orquestrador' && a.m.pessoa === EU.pessoa && algumaOcupada()) cls = 'trab';
     if (!TRABALHANDO.includes(cls)) continue;
     const fr = D.frenteDaMesa(a.m);
     if (temFiltro() && !passa(fr)) continue;
@@ -1393,21 +1419,112 @@ async function abrirMidia(mi, url, pessoa) {
   $('#lightbox').hidden = false;
 }
 
-// ---------- chat: conversas (Claude ou Codex) ----------
+// ---------- chat: conversas (Claude ou Codex) em abas, como no VS Code ----------
 const alvoAtual = () => conversas.find((c) => c.id === conversaAtual)?.alvo || 'claude';
+// Cor e ícone de cada aba (tirados do id: a mesma conversa tem sempre o mesmo visual).
+const CORES_ABA = ['#a785f0', '#3fb37f', '#f0973d', '#5aa9e6', '#ef6a8a', '#e8c547', '#5cc8b8', '#c77dd8'];
+const ICONES_ABA = ['🦊', '🐙', '🦉', '🐢', '🐝', '🦋', '🐳', '🦎', '🐞', '🦜', '🌵', '🍄'];
+const visualAba = (c) => { const n = Math.abs(Number(c?.id) || 0); return { cor: CORES_ABA[(n * 3) % CORES_ABA.length], icone: ICONES_ABA[n % ICONES_ABA.length] }; };
+const lerLista = (k) => { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : null; } catch { return null; } };
+let abasAbertas = lerLista('abasAbertas');                  // ids das abas na faixa (fechar só esconde)
+const naoVistas = new Set(lerLista('abasNaoVistas') || []); // responderam e você ainda não viu
+const cacheMsgs = new Map(), rolagens = new Map();          // mensagens e rolagem de cada aba (volta de onde parou)
+const detalhesAbertos = new Set();                          // blocos "detalhes" que você abriu
+let rolarPendente = null;
+const salvarAbas = () => { try { localStorage.setItem('abasAbertas', JSON.stringify(abasAbertas || [])); localStorage.setItem('abasNaoVistas', JSON.stringify([...naoVistas])); } catch {} };
+const vendoConversa = (id) => aba === 'chat' && !$('#gaveta').classList.contains('fechada') && conversaAtual === id && !document.hidden;
+function abasVisiveis() {
+  if (!abasAbertas) { abasAbertas = [...conversas].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado)).slice(0, 5).reverse().map((c) => c.id); salvarAbas(); }
+  if (conversaAtual && !abasAbertas.includes(conversaAtual)) { abasAbertas.push(conversaAtual); salvarAbas(); }
+  return abasAbertas.map((id) => conversas.find((c) => c.id === id)).filter(Boolean);
+}
+// Selo: ✋ aprovação pendente, ⏳ rodando (ou na fila), ✅ respondeu e você não viu; nada = parada e vista.
+function seloAba(id) {
+  if (aprovacoes.some((a) => a.conversa_id === id && !lerJson(a.detalhe).origem?.terminal)) return ['✋', 'pede sua aprovação'];
+  if (convOcupada(id)) return ['⏳', 'trabalhando'];
+  if (naoVistas.has(id)) return ['✅', 'respondeu: você ainda não viu'];
+  return null;
+}
+const nomeAlvo = (c) => (c.alvo === 'codex' ? 'Codex · GPT' : 'Claude');
 function desenharSeletorConversas() {
-  const sel = $('#selConversa');
-  if (!temSql2) { sel.innerHTML = '<option>Conversa única (rode o SQL 2 para ter várias)</option>'; sel.disabled = true; $('#btnNovaConversa').disabled = true; $('#btnMaisConversa').disabled = true; return; }
-  sel.innerHTML = conversas.length ? conversas.map((c) => `<option value="${c.id}" ${c.id === conversaAtual ? 'selected' : ''}>${c.alvo === 'codex' ? '◆ GPT' : '● Claude'} · ${esc(c.titulo)}</option>`).join('') : '<option value="">Nenhuma conversa ainda</option>';
+  const faixa = $('#abasConversa'); if (!faixa) return;
+  if (!temSql2) { faixa.innerHTML = '<span class="aba-conv on"><span class="nm">Conversa única (rode o SQL 2 para ter abas)</span></span>'; $('#btnNovaConversa').disabled = true; $('#btnMaisConversa').disabled = true; $('#btnAbasFechadas').disabled = true; return; }
+  const lista = abasVisiveis();
+  faixa.innerHTML = lista.length ? lista.map((c) => {
+    const v = visualAba(c), selo = seloAba(c.id), on = c.id === conversaAtual;
+    return `<button type="button" role="tab" aria-selected="${on}" class="aba-conv${on ? ' on' : ''}${c.alvo === 'codex' ? ' gpt' : ''}" data-conv="${c.id}" style="--cor:${v.cor}" title="${esc(c.titulo)} · ${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''}${selo ? ' · ' + selo[1] : ''} (duplo clique renomeia)"><span class="ic">${v.icone}</span><span class="nm">${esc(c.titulo)}</span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}<span class="x" data-fechar="${c.id}" title="Fechar aba (a conversa continua no histórico)">×</span></button>`;
+  }).join('') : '<span class="vazio-abas">Nenhuma aba aberta: crie com o + ou reabra pelo 🕘</span>';
+  // O 🕘 avisa se alguma aba fechada precisa de você.
+  const fechadas = conversas.filter((c) => !abasAbertas.includes(c.id));
+  $('#btnAbasFechadas').classList.toggle('aviso', fechadas.some((c) => seloAba(c.id)));
+  $('#btnAbasFechadas').title = `Abas fechadas / histórico (${fechadas.length})`;
+  const on = faixa.querySelector('.aba-conv.on');
+  if (on) { const fr = faixa.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8; else if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; }
+  if (!$('#listaAbasFechadas').hidden) desenharAbasFechadas();
+}
+function desenharAbasFechadas() {
+  const el = $('#listaAbasFechadas');
+  const lista = [...conversas].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado)).slice(0, 80);
+  el.innerHTML = `<div class="af-topo"><b>Abas fechadas / histórico</b><button type="button" class="btn mini" data-af-fechar title="Fechar">×</button></div>` + (lista.length ? lista.map((c) => {
+    const v = visualAba(c), selo = seloAba(c.id), aberta = abasAbertas?.includes(c.id);
+    return `<button type="button" class="af-item${aberta ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(c.titulo)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${aberta ? ' · aberta' : ''}</small></span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}</button>`;
+  }).join('') : '<p class="sub">Nenhuma conversa ainda.</p>');
+}
+function fecharAbaConversa(id) {
+  const i = abasAbertas.indexOf(id); if (i < 0) return;
+  abasAbertas.splice(i, 1); salvarAbas();
+  if (id === conversaAtual) abrirConversa(abasAbertas[i] ?? abasAbertas[i - 1] ?? null);
+  else desenharSeletorConversas();
+}
+async function renomearConversa(id) {
+  const c = conversas.find((x) => x.id === id); if (!c) return;
+  const novo = prompt('Novo nome da aba:', c.titulo);
+  if (!novo?.trim()) return;
+  try { if (!DEMO) await R.renomearConversa(c.id, novo.trim()); } catch (e) { toast({ titulo: 'Não renomeei', texto: e.message, cor: '#ef6a55' }); return; }
+  c.titulo = novo.trim(); desenharSeletorConversas(); desenharBarra(); desenharChat();
+}
+function ligarAbasConversa() {
+  const faixa = $('#abasConversa');
+  faixa.onclick = (e) => {
+    const x = e.target.closest('[data-fechar]'); if (x) { e.stopPropagation(); fecharAbaConversa(Number(x.dataset.fechar)); return; }
+    const b = e.target.closest('[data-conv]'); if (b && Number(b.dataset.conv) !== conversaAtual) abrirConversa(Number(b.dataset.conv));
+  };
+  faixa.ondblclick = (e) => { const b = e.target.closest('[data-conv]'); if (b && !e.target.closest('[data-fechar]')) renomearConversa(Number(b.dataset.conv)); };
+  // Botão do meio do mouse fecha a aba (como no VS Code).
+  faixa.onauxclick = (e) => { const b = e.target.closest('[data-conv]'); if (b && e.button === 1) { e.preventDefault(); fecharAbaConversa(Number(b.dataset.conv)); } };
+  $('#btnAbasFechadas').onclick = () => { const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) desenharAbasFechadas(); };
+  $('#listaAbasFechadas').onclick = (e) => {
+    if (e.target.closest('[data-af-fechar]')) { $('#listaAbasFechadas').hidden = true; return; }
+    const b = e.target.closest('[data-reabrir]'); if (!b) return;
+    $('#listaAbasFechadas').hidden = true; abrirConversa(Number(b.dataset.reabrir));
+  };
+  // Os "detalhes" que você abriu continuam abertos quando chega mensagem nova.
+  $('#msgs').addEventListener('toggle', (e) => { const d = e.target; if (d.dataset?.k) { if (d.open) detalhesAbertos.add(d.dataset.k); else detalhesAbertos.delete(d.dataset.k); } }, true);
+}
+function guardarRolagem() {
+  const msgs = $('#msgs'); if (!msgs || chatCarregadoDe !== conversaAtual || aba !== 'chat') return;
+  rolagens.set(conversaAtual, msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60 ? -1 : msgs.scrollTop);
+}
+async function carregarMensagens(id) {
+  if (DEMO) { mensagens = cacheMsgs.get(id) || (id === conversaAtual ? mensagens : []); cacheMsgs.set(id, mensagens); return; }
+  if (temSql2 && id == null) { mensagens = []; return; }
+  const lista = await R.carregarChat(temSql2 ? id : null);
+  if (conversaAtual !== id) return;   // trocou de aba enquanto carregava
+  mensagens = lista; cacheMsgs.set(id, lista);
 }
 async function abrirConversa(id) {
+  guardarRolagem();
+  $('#listaAbasFechadas').hidden = true;
   conversaAtual = id; guarda('conversa', id || 0);
+  if (id != null && abasAbertas && !abasAbertas.includes(id)) { abasAbertas.push(id); salvarAbas(); }
   const cv = conversas.find((c) => c.id === id); if (cv && cv.alvo !== alvoBarra) { alvoBarra = cv.alvo; guarda('alvoBarra', alvoBarra); }
+  rolarPendente = rolagens.get(id) ?? -1;
+  const cache = cacheMsgs.get(id);
+  mensagens = cache || []; chatCarregadoDe = cache ? id : undefined;
   desenharBarra();
-  mensagens = [];
   if (aba !== 'chat') abrirAba('chat');
-  try { mensagens = DEMO ? mensagens : await R.carregarChat(id); } catch { mensagens = []; }
   desenharSeletorConversas(); desenharChat();
+  if (!cache) { try { await carregarMensagens(id); } catch { mensagens = []; } if (conversaAtual === id) { chatCarregadoDe = id; desenharChat(); } }
 }
 async function abrirChatCom(alvo) {
   abrirAba('chat');
@@ -1438,57 +1555,88 @@ async function menuConversa() {
   const c = conversas.find((x) => x.id === conversaAtual); if (!c) return;
   const novo = prompt('Novo nome da conversa (apague tudo e confirme para APAGAR a conversa):', c.titulo);
   if (novo === null) return;
-  if (!novo.trim()) { if (confirm(`Apagar a conversa “${c.titulo}” e as mensagens dela?`)) { await R.apagarConversa(c.id); conversas = conversas.filter((x) => x.id !== c.id); abrirConversa(conversas[0]?.id || null); } return; }
-  await R.renomearConversa(c.id, novo.trim()); c.titulo = novo.trim(); desenharSeletorConversas();
+  if (!novo.trim()) {
+    if (confirm(`Apagar a conversa “${c.titulo}” e as mensagens dela?`)) {
+      await R.apagarConversa(c.id); conversas = conversas.filter((x) => x.id !== c.id); cacheMsgs.delete(c.id); naoVistas.delete(c.id);
+      const i = abasAbertas?.indexOf(c.id) ?? -1; if (i >= 0) abasAbertas.splice(i, 1); salvarAbas();
+      abrirConversa(abasAbertas?.[Math.max(0, i - 1)] ?? null);
+    }
+    return;
+  }
+  await R.renomearConversa(c.id, novo.trim()); c.titulo = novo.trim(); desenharSeletorConversas(); desenharBarra(); desenharChat();
 }
 let chatCarregadoDe = undefined;
 async function desenharChatCompleto() {
   desenharSeletorConversas();
-  if (!DEMO && chatCarregadoDe !== conversaAtual) { chatCarregadoDe = conversaAtual; try { mensagens = await R.carregarChat(temSql2 ? conversaAtual : null); } catch {} }
+  if (!DEMO && chatCarregadoDe !== conversaAtual) { const id = conversaAtual; try { await carregarMensagens(id); } catch {} if (conversaAtual === id) chatCarregadoDe = id; }
   desenharChat();
+}
+// Resposta limpa: em cada rodada (do seu pedido até o próximo), primeiro o texto final da assistente;
+// as falas do meio, as ferramentas e os avisos de sistema ficam em "▸ detalhes" (recolhido). Erro fica sempre à vista.
+function htmlRodada(rodada, gpt) {
+  let final = -1;
+  for (let i = rodada.length - 1; i >= 0; i--) if (rodada[i].de === 'assistente') { final = i; break; }
+  const textoPasso = (c) => { const j = lerJson(c.texto); return j.ferramenta ? passo(j.ferramenta, null, j.entrada || {}) : c.texto; };
+  const linhaDetalhe = (c) => (c.de === 'assistente' ? `<div class="det-fala">${md(c.texto)}</div>` : `<div class="det-passo">${esc(c.de === 'ferramenta' ? textoPasso(c) : c.texto)}</div>`);
+  const detalhes = rodada.filter((c, i) => i !== final && c.de !== 'erro' && (final >= 0 || c.de !== 'sistema'));
+  const k = String(rodada[0].id ?? rodada[0].texto?.slice(0, 40));
+  const ultPasso = detalhes.filter((c) => c.de === 'ferramenta').at(-1);
+  const blocoDet = detalhes.length ? `<details class="detalhes" data-k="${esc(k)}" ${detalhesAbertos.has(k) ? 'open' : ''}><summary>detalhes · ${detalhes.length}${ultPasso ? ` · ${esc(primeiraFrase(textoPasso(ultPasso), 50))}` : ''}</summary>${detalhes.map(linhaDetalhe).join('')}</details>` : '';
+  const quem = `<span class="quem">${gpt ? 'Codex' : 'Assistente'}</span>`;
+  let html = '';
+  if (final >= 0) html += `<div class="msg assistente ${gpt ? 'gpt' : ''}">${quem}${md(rodada[final].texto)}${blocoDet}</div>`;
+  else if (blocoDet) html += `<div class="msg assistente parcial ${gpt ? 'gpt' : ''}">${quem}${blocoDet}</div>`;
+  for (const c of rodada) if (c.de === 'erro' || (final < 0 && c.de === 'sistema')) html += `<div class="msg ${c.de}">${esc(c.texto)}</div>`;
+  return html;
 }
 function desenharChat() {
   if (aba !== 'chat' || !EU) return;
   const st = estados.get(EU.pessoa) || {};
   const conv = conversas.find((c) => c.id === conversaAtual);
-  const gpt = (conv?.alvo || 'claude') === 'codex';
+  const gpt = (conv?.alvo || 'claude') === 'codex', ocupada = convOcupada(conversaAtual);
+  if (conv && !$('#gaveta').classList.contains('fechada') && !document.hidden && naoVistas.delete(conv.id)) { salvarAbas(); desenharSeletorConversas(); }
   $('#alvoAtual').className = `alvo ${gpt ? 'gpt' : 'claude'}`; $('#alvoAtual').textContent = gpt ? 'Codex · GPT' : 'Claude';
   const ponte = st.ponte_visto && Date.now() - new Date(st.ponte_visto).getTime() < 150e3;
-  const [cor, txt] = st.pausado ? ['#ef6a55', 'Pausada (Ajustes › tirar a pausa)'] : !ponte ? ['#6f6788', 'Sua ponte está desligada: o pedido roda quando ela ligar (até 3 min)'] : chatOcupado || st.ocupada ? ['#f0973d', 'Trabalhando…'] : ['#4fbf82', `Pronta · ${conv?.projeto || st.projeto || 'genesis-game'}${st.branch ? ' · ⎇ ' + st.branch : ''}`];
+  const [cor, txt] = st.pausado ? ['#ef6a55', 'Pausada (Ajustes › tirar a pausa)'] : !ponte ? ['#6f6788', 'Sua ponte está desligada: o pedido roda quando ela ligar (até 3 min)'] : ocupada ? ['#f0973d', 'Trabalhando nesta aba…'] : ['#4fbf82', `Pronta · ${conv?.projeto || st.projeto || 'genesis-game'}${st.branch ? ' · ⎇ ' + st.branch : ''}`];
   $('#estadoPonte').innerHTML = `<i style="--cor:${cor}"></i>${esc(txt)}`;
   const msgs = $('#msgs'), noFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60;
-  // Os passos (ferramentas) entre uma fala e outra viram um bloco recolhível.
-  let html = '', passos = [];
-  const fecharPassos = () => { if (!passos.length) return; html += `<details class="passos"><summary>› ${passos.length} passo(s): ${esc(passos.at(-1))}</summary>${passos.map((p) => `<div>${esc(p)}</div>`).join('')}</details>`; passos = []; };
+  let html = '', rodada = [];
+  const fechar = () => { if (rodada.length) html += htmlRodada(rodada, gpt); rodada = []; };
   for (const c of mensagens) {
-    if (c.de === 'ferramenta') { const j = lerJson(c.texto); passos.push(j.ferramenta ? passo(j.ferramenta, null, j.entrada || {}) : c.texto); continue; }
-    fecharPassos();
-    if (c.de === 'assistente') html += `<div class="msg assistente ${gpt ? 'gpt' : ''}"><span class="quem">${gpt ? 'Codex' : 'Assistente'}</span>${md(c.texto)}</div>`;
-    else html += `<div class="msg ${c.de}">${esc(c.texto)}</div>`;
+    if (c.de === 'eu') { fechar(); html += `<div class="msg eu">${esc(c.texto)}</div>`; continue; }
+    rodada.push(c);
   }
-  fecharPassos();
+  fechar();
   // No chat só as aprovações desta conversa (as do terminal ficam no Resumo).
   const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && (!conv || a.conversa_id === conv.id || !a.conversa_id));
   html += pend.map(cartaoAprovacao).join('');
-  msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Peça algo!` : `Oi, ${esc(EU.pessoa)}! Crie uma conversa (+ Nova) para cada tarefa: com a assistente (Claude) ou com o Codex (GPT).`}</div>`;
+  msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Peça algo!` : `Oi, ${esc(EU.pessoa)}! Crie uma aba (+) para cada tarefa: com a assistente (Claude) ou com o Codex (GPT). Abas diferentes rodam ao mesmo tempo.`}</div>`;
   ligarAprovacoes(msgs);
-  if (noFim) msgs.scrollTop = msgs.scrollHeight;
-  $('#btnEnviar').textContent = chatOcupado ? 'Pôr na fila' : 'Enviar';
+  if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { msgs.scrollTop = rolarPendente < 0 ? msgs.scrollHeight : rolarPendente; rolarPendente = null; }
+  else if (noFim) msgs.scrollTop = msgs.scrollHeight;
+  $('#btnEnviar').textContent = ocupada ? 'Pôr na fila' : 'Enviar';
+  $('#btnParar').disabled = !ocupada;
+  const v = visualAba(conv);
+  $('#formChat').style.setProperty('--cor-aba', conv ? v.cor : 'var(--borda-clara)');
+  $('#entrada').placeholder = conv ? `${v.icone} ${conv.titulo} · Enter envia, Shift+Enter quebra linha` : 'Peça algo… (começa uma aba nova)';
   desenharHudChat();
 }
+// Marca a aba como ocupada assim que o pedido é aceito (antes do aviso do banco chegar).
+const pedidoEnviado = (cmd, destino) => { if (cmd?.id) comandosAbertos.set(cmd.id, destino ?? null); versaoMundo = -1; sincronizarMundo(); desenharSeletorConversas(); };
 async function enviarChat() {
   const t = $('#entrada').value.trim();
   if (!t) return;
   if (temSql2 && !conversaAtual && !DEMO) {
-    const c = await R.novaConversa({ titulo: t.slice(0, 60), alvo: 'claude', projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome }).catch(() => null);
-    if (c) { conversas = [c, ...conversas]; conversaAtual = c.id; chatCarregadoDe = c.id; guarda('conversa', c.id); desenharSeletorConversas(); }
+    const c = await R.novaConversa({ titulo: primeiraFrase(t, 60), alvo: alvoBarra, projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome }).catch(() => null);
+    if (c) { conversas = [c, ...conversas]; conversaAtual = c.id; chatCarregadoDe = c.id; mensagens = []; cacheMsgs.set(c.id, mensagens); guarda('conversa', c.id); desenharSeletorConversas(); }
   }
+  const destino = conversaAtual, lista = mensagens;
   $('#entrada').value = '';
-  mensagens.push({ de: 'eu', texto: t, conversa_id: conversaAtual });
-  desenharChat();
+  lista.push({ de: 'eu', texto: t, conversa_id: destino });
+  rolarPendente = -1; desenharChat();
   if (DEMO) return;
-  try { await R.pedir(t, temSql2 ? conversaAtual : null); chatOcupado = true; versaoMundo = -1; sincronizarMundo(); desenharChat(); }
-  catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; mensagens.pop(); desenharChat(); }
+  try { const cmd = await R.pedir(t, temSql2 ? destino : null); pedidoEnviado(cmd, destino); desenharChat(); }
+  catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; const i = lista.findIndex((m) => m.de === 'eu' && m.texto === t && !m.id); if (i >= 0) lista.splice(i, 1); desenharChat(); }
 }
 
 // ---------- conversa da dupla (usa a tabela de recados: msg, recado fixado, missão compartilhada, reação) ----------
@@ -1553,8 +1701,9 @@ function desenharDupla() {
 // ---------- quem é quem: o catálogo de agentes, skills, conectores e plugins ----------
 let pessoaCatalogo = null;
 // ======================= Barra de comando (um lugar só para pedir: Claude ou Codex) =======================
-// Fica embaixo de todas as telas. Manda para a conversa mais recente do alvo escolhido
-// (ou começa uma nova com o "+"). A resposta abre no painel da assistente.
+// Fica embaixo do mapa e das outras telas (some quando o painel do chat está aberto: lá a caixa fica embaixo
+// da conversa). Manda para a aba aberta (ou a mais recente do alvo escolhido, ou uma nova com o "+")
+// e mostra para qual aba vai, com a cor e o nome dela.
 let alvoBarra = guardado('alvoBarra', 'claude') === 'codex' ? 'codex' : 'claude', novaNaBarra = false;
 function desenharBarra() {
   const f = $('#barraComando'); if (!f || !EU) return;
@@ -1563,8 +1712,11 @@ function desenharBarra() {
   const st = estados.get(EU.pessoa) || {}, ligado = pcLigado(EU.pessoa);
   const conv = conversaDaBarra();
   $('#bcTexto').placeholder = innerWidth <= 760 ? (alvoBarra === 'codex' ? 'Peça ao Codex…' : 'Peça algo…') : `${alvoBarra === 'codex' ? 'Peça ao Codex' : 'Peça à sua assistente'}${conv ? ` · ${conv.titulo}` : ' · conversa nova'}…`;
-  const [cor, txt] = st.pausado ? ['#ef6a55', 'pausada'] : !ligado ? ['#8a8fa6', 'PC desligado: o pedido espera a ponte'] : (chatOcupado || st.ocupada) ? ['#f0973d', 'trabalhando'] : ['#4fbf82', 'pronta'];
-  $('#bcEstado').innerHTML = `<i style="--cor:${cor}"></i>${esc(txt)}`;
+  const [cor, txt] = st.pausado ? ['#ef6a55', 'pausada'] : !ligado ? ['#8a8fa6', 'PC desligado: o pedido espera a ponte'] : (conv && convOcupada(conv.id)) ? ['#f0973d', 'esta aba está trabalhando (vai para a fila)'] : ['#4fbf82', 'pronta'];
+  const v = visualAba(conv);
+  const destinoHtml = conv ? `<span class="bc-aba" style="--cor:${v.cor}" title="O pedido vai para esta aba">→ ${v.icone} ${esc(conv.titulo)}</span>` : '<span class="bc-aba nova">→ ＋ aba nova</span>';
+  $('#bcEstado').innerHTML = `${destinoHtml}<i style="--cor:${cor}"></i>${esc(txt)}`;
+  f.style.setProperty('--cor-aba', conv ? v.cor : '');
   $('#bcNova').classList.toggle('on', novaNaBarra);
 }
 const ultimaDoAlvo = (alvo) => [...conversas].filter((c) => c.alvo === alvo).sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado))[0] || null;
@@ -1595,9 +1747,9 @@ async function enviarBarra() {
     if (destino !== conversaAtual) await abrirConversa(destino);
     abrirAba('chat');                            // abre o painel mesmo se ele estava fechado (celular)
     if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
-    if (!DEMO) await R.pedir(texto, temSql2 ? destino : null);
+    const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null);
     enviado = true;
-    chatOcupado = true; versaoMundo = -1; sincronizarMundo();
+    pedidoEnviado(cmd, destino);
     if (conv) { conv.atualizado = new Date().toISOString(); conversas = [conv, ...conversas.filter((c) => c.id !== conv.id)]; desenharSeletorConversas(); }
   } catch (e) {
     if (!enviado) { caixa.value = texto; const i = mensagens.findIndex((m) => m.de === 'eu' && m.texto === texto && !m.id); if (i >= 0) mensagens.splice(i, 1); desenharChat(); }
@@ -1618,7 +1770,7 @@ function ligarBarra() {
   };
   $('#bcNova').onclick = () => { novaNaBarra = !novaNaBarra; desenharBarra(); if (novaNaBarra) toast({ titulo: 'Conversa nova', texto: 'A próxima mensagem começa uma conversa nova.', cor: '#a785f0' }); $('#bcTexto').focus(); };
   // No celular a barra some quando a gaveta (tela cheia) está aberta: lá já tem a caixa da conversa.
-  new MutationObserver(() => document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'))).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
+  new MutationObserver(() => { document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada')); marcarChatAberto(); }).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
   desenharBarra();
 }
@@ -1898,7 +2050,7 @@ function desenharAjustes() {
       <label class="chk"><input type="checkbox" id="chkSom" ${guardado('som', '1') === '1' ? 'checked' : ''}> som quando alguém precisa de você ou termina</label>
       <button class="btn" id="btnNotif" ${notif !== 'default' ? 'disabled' : ''}>${notif === 'granted' ? 'Notificações ligadas ✓' : notif === 'denied' ? 'Notificações bloqueadas no navegador' : 'Ligar notificações do navegador'}</button></div>
     <div class="campo"><span>Emergência</span><button class="btn ${st.pausado ? 'forte' : 'perigo'}" id="btnPausa">${st.pausado ? 'Tirar a pausa da assistente' : 'Pausar a assistente (ninguém manda pedidos)'}</button></div>
-    <div class="campo"><span>Sua ponte</span><div class="sub" style="text-align:left">${st.ponte_visto ? `Vista ${D.ha(new Date(st.ponte_visto).getTime())} · projetos: ${esc((info.projetos || []).map((p) => p.nome).join(', ') || '—')} · ffmpeg: ${info.ffmpeg ? 'sim' : 'não'}` : 'Nunca ligada neste login.'}</div></div>
+    <div class="campo"><span>Sua ponte</span><div class="sub" style="text-align:left">${st.ponte_visto ? `Vista ${D.ha(new Date(st.ponte_visto).getTime())} · projetos: ${esc((info.projetos || []).map((p) => p.nome).join(', ') || '—')} · ffmpeg: ${info.ffmpeg ? 'sim' : 'não'}` : 'Nunca ligada neste login.'}</div><button class="btn" id="btnReiniciarPonte" style="margin-top:6px">Reiniciar ponte</button></div>
     ${info.agentes?.length ? `<div class="campo"><span>Seus agentes</span>${info.agentes.map((a) => `<div class="sub" style="text-align:left;margin:3px 0">${tagModelo(a.nome, EU.pessoa)} <b>${esc(tituloDe(a.nome))}</b></div>`).join('')}</div>` : ''}
     <div class="campo"><span>Convidar</span><form id="formConvite" class="linha" style="margin:0"><input id="emailConvite" type="email" placeholder="email do Kenny" required style="flex:2;min-width:0;background:var(--painel2);color:var(--texto);border:0;box-shadow:inset 0 0 0 2px var(--borda-clara);padding:7px"><input id="nomeConvite" placeholder="Nome" value="Kenny" required style="flex:1;min-width:0;background:var(--painel2);color:var(--texto);border:0;box-shadow:inset 0 0 0 2px var(--borda-clara);padding:7px"><button class="btn">Convidar</button></form></div>
     <div class="campo"><span>No iPhone</span><div class="sub" style="text-align:left">Abra o site no Safari › Compartilhar › <b>Adicionar à Tela de Início</b>. Vira um app.</div></div>
@@ -1912,6 +2064,11 @@ function desenharAjustes() {
   $('#btnPausa').onclick = async () => { try { await R.pausar(!st.pausado); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#formConvite').onsubmit = async (e) => { e.preventDefault(); try { await R.convidar($('#emailConvite').value, $('#nomeConvite').value.trim()); toast({ titulo: 'Convite feito', texto: 'Nenhum e-mail é enviado agora. Mande o link do site para a pessoa: ela entra com esse e-mail, recebe o código e já vira membro.', cor: '#4fbf82' }); } catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); } };
   $('#btnSair').onclick = async () => { await R.sair(); location.reload(); };
+  $('#btnReiniciarPonte').onclick = async () => {
+    if (DEMO || !confirm('Reiniciar a ponte? O que estiver rodando para, e ela volta em uns 20 segundos.')) return;
+    const { error } = await R.reiniciarPonte();
+    toast(error ? { titulo: 'Não consegui pedir', texto: error.message, cor: '#ef6a55' } : { titulo: 'Reiniciando a ponte', texto: 'Recarregue a página em uns 20 segundos.', cor: '#4fbf82' });
+  };
 }
 
 // ======================= "enquanto você estava fora" =======================
@@ -2019,6 +2176,7 @@ async function iniciarDemo() {
   conversas = [{ id: 1, titulo: 'Short Raio + Fogo', alvo: 'claude', projeto: 'genesis-game', sessao: 's1-demo', atualizado: new Date().toISOString() }, { id: 2, titulo: 'Revisar o inventário', alvo: 'codex', projeto: 'genesis-game', atualizado: new Date().toISOString() }];
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }];
+  cacheMsgs.set(1, mensagens); comandosAbertos.set(-1, 1); // demo: a aba 1 trabalhando
   aprovacoes = [{ id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly' }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
     { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];

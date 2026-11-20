@@ -99,10 +99,12 @@
     <section data-painel="chat" class="painel painel-chat" hidden>
       <div class="seg-conversas"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button></div>
       <div class="conversa-topo">
-        <select id="selConversa" title="Conversa"></select>
-        <button class="btn" id="btnNovaConversa" title="Conversa nova">+ Nova</button>
-        <button class="btn mini" id="btnMaisConversa" title="Renomear ou apagar">⋯</button>
+        <div id="abasConversa" class="abas-conversa" role="tablist" aria-label="Conversas abertas"></div>
+        <button class="btn mini" id="btnNovaConversa" title="Aba nova (conversa nova)">＋</button>
+        <button class="btn mini" id="btnAbasFechadas" title="Abas fechadas / histórico">🕘</button>
+        <button class="btn mini" id="btnMaisConversa" title="Renomear ou apagar a aba aberta">⋯</button>
       </div>
+      <div id="listaAbasFechadas" class="abas-fechadas" hidden></div>
       <form id="formNovaConversa" class="nova-conversa" hidden>
         <input id="tituloConversa" maxlength="120" placeholder="Sobre o quê? (ex.: Short Raio + Fogo)" required>
         <div class="alvos"><label><input type="radio" name="alvo" value="claude" checked><span class="alvo claude">Assistente · Claude</span></label><label><input type="radio" name="alvo" value="codex"><span class="alvo gpt">Codex · GPT</span></label></div>
