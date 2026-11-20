@@ -78,9 +78,7 @@ async function iniciar() {
     for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
     D.adicionar(tudo.eventos.map(D.deLinha));
     idSincronizado = tudo.eventos.reduce((mx, e) => Math.max(mx, e.id || 0), 0);
-    // Em segundo plano: o resumo da semana (pedidos e entregas mais antigos que os passos carregados).
     const maisVelho = tudo.eventos[0]?.t || Date.now();
-    R.resumoDosDias(maisVelho).then((ev) => { if (ev.length) { D.adicionar(ev.map(D.deLinha)); agendarInterface(); } }).catch((e) => console.warn('resumo da semana:', e));
     mundo = await criarMundo();
     const minhaSala = SALAS[Math.max(0, pessoas().indexOf(EU.pessoa))];
     await mundo.criarEu(EU.pessoa, [minhaSala.dono[0], minhaSala.dono[1] + 0.8]);
@@ -94,6 +92,9 @@ async function iniciar() {
     mostrarResumo();
     desenharManchete();
     requestAnimationFrame(laco);
+    // Só DEPOIS da interface montada: o resumo da semana (pedidos e entregas mais antigos), em segundo plano.
+    // (Antes, se ele chegasse enquanto o escritório carregava, tentava desenhar painéis que ainda não existiam.)
+    R.resumoDosDias(maisVelho).then((ev) => { if (ev.length) { D.adicionar(ev.map(D.deLinha)); agendarInterface(); } }).catch((e) => console.warn('resumo da semana:', e));
   } catch (e) {
     console.error(e);
     $('#textoCarregando').textContent = `Deu erro ao abrir: ${e.message}. O banco foi configurado (supabase/escritorio.sql)?`;
@@ -605,7 +606,8 @@ $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
 
 let pendenteUI = false;
-function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); desenharBarra(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
+let montada = false; // nada de redesenhar painéis antes da interface existir (carregamento lento no celular)
+function agendarInterface() { if (!montada || pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); desenharBarra(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -654,6 +656,7 @@ function montarInterface() {
   $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
   desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra();
+  montada = true;
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
 
@@ -2191,7 +2194,13 @@ async function iniciarDemo() {
   requestAnimationFrame(laco);
 }
 
-const mostrarErro = (e) => { console.error(e); const el = document.querySelector('#textoCarregando'); if (el && !document.querySelector('#carregando').hidden) el.textContent = `Deu erro ao abrir: ${e?.message || e}`; };
+const mostrarErro = (e) => {
+  console.error(e);
+  const el = document.querySelector('#textoCarregando');
+  // Mostra também onde foi (ex.: app.js:812), para dar para achar o erro sem estar logado como a pessoa.
+  const onde = String(e?.stack || '').split('\n').map((l) => /(\w+\.js:\d+)/.exec(l)?.[1]).find(Boolean);
+  if (el && !document.querySelector('#carregando').hidden) el.textContent = `Deu erro ao abrir: ${e?.message || e}${onde ? ` (${onde})` : ''}`;
+};
 addEventListener('error', (e) => mostrarErro(e.error || e.message));
 addEventListener('unhandledrejection', (e) => mostrarErro(e.reason));
 iniciar().catch(mostrarErro);
