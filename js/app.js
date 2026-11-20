@@ -1573,9 +1573,12 @@ function conversaDaBarra() {
   const aberta = conversas.find((c) => c.id === conversaAtual);
   return aberta && aberta.alvo === alvoBarra ? aberta : ultimaDoAlvo(alvoBarra);
 }
+let enviandoBarra = false;
 async function enviarBarra() {
   const caixa = $('#bcTexto'), texto = caixa.value.trim();
-  if (!texto) return;
+  if (!texto || enviandoBarra) return;          // um envio por vez (Enter duplo não cria duas conversas)
+  enviandoBarra = true; $('#bcEnviar').disabled = true;
+  let enviado = false;
   try {
     let conv = null;
     if (temSql2) {
@@ -1585,15 +1588,22 @@ async function enviarBarra() {
         conversas = [conv, ...conversas];
       }
     }
+    const destino = conv?.id ?? null;           // capturado AGORA: trocar de conversa no meio não muda o destino
     novaNaBarra = false;
     caixa.value = ''; caixa.style.height = '';
     fecharEquipeVista(); fecharQuadro();
-    if (conv) await abrirConversa(conv.id); else abrirAba('chat');
-    $('#entrada').value = texto;
-    await enviarChat();
+    if (destino !== conversaAtual) await abrirConversa(destino);
+    abrirAba('chat');                            // abre o painel mesmo se ele estava fechado (celular)
+    if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
+    if (!DEMO) await R.pedir(texto, temSql2 ? destino : null);
+    enviado = true;
+    chatOcupado = true; versaoMundo = -1; sincronizarMundo();
     if (conv) { conv.atualizado = new Date().toISOString(); conversas = [conv, ...conversas.filter((c) => c.id !== conv.id)]; desenharSeletorConversas(); }
-  } catch (e) { caixa.value = texto; toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); }
-  desenharBarra();
+  } catch (e) {
+    if (!enviado) { caixa.value = texto; const i = mensagens.findIndex((m) => m.de === 'eu' && m.texto === texto && !m.id); if (i >= 0) mensagens.splice(i, 1); desenharChat(); }
+    toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' });
+  } finally { enviandoBarra = false; $('#bcEnviar').disabled = false; }
+  desenharChat(); desenharBarra();
 }
 function ligarBarra() {
   const f = $('#barraComando'); if (!f) return;

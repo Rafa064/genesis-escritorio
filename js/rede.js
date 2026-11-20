@@ -55,16 +55,21 @@ export async function carregarTudo() {
 // escalação), sem cada passo. Vem em páginas de 1000 (o limite da API), mais antigos que "ate".
 const TIPOS_RESUMO = ['inicio', 'pedido', 'espera', 'fim', 'erro', 'escalacao', 'alerta'];
 export async function resumoDosDias(ate, dias = 7, maxPaginas = 6) {
-  const desde = Date.now() - dias * 86400e3, out = [];
-  let teto = ate;
-  for (let i = 0; i < maxPaginas && teto > desde; i++) {
-    const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').in('dados->>tipo', TIPOS_RESUMO).gte('t', desde).lt('t', teto).order('t', { ascending: false }).limit(1000);
+  const desde = Date.now() - dias * 86400e3, out = [], vistos = new Set();
+  let teto = ate, primeira = true;
+  for (let i = 0; i < maxPaginas && teto >= desde; i++) {
+    // <= no teto (menos na 1ª página) + ids já vistos: eventos no mesmo milissegundo da virada não se perdem
+    let q = sb.from('eventos').select('id,t,pessoa,dados').in('dados->>tipo', TIPOS_RESUMO).gte('t', desde).order('t', { ascending: false }).order('id', { ascending: false }).limit(1000);
+    q = primeira ? q.lt('t', teto) : q.lte('t', teto);
+    const { data, error } = await q;
     if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-    teto = data.at(-1).t;
+    const novos = data.filter((x) => !vistos.has(x.id));
+    for (const x of novos) vistos.add(x.id);
+    out.push(...novos);
+    if (data.length < 1000 || !novos.length) break;
+    teto = data.at(-1).t; primeira = false;
   }
-  return out.reverse();
+  return out.sort((a, b) => a.t - b.t || a.id - b.id);
 }
 
 // Histórico: eventos mais antigos que t (para o botão "carregar dias mais antigos").
