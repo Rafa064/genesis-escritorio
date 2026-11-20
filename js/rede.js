@@ -51,6 +51,22 @@ export async function carregarTudo() {
   return { eventos: ev.data.reverse(), recados: rec.data, estado: est.data, chat: chat.data.reverse(), membros: mem.data, conversas, aprovacoes, jornal, marcos, vinculos, comentarios, temSql2: conversas !== null, temQuadro: marcos !== null };
 }
 
+// Resumo leve dos últimos dias: só os eventos que contam a história (pedido, resposta, entrega, erro,
+// escalação), sem cada passo. Vem em páginas de 1000 (o limite da API), mais antigos que "ate".
+const TIPOS_RESUMO = ['inicio', 'pedido', 'espera', 'fim', 'erro', 'escalacao', 'alerta'];
+export async function resumoDosDias(ate, dias = 7, maxPaginas = 6) {
+  const desde = Date.now() - dias * 86400e3, out = [];
+  let teto = ate;
+  for (let i = 0; i < maxPaginas && teto > desde; i++) {
+    const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').in('dados->>tipo', TIPOS_RESUMO).gte('t', desde).lt('t', teto).order('t', { ascending: false }).limit(1000);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) break;
+    teto = data.at(-1).t;
+  }
+  return out.reverse();
+}
+
 // Histórico: eventos mais antigos que t (para o botão "carregar dias mais antigos").
 export async function eventosAntes(t, n = 2500) {
   const { data, error } = await sb.from('eventos').select('id,t,pessoa,dados').lt('t', t).order('t', { ascending: false }).limit(n);

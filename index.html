@@ -51,6 +51,13 @@
     <div id="frentes" class="frentes"></div>
     <div id="equipeVista" hidden><div class="eq-topo"><h2>Equipe</h2><input id="buscaEquipe" type="search" placeholder="Buscar agente, skill, conector…" autocomplete="off"><div id="filtrosEquipe" class="eq-filtros"></div></div><div id="equipeCorpo"></div></div>
     <div id="hudMapa" class="hud-mapa" hidden></div>
+    <form id="barraComando" class="barra-comando" autocomplete="off">
+      <div class="bc-alvo" id="bcAlvo"><button type="button" data-alvo="claude" class="on">Claude</button><button type="button" data-alvo="codex">Codex</button></div>
+      <textarea id="bcTexto" rows="1" placeholder="Peça algo…" aria-label="Pedido"></textarea>
+      <button type="button" id="bcNova" title="Começar uma conversa nova">＋</button>
+      <button class="btn forte" id="bcEnviar" title="Enviar (Enter)">Enviar</button>
+      <span id="bcEstado" class="bc-estado"></span>
+    </form>
     <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>

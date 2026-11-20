@@ -73,6 +73,9 @@ async function iniciar() {
     for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); }
     D.adicionar(tudo.eventos.map(D.deLinha));
     idSincronizado = tudo.eventos.reduce((mx, e) => Math.max(mx, e.id || 0), 0);
+    // Em segundo plano: o resumo da semana (pedidos e entregas mais antigos que os passos carregados).
+    const maisVelho = tudo.eventos[0]?.t || Date.now();
+    R.resumoDosDias(maisVelho).then((ev) => { if (ev.length) { D.adicionar(ev.map(D.deLinha)); agendarInterface(); } }).catch((e) => console.warn('resumo da semana:', e));
     mundo = await criarMundo();
     const minhaSala = SALAS[Math.max(0, pessoas().indexOf(EU.pessoa))];
     await mundo.criarEu(EU.pessoa, [minhaSala.dono[0], minhaSala.dono[1] + 0.8]);
@@ -312,6 +315,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
+  else if (k === '/') { e.preventDefault(); $('#bcTexto')?.focus(); }
   else if (k === 'tab') { e.preventDefault(); if ($('#equipeVista').hidden) abrirEquipeVista(); else fecharEquipeVista(); }
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
@@ -576,7 +580,7 @@ $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto
 $('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
 
 let pendenteUI = false;
-function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
+function agendarInterface() { if (pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); desenharBarra(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -624,7 +628,7 @@ function montarInterface() {
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
   $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
-  desenharTopo(); desenharHud(); desenharHudMapa();
+  desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra();
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
 
@@ -1398,6 +1402,8 @@ function desenharSeletorConversas() {
 }
 async function abrirConversa(id) {
   conversaAtual = id; guarda('conversa', id || 0);
+  const cv = conversas.find((c) => c.id === id); if (cv && cv.alvo !== alvoBarra) { alvoBarra = cv.alvo; guarda('alvoBarra', alvoBarra); }
+  desenharBarra();
   mensagens = [];
   if (aba !== 'chat') abrirAba('chat');
   try { mensagens = DEMO ? mensagens : await R.carregarChat(id); } catch { mensagens = []; }
@@ -1546,6 +1552,67 @@ function desenharDupla() {
 
 // ---------- quem é quem: o catálogo de agentes, skills, conectores e plugins ----------
 let pessoaCatalogo = null;
+// ======================= Barra de comando (um lugar só para pedir: Claude ou Codex) =======================
+// Fica embaixo de todas as telas. Manda para a conversa mais recente do alvo escolhido
+// (ou começa uma nova com o "+"). A resposta abre no painel da assistente.
+let alvoBarra = guardado('alvoBarra', 'claude') === 'codex' ? 'codex' : 'claude', novaNaBarra = false;
+function desenharBarra() {
+  const f = $('#barraComando'); if (!f || !EU) return;
+  $$('#bcAlvo [data-alvo]').forEach((b) => b.classList.toggle('on', b.dataset.alvo === alvoBarra));
+  f.classList.toggle('gpt', alvoBarra === 'codex');
+  const st = estados.get(EU.pessoa) || {}, ligado = pcLigado(EU.pessoa);
+  const conv = conversaDaBarra();
+  $('#bcTexto').placeholder = innerWidth <= 760 ? (alvoBarra === 'codex' ? 'Peça ao Codex…' : 'Peça algo…') : `${alvoBarra === 'codex' ? 'Peça ao Codex' : 'Peça à sua assistente'}${conv ? ` · ${conv.titulo}` : ' · conversa nova'}…`;
+  const [cor, txt] = st.pausado ? ['#ef6a55', 'pausada'] : !ligado ? ['#8a8fa6', 'PC desligado: o pedido espera a ponte'] : (chatOcupado || st.ocupada) ? ['#f0973d', 'trabalhando'] : ['#4fbf82', 'pronta'];
+  $('#bcEstado').innerHTML = `<i style="--cor:${cor}"></i>${esc(txt)}`;
+  $('#bcNova').classList.toggle('on', novaNaBarra);
+}
+const ultimaDoAlvo = (alvo) => [...conversas].filter((c) => c.alvo === alvo).sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado))[0] || null;
+function conversaDaBarra() {
+  if (novaNaBarra) return null;
+  const aberta = conversas.find((c) => c.id === conversaAtual);
+  return aberta && aberta.alvo === alvoBarra ? aberta : ultimaDoAlvo(alvoBarra);
+}
+async function enviarBarra() {
+  const caixa = $('#bcTexto'), texto = caixa.value.trim();
+  if (!texto) return;
+  try {
+    let conv = null;
+    if (temSql2) {
+      conv = conversaDaBarra();
+      if (!conv && !DEMO) {
+        conv = await R.novaConversa({ titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome || null });
+        conversas = [conv, ...conversas];
+      }
+    }
+    novaNaBarra = false;
+    caixa.value = ''; caixa.style.height = '';
+    fecharEquipeVista(); fecharQuadro();
+    if (conv) await abrirConversa(conv.id); else abrirAba('chat');
+    $('#entrada').value = texto;
+    await enviarChat();
+    if (conv) { conv.atualizado = new Date().toISOString(); conversas = [conv, ...conversas.filter((c) => c.id !== conv.id)]; desenharSeletorConversas(); }
+  } catch (e) { caixa.value = texto; toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); }
+  desenharBarra();
+}
+function ligarBarra() {
+  const f = $('#barraComando'); if (!f) return;
+  f.onsubmit = (e) => { e.preventDefault(); enviarBarra(); };
+  $('#bcTexto').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarBarra(); } };
+  $('#bcTexto').oninput = (e) => { const t = e.target; t.style.height = ''; t.style.height = Math.min(t.scrollHeight, 132) + 'px'; };
+  $('#bcAlvo').onclick = (e) => {
+    const b = e.target.closest('[data-alvo]'); if (!b) return;
+    alvoBarra = b.dataset.alvo; guarda('alvoBarra', alvoBarra);
+    if (aba === 'chat' && !$('#gaveta').classList.contains('fechada')) { const c = ultimaDoAlvo(alvoBarra); if (c && c.id !== conversaAtual) abrirConversa(c.id); }
+    desenharBarra(); $('#bcTexto').focus();
+  };
+  $('#bcNova').onclick = () => { novaNaBarra = !novaNaBarra; desenharBarra(); if (novaNaBarra) toast({ titulo: 'Conversa nova', texto: 'A próxima mensagem começa uma conversa nova.', cor: '#a785f0' }); $('#bcTexto').focus(); };
+  // No celular a barra some quando a gaveta (tela cheia) está aberta: lá já tem a caixa da conversa.
+  new MutationObserver(() => document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'))).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
+  document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
+  desenharBarra();
+}
+
 // ======================= HUD de escalação (quem a assistente chamou, ao vivo) =======================
 // A assistente declara a escalação (escritorio/escalar.mjs); o que entra em campo de verdade também aparece.
 // Estados: na escalação (planejado) → trabalhando → pronto. "novo" = algo que ela vai criar porque faltava.
