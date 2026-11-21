@@ -1,12 +1,22 @@
+/* Tokens do Estúdio: o ÚNICO :root das três folhas. Mude as cores, espaços e fontes aqui. */
 :root {
-  --fundo: #0e0c15; --painel: #1c1926; --painel2: #252133; --painel3: #2f2a40; --borda: #3d3652; --borda-clara: #5a5175;
-  --texto: #efe8dc; --fraco: #a59cb8; --muito-fraco: #6f6788;
-  --laranja: #f0973d; --verde: #4fbf82; --amarelo: #ffd23f; --vermelho: #ef6a55; --roxo: #a785f0; --azul: #5aa9e6;
+  /* cores */
+  --fundo: #0d0c12; --painel: #15131c; --painel2: #1c1a25; --painel3: #26232f;
+  --borda: rgba(255, 255, 255, .07); --borda-clara: rgba(255, 255, 255, .14);
+  --texto: #eeebf5; --fraco: #a6a0b8; --muito-fraco: #6e6883;
+  --laranja: #f59e4b; --verde: #4fbf82; --amarelo: #ffd23f; --vermelho: #ef6a55; --roxo: #a785f0; --azul: #5aa9e6; --semsinal: #8fa3c7;
   --rafael: #e0763a; --kenny: #3a86e0;
-  --px: "DotGothic16", ui-monospace, monospace;
-  --titulo: "Pixelify Sans", "DotGothic16", monospace;
-  --ui: "Inter", system-ui, sans-serif;
+  --claude: #d97a4a; --gpt: #3fb37f; --ferramenta: #8a8fa6;
+  /* espaços, raios, sombra e alvo de toque */
+  --esp-1: 4px; --esp-2: 8px; --esp-3: 12px; --esp-4: 16px;
+  --raio: 12px; --raio-p: 8px; --alvo: 40px;
+  --sombra: 0 10px 30px rgba(0, 0, 0, .35);
   --gaveta: 380px;
+  /* 2 fontes: pixel (DotGothic16) para títulos, marca e rótulos do mapa; Inter para o texto */
+  --pixel: "DotGothic16", ui-monospace, monospace;
+  --ui: "Inter", system-ui, -apple-system, sans-serif;
+  --titulo: var(--pixel);
+  --px: var(--ui); /* nome antigo: a interface não usa mais a fonte pixel */
 }
 * { box-sizing: border-box; font-synthesis-weight: none; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fundo); color: var(--texto); font: 14px/1.45 var(--ui); }
@@ -28,18 +38,9 @@ button { font: inherit; color: inherit; }
 .pessoa.on .ponto { background: var(--verde); }
 .pessoa.focado .ponto { background: var(--amarelo); }
 .pessoa .det { color: var(--fraco); font: 12px var(--ui); }
-.resumo-topo { display: flex; gap: 6px; }
-.chip-estado { display: flex; align-items: center; gap: 6px; padding: 2px 9px; font: 15px var(--px); background: var(--painel2); box-shadow: inset 0 0 0 2px var(--borda); cursor: pointer; }
-.chip-estado i { font-style: normal; width: 16px; height: 16px; display: grid; place-items: center; background: var(--cor); color: #15131b; font-weight: 700; box-shadow: 0 0 0 2px #07060b; }
 .espaco { flex: 1; }
-.botoes { display: flex; gap: 4px; }
-.botoes button { position: relative; display: flex; align-items: center; gap: 6px; background: var(--painel2); border: 0; padding: 6px 10px; cursor: pointer; box-shadow: inset 0 0 0 2px var(--borda); font: 15px var(--px); }
-.botoes button:hover { background: var(--painel3); }
-.botoes button.on { background: var(--laranja); color: #15131b; box-shadow: inset 0 0 0 2px #ffb877; }
-.botoes .ico { font: 700 15px var(--px); width: 14px; text-align: center; }
 .badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px; background: var(--amarelo); color: #15131b; font: 700 12px/18px var(--px); text-align: center; box-shadow: 0 0 0 2px #07060b; }
-@media (max-width: 1750px) { .botoes .txt { display: none; } }
-@media (max-width: 1100px) { .resumo-topo { display: none; } .pessoa .det { display: none; } }
+@media (max-width: 1100px) { .pessoa .det { display: none; } }
 @media (max-width: 760px) { .gente .det { display: none; } .logo { font-size: 0; } .logo .quad { font-size: 14px; } }
 
 /* ---------- área ---------- */

@@ -242,6 +242,7 @@ class Mundo {
         if (!img) return;
         const px = Math.round(m.x), py = Math.round(m.y + (m.dy || 0) - (m.sobre ? 14 : 0));
         if (m.espelho) { g.save(); g.translate(px + img.width, py); g.scale(-1, 1); g.drawImage(img, 0, 0); g.restore(); } else g.drawImage(img, px, py);
+        if (m.img === 'pcFrente' && statusDaMesa.get(m.anima) === 'semsinal') this.telaSemSinal(g, px, py);
       } });
     }
     for (const b of this.agentes.values()) coisas.push({ y: b.y + (b.modo === 'sentado' ? 0 : 0.5), f: () => this.desenharBoneco(g, b) });
@@ -257,6 +258,12 @@ class Mundo {
     if (h >= 19 || h < 6) { g.fillStyle = 'rgba(30,40,90,.16)'; g.fillRect(0, 0, vw, vh); }
   }
 
+  // Tela do PC (16x32; a tela fica em x 3..12, y 5..9) piscando em amarelo com um "?" escuro.
+  telaSemSinal(g, px, py) {
+    g.fillStyle = Math.floor(this.t * 2) % 2 ? '#7a6420' : '#ffd23f'; g.fillRect(px + 3, py + 5, 10, 5);
+    g.fillStyle = '#1b1a26'; g.fillRect(px + 6, py + 5, 3, 1); g.fillRect(px + 8, py + 6, 1, 1); g.fillRect(px + 7, py + 7, 1, 1); g.fillRect(px + 7, py + 9, 1, 1);
+  }
+
   icone(g, x, y, cls, id) {
     const q = this.t * 8 + hash(id) % 16;
     const bb = Math.round(Math.sin(q / 4) * 1.2);
@@ -265,13 +272,14 @@ class Mundo {
     if (cls === 'trab') { base('#fffaf0'); for (let k = 0; k < 3; k++) r(-4 + k * 3, -5, 2, 2, Math.floor(q / 3) % 3 === k ? '#f0973d' : '#b9ad9c'); }
     else if (cls === 'fim') { base('#4fbf82'); r(-3, -4, 1, 2, '#fff'); r(-2, -3, 1, 2, '#fff'); r(-1, -2, 1, 1, '#fff'); r(0, -4, 1, 2, '#fff'); r(1, -5, 1, 2, '#fff'); r(2, -6, 1, 2, '#fff'); }
     else if (cls === 'erro') { base('#ef6a55'); r(-3, -6, 2, 2, '#fff'); r(1, -6, 2, 2, '#fff'); r(-1, -4, 2, 2, '#fff'); r(-3, -2, 2, 1, '#fff'); r(1, -2, 2, 1, '#fff'); }
+    else if (cls === 'semsinal') { base('#8fa3c7'); r(-2, -7, 4, 1, '#fff'); r(1, -6, 1, 2, '#fff'); r(-1, -4, 2, 1, '#fff'); r(-1, -2, 2, 1, '#fff'); }
     else if (cls === 'alerta') { const pulo = Math.abs(Math.sin(this.t * 6)) * 3; g.fillStyle = '#1b1a26'; g.fillRect(x - 3, y - 13 - pulo, 6, 12); g.fillStyle = '#ffd23f'; g.fillRect(x - 2, y - 12 - pulo, 4, 7); g.fillRect(x - 2, y - 4 - pulo, 4, 2); }
   }
 
   desenharMinimapa(g, w, h, cam, vw, vh) {
     const kx = w / (MW * T), ky = h / (MH * T);
     g.imageSmoothingEnabled = true; g.drawImage(this.mini, 0, 0, w, h);
-    const cor = { trab: '#f0973d', alerta: '#ffd23f', erro: '#ef6a55', fim: '#4fbf82' };
+    const cor = { trab: '#f0973d', alerta: '#ffd23f', erro: '#ef6a55', fim: '#4fbf82', semsinal: '#8fa3c7' };
     for (const b of this.agentes.values()) { g.fillStyle = cor[b.status] || '#aab1c4'; g.fillRect(b.x * kx - 1.5, b.y * ky - 2, 3, 3); }
     for (const p of this.pessoas.values()) { g.fillStyle = '#fff'; g.fillRect(p.x * kx - 2.5, p.y * ky - 3, 5, 5); g.fillStyle = p.pessoa === 'Kenny' ? '#3a86e0' : '#e0763a'; g.fillRect(p.x * kx - 1.5, p.y * ky - 2, 3, 3); }
     if (this.eu) { g.fillStyle = '#fff'; g.fillRect(this.eu.x * kx - 3, this.eu.y * ky - 3.5, 6, 6); g.fillStyle = this.eu.pessoa === 'Kenny' ? '#3a86e0' : '#e0763a'; g.fillRect(this.eu.x * kx - 2, this.eu.y * ky - 2.5, 4, 4); }

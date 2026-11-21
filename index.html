@@ -15,7 +15,7 @@
 <link rel="icon" href="icones/icone-64.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@600;700&family=DotGothic16&family=Inter:wght@400;500;600&family=Playfair+Display:wght@700;900&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
 <link rel="stylesheet" href="estilo-novo.css">
@@ -23,25 +23,17 @@
 <body>
 <header id="topo">
   <div class="logo"><span class="quad"></span><span class="nome-logo">Estúdio Genesis</span></div>
-  <nav class="vistas" id="vistas"><button data-acao="mapa" class="on">Estúdio</button><button data-acao="quadro">Trabalho</button><button data-acao="equipe">Equipe</button></nav>
-  <div id="gente" class="gente"></div>
-  <div id="resumoTopo" class="resumo-topo"></div>
-  <button id="manchete" class="manchete" hidden title="Abrir o Diário do Estúdio (J)"></button>
-  <div class="acoes-topo"><button id="sinoCel" title="Precisa de você">🔔<b class="badge" id="badgeAtencaoCel" hidden>0</b></button><button id="menuCel" title="Menu">☰</button></div>
-  <div class="espaco"></div>
-  <nav class="botoes" id="botoesTopo">
-    <button data-acao="quadro" class="btn-quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
-    <button data-aba="equipe" title="Equipe: quem está fazendo o quê (Tab)"><span class="ico">☰</span><span class="txt">Equipe</span></button>
-    <button data-aba="atencao" title="Precisa de você"><span class="ico">!</span><span class="txt">Atenção</span><b class="badge" id="badgeAtencao" hidden>0</b></button>
-    <button data-aba="missoes" title="Missões por frente (H)"><span class="ico">◆</span><span class="txt">Missões</span></button>
-    <button data-aba="historico" title="Histórico: o que fizemos por dia (L)"><span class="ico">◷</span><span class="txt">Histórico</span></button>
-    <button data-aba="chat" title="Falar com a sua assistente (C)"><span class="ico">✦</span><span class="txt">Assistente</span></button>
-    <button data-aba="dupla" title="Conversa da dupla: você e o outro (M)"><span class="ico">✉</span><span class="txt">Dupla</span><b class="badge" id="badgeMural" hidden>0</b></button>
-    <button data-aba="galeria" title="Galeria de resultados (G)"><span class="ico">▣</span><span class="txt">Galeria</span></button>
-    <button data-aba="catalogo" title="Quem é quem: agentes, skills, conectores (I)"><span class="ico">◎</span><span class="txt">Quem é quem</span></button>
-    <button data-acao="jornal" title="Diário do Estúdio (J)"><span class="ico">▤</span><span class="txt">Diário</span></button>
-    <button data-aba="ajustes" title="Ajustes"><span class="ico">⚙</span></button>
+  <!-- Uma barra só: no PC fica aqui em cima; no celular o CSS a leva para baixo da tela. -->
+  <nav class="nav" id="nav" aria-label="Destinos">
+    <button data-nav="mapa" title="Escritório: o mapa"><span class="ico">🏢</span><span class="txt">Escritório</span></button>
+    <button data-nav="conversas" title="Conversas: assistente e dupla (C / M)"><span class="ico">💬</span><span class="txt">Conversas</span></button>
+    <button data-nav="atividade" title="Atividade: resumo, missões e histórico (H / L)"><span class="ico">◷</span><span class="txt">Atividade</span></button>
+    <button data-nav="quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
+    <button data-nav="equipe" title="Equipe: quem é quem (Tab / I)"><span class="ico">🧩</span><span class="txt">Equipe</span></button>
+    <button data-nav="mais" title="Mais: Diário, Galeria, Ajustes e Ajuda (J / G)"><span class="ico">⋯</span><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
   </nav>
+  <div id="gente" class="gente"></div>
+  <div id="statusTopo" class="status-topo"></div>
 </header>
 
 <main id="area">
@@ -58,7 +50,7 @@
       <button class="btn forte" id="bcEnviar" title="Enviar (Enter)">Enviar</button>
       <span id="bcEstado" class="bc-estado"></span>
     </form>
-    <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos</h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button><button class="btn" id="fecharQuadro" title="Voltar ao mapa (B)">▦ Mapa</button></div><div id="quadroCorpo"></div></div>
+    <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos <button type="button" class="glo" data-glo="marco" aria-label="O que é marco?">?</button></h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
     <div id="barra" class="painel-px">
@@ -75,6 +67,7 @@
 
   <aside id="gaveta" class="painel-px">
     <div class="gaveta-topo"><button id="voltarGaveta" class="voltar" hidden title="Voltar">‹</button><h2 id="tituloAba">Equipe</h2><button id="fecharGaveta" title="Fechar (Esc)">×</button></div>
+    <div class="seg-conversas seg-atividade" id="segAtividade" hidden><button data-seg="atencao">Resumo</button><button data-seg="missoes">Missões</button><button data-seg="historico">Histórico</button></div>
     <section data-painel="equipe" class="painel">
       <div class="filtros" id="filtroEquipe"></div>
       <div id="listaEquipe"></div>
@@ -147,7 +140,7 @@
 <div id="lightbox" class="modal" hidden><div class="caixa-modal painel-px larga"><div id="conteudoLightbox"></div><button class="btn" id="fecharLightbox">Fechar</button></div></div>
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
-<nav id="abasCelular"><button data-aba="atencao"><span>🔔</span>Resumo<b class="badge" id="badgeResumoCel" hidden>0</b></button><button data-acao="mapa"><span>🏢</span>Estúdio</button><button data-acao="quadro"><span>▥</span>Trabalho</button><button data-acao="equipe"><span>🧩</span>Equipe</button><button data-aba="conversas"><span>💬</span>Conversas<b class="badge" id="badgeDuplaCel" hidden>0</b></button></nav>
+<div id="glossario" class="glossario" role="tooltip" hidden></div>
 <div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
 
 <script type="module" src="js/app.js"></script>

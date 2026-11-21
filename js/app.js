@@ -1,5 +1,5 @@
 // Estúdio Genesis: liga mundo + dados + rede + interface.
-import { ORDEM_PESSOAS, COR_PESSOA, tituloDe, registrarFichas } from './config.js';
+import { ORDEM_PESSOAS, COR_PESSOA, tituloDe, registrarFichas, fichaDe } from './config.js';
 import { T, MW, MH, SALAS, AGENTES_CONHECIDOS, tileDe } from './mapa.js';
 import { criarMundo } from './mundo.js';
 import { montarPersonagem, retrato } from './arte.js';
@@ -588,8 +588,9 @@ function irAtePessoa(p) {
   else { const s = SALAS[pessoas().indexOf(p)]; if (s) teleportar(s.dono[0] * T, (s.dono[1] + 1.5) * T); }
 }
 
-// ======================= gaveta =======================
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Resumo', missoes: 'Missões por frente', missao: 'Missão', historico: 'Histórico', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
+/// ======================= gaveta =======================
+const ABAS_ATIVIDADE = ['atencao', 'missoes', 'historico'];
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Missão', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (nome === 'equipe' || nome === 'catalogo') { abrirEquipeVista(); return; }
@@ -597,28 +598,48 @@ function abrirAba(nome, empilhar = false) {
   aba = nome; if (!['agente', 'missao'].includes(nome)) guarda('aba', nome);
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
-  const raiz = { agente: 'equipe', missao: 'missoes' }[nome] || nome;
-  const raizCel = ['chat', 'dupla'].includes(nome) ? 'conversas' : nome === 'atencao' ? 'atencao' : '';
   if (['chat', 'dupla'].includes(nome)) guarda('abaConversa', nome);
+  if (ABAS_ATIVIDADE.includes(nome)) guarda('abaAtividade', nome);
+  $('#segAtividade').hidden = !ABAS_ATIVIDADE.includes(nome);
   $$('[data-seg]').forEach((b) => b.classList.toggle('on', b.dataset.seg === nome));
-  $$('#botoesTopo button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raiz || (b.dataset.acao === 'quadro' && !$('#quadro').hidden)));
-  $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.aba === raizCel));
   $('#tituloAba').textContent = TITULO_ABA[nome];
   $('#voltarGaveta').hidden = !pilha.length;
   $('#gaveta').classList.toggle('folha', nome === 'agente');
   $('#gaveta').classList.toggle('conversa', ['chat', 'dupla'].includes(nome));                         // no celular: ficha na metade de baixo
   $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco', 'item'].includes(nome));
-  desenharAba(); marcarChatAberto();
+  desenharAba(); marcarChatAberto(); marcarNav();
   setTimeout(dimensionar, 0);
 }
 // No PC, com o painel do chat aberto, a caixa de pedido é a de baixo da conversa (a barra central some).
 const marcarChatAberto = () => document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada'));
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
 function fecharGaveta() {
-  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); marcarChatAberto(); const q = !$('#quadro').hidden; $$('#botoesTopo button, #abasCelular button').forEach((b) => b.classList.toggle('on', q ? b.dataset.acao === 'quadro' : b.dataset.acao === 'mapa')); setTimeout(dimensionar, 0); }
+  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
-$('#botoesTopo').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'jornal') abrirJornal(); else if (b.dataset.acao === 'quadro') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); } else alternarAba(b.dataset.aba); };
+
+// ---------- barra de navegação: uma só, 6 destinos (no PC em cima, no celular embaixo) ----------
+// No PC o mapa/quadro/equipe ficam no meio e a gaveta ao lado: os dois destinos acendem.
+// No celular a gaveta cobre a tela: acende só o que está por cima.
+const NAV_DA_ABA = { chat: 'conversas', dupla: 'conversas', atencao: 'atividade', missoes: 'atividade', missao: 'atividade', historico: 'atividade', galeria: 'mais', ajustes: 'mais', mais: 'mais', marco: 'quadro', item: 'equipe' };
+function marcarNav() {
+  const centro = !$('#equipeVista').hidden ? 'equipe' : !$('#quadro').hidden ? 'quadro' : 'mapa';
+  const aberta = !$('#gaveta').classList.contains('fechada');
+  const painel = aberta ? NAV_DA_ABA[aba] : null;
+  const cel = innerWidth <= 760;
+  $$('#nav [data-nav]').forEach((b) => b.classList.toggle('on', cel && aberta ? b.dataset.nav === painel : b.dataset.nav === centro || b.dataset.nav === painel));
+}
+function irPara(destino) {
+  const cel = innerWidth <= 760, aberta = !$('#gaveta').classList.contains('fechada');
+  if (destino === 'mapa') { fecharQuadro(); fecharEquipeVista(); if (cel) fecharGaveta(); }
+  else if (destino === 'quadro') { if (cel && aberta) fecharGaveta(); if ($('#quadro').hidden) abrirQuadro(); else if (!cel) fecharQuadro(); }
+  else if (destino === 'equipe') { if ($('#equipeVista').hidden || (cel && aberta)) abrirEquipeVista(); else if (!cel) fecharEquipeVista(); }
+  else if (destino === 'conversas') { if (NAV_DA_ABA[aba] === 'conversas' && aberta && cel) fecharGaveta(); else abrirAba(guardado('abaConversa', 'dupla')); }
+  else if (destino === 'atividade') { if (NAV_DA_ABA[aba] === 'atividade' && aberta) fecharGaveta(); else abrirAba(guardado('abaAtividade', 'atencao')); }
+  else if (destino === 'mais') { if (aba === 'mais' && aberta) fecharGaveta(); else abrirAba('mais'); }
+  marcarNav();
+}
+$('#nav').onclick = (e) => { const b = e.target.closest('[data-nav]'); if (b) irPara(b.dataset.nav); };
 
 let pendenteUI = false;
 let montada = false; // nada de redesenhar painéis antes da interface existir (carregamento lento no celular)
@@ -644,14 +665,10 @@ function montarInterface() {
   $('#fecharResumo').onclick = () => { $('#resumo').hidden = true; };
   $('#fecharLightbox').onclick = () => { $('#lightbox').hidden = true; $('#conteudoLightbox').innerHTML = ''; };
   $('#fecharJornal').onclick = () => { $('#jornal').hidden = true; };
-  $('#manchete').onclick = () => abrirJornal();
   $('#edicoesJornal').onchange = (e) => abrirJornal(e.target.value);
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
-  $('#abasCelular').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.acao === 'mapa') { fecharGaveta(); fecharQuadro(); fecharEquipeVista(); } else if (b.dataset.acao === 'quadro') { fecharGaveta(); abrirQuadro(); } else if (b.dataset.acao === 'equipe') { fecharGaveta(); abrirEquipeVista(); } else if (b.dataset.aba === 'conversas') abrirAba(guardado('abaConversa', 'dupla')); else { fecharQuadro(); fecharEquipeVista(); abrirAba(b.dataset.aba); } };
   document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
-  $('#sinoCel').onclick = () => abrirAba('atencao');
-  $('#menuCel').onclick = () => abrirAba('mais');
   $('#filtrosQuadroCel').onclick = () => $('#quadroFiltros').classList.toggle('abertos');
   $('#pedidosCel').onclick = () => abrirAba('missoes');
   ligarHud(); ligarQuadro();
@@ -665,7 +682,6 @@ function montarInterface() {
   if (innerWidth <= 760) abrirAba('atencao'); else abrirAba(guardado('abaConversa', 'dupla'));
   registrarSw();
   abrirDeUrl(new URL(location.href));
-  $('#vistas').onclick = (e) => { const b = e.target.closest('[data-acao]'); if (!b) return; if (b.dataset.acao === 'quadro') abrirQuadro(); else if (b.dataset.acao === 'equipe') abrirEquipeVista(); else { fecharEquipeVista(); fecharQuadro(); } };
   $('#buscaEquipe').oninput = (e) => { buscaEq = e.target.value; desenharEquipeVista(); };
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
   $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
@@ -674,6 +690,34 @@ function montarInterface() {
   montada = true;
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
+
+// ---------- glossário: um "?" ao lado do termo; tocar abre a explicação de 1 linha ----------
+const GLOSSARIO = {
+  'sub-agente': 'Um ajudante especialista (ex.: Editor de vídeo) que a assistente chama para uma parte do trabalho. Ele faz e devolve um relatório.',
+  skill: 'Uma receita de "como fazer" que a IA abre e segue. Não é um personagem: qualquer agente pode usar.',
+  marco: 'Um objetivo grande do quadro (ex.: Trailer de lançamento). Os pedidos do dia a dia se penduram nele sozinhos.',
+  'escalação': 'A lista de quem a assistente vai chamar (agentes, skills, programas) e por quê, anunciada antes de começar.',
+  'aprovação': 'A IA quer fazer algo que pode ter risco (rodar um comando, gastar créditos) e espera o seu Permitir ou Negar.',
+  'sem sinal': 'Ainda está rodando, mas faz mais de 5 min que não manda notícia. Não quer dizer que terminou.',
+  ponte: 'O programa no seu PC que manda para cá o que as IAs estão fazendo. Bolinha verde: ligada.',
+};
+const glo = (termo) => `<button type="button" class="glo" data-glo="${esc(termo)}" aria-label="O que é ${esc(termo)}?">?</button>`;
+// Captura antes dos outros cliques: o "?" não abre o cartão em que está.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-glo]'), pop = $('#glossario');
+  if (!b) { if (!pop.hidden && !e.target.closest('#glossario')) pop.hidden = true; return; }
+  e.preventDefault(); e.stopPropagation();
+  if (!pop.hidden && pop.dataset.termo === b.dataset.glo) { pop.hidden = true; return; }
+  pop.dataset.termo = b.dataset.glo;
+  pop.innerHTML = `<b>${esc(b.dataset.glo)}</b> ${esc(GLOSSARIO[b.dataset.glo] || '')}`;
+  pop.hidden = false;
+  const r = b.getBoundingClientRect(), w = Math.min(300, innerWidth - 32);
+  pop.style.width = w + 'px';
+  pop.style.left = Math.max(16, Math.min(innerWidth - w - 16, r.left + r.width / 2 - w / 2)) + 'px';
+  const h = pop.offsetHeight;
+  pop.style.top = (r.bottom + 8 + h > innerHeight - 8 ? Math.max(8, r.top - h - 8) : r.bottom + 8) + 'px';
+}, true);
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#glossario').hidden = true; });
 
 // ---------- topo ----------
 async function desenharTopo() {
@@ -689,16 +733,26 @@ async function desenharTopo() {
   $('#gente').innerHTML = html.join('');
   $('#gente').onclick = (e) => { const d = e.target.closest('[data-ir]'); if (d && d.dataset.ir !== EU.pessoa) irAtePessoa(d.dataset.ir); };
   const todos = todosAgentes();
-  // "entregaram" só conta entregas de verdade (SubagentStop/fim) das últimas horas, não silêncio
-  const n = (cls) => todos.filter((a) => a.st.cls === cls && (cls !== 'fim' || Date.now() - (a.m.ult?.t || 0) < D.TEMPOS.ENTREGA_RECENTE)).length;
   const meusAlertas = todos.filter((a) => a.m.pessoa === EU.pessoa && (a.st.cls === 'alerta' || a.st.cls === 'erro')).length + aprovacoes.length;
-  $('#resumoTopo').innerHTML = [['alerta', 'precisam de você'], ['trab', 'trabalhando'], ...(n('semsinal') ? [['semsinal', 'rodando, mas sem sinal há um tempo']] : []), ['fim', 'entregaram nas últimas 2 h']].map(([c, t]) => `<span class="chip-estado" data-ver="${c}" title="${t}" style="--cor:${D.ESTADOS[c].cor}"><i>${D.ESTADOS[c].glifo}</i>${n(c) + (c === 'alerta' ? n('erro') + aprovacoes.length : 0)}</span>`).join('');
-  $('#resumoTopo').onclick = (e) => { const c = e.target.closest('[data-ver]'); if (c) abrirAba(c.dataset.ver === 'alerta' ? 'atencao' : 'equipe'); };
-  $('#badgeAtencao').hidden = !meusAlertas; $('#badgeAtencao').textContent = meusAlertas;
-  for (const b of [$('#badgeAtencaoCel'), $('#badgeResumoCel')]) { if (b) { b.hidden = !meusAlertas; b.textContent = meusAlertas; } }
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
-  for (const el of [$('#badgeMural'), $('#badgeDuplaCel'), ...$$('[data-badge-dupla]')]) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = novosRecados; }
+  for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = novosRecados; }
+  desenharPendencias(meusAlertas, novosRecados);
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
+}
+// Sempre à vista no topo: projeto + ponte do seu PC e as pendências (✋ precisa de você, 💬 resposta não vista).
+let ultPend = { alertas: 0, recados: 0 };
+function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ? 0 : ultPend.recados) {
+  if (!EU) return;
+  ultPend = { alertas, recados: novos };
+  const st = estados.get(EU.pessoa) || {}, ligada = pcLigado(EU.pessoa);
+  const projeto = st.projeto || st.info?.projetos?.[0]?.nome || 'sem projeto';
+  const naoVistasN = naoVistas.size + novos;
+  const pend = [
+    alertas ? `<button class="pend-topo urgente" data-pend="atencao" title="${alertas} coisa(s) precisam de você: aprovações, alertas e erros">✋ <b>${alertas}</b></button>` : '',
+    naoVistasN ? `<button class="pend-topo" data-pend="conversas" title="${naoVistasN} resposta(s) ou mensagem(ns) que você ainda não viu">💬 <b>${naoVistasN}</b></button>` : '',
+  ].join('');
+  $('#statusTopo').innerHTML = `<span class="proj-topo ${ligada ? 'on' : 'off'}" title="${esc(`Projeto: ${projeto}${st.branch ? ' · ⎇ ' + st.branch : ''} · ponte ${ligada ? 'ligada: as IAs do seu PC estão conectadas' : 'desligada: o PC não está mandando notícias'}`)}"><i></i><span>${esc(projeto)}</span></span>${pend || '<span class="pend-ok" title="Nada esperando você">✓<span> em dia</span></span>'}`;
+  $('#statusTopo').onclick = (e) => { const b = e.target.closest('[data-pend]'); if (!b) return; if (b.dataset.pend === 'atencao') abrirAba('atencao'); else abrirAba(naoVistas.size ? 'chat' : 'dupla'); };
 }
 function todosAgentes() {
   const out = [];
@@ -795,7 +849,7 @@ async function desenharAtencao() {
   const prontos = D.missoes().filter((m) => m.fim && m.fim > doze && m.status === 'fim' && (m.resposta || m.miniaturas.length)).slice(0, 12);
   const sec = (ic, t, n, corpo, cls = '') => `<section class="cx ${cls}"><h3>${ic} ${t}${n != null ? ` <small>${n}</small>` : ''}</h3>${corpo}</section>`;
   let html = await cartaoAvisos();
-  if (aprovacoes.length || alerta.length) html += sec('🔐', 'Precisa de você', aprovacoes.length + alerta.length, aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
+  if (aprovacoes.length || alerta.length) html += sec('🔐', `Precisa de você ${glo('aprovação')}`, aprovacoes.length + alerta.length, aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
   if (travou.length) html += sec('❌', 'Travou', travou.length, (await Promise.all(travou.map(linhaAgente))).join(''));
   html += sec('⚙️', 'Rodando agora', rodando.length, rodando.length ? (await Promise.all(rodando.slice(0, 8).map(linhaCompacta))).join('') + (rodando.length > 8 ? `<button class="link" data-ir-aba="equipe">ver os ${rodando.length}</button>` : '') : '<div class="vazio">Ninguém trabalhando agora.</div>');
   html += sec('✅', 'Pronto nas últimas 12 h', prontos.length, prontos.length ? (await Promise.all(prontos.map(cartaoPronto))).join('') : '<div class="vazio">Nada entregue ainda.</div>');
@@ -1080,20 +1134,81 @@ async function desenharMissoes() {
   };
 }
 function abrirMissao(id) { missaoAberta = id; abrirAba('missao', true); }
+// Uma tarefa, três visões: Escritório (o resumo de sempre), Linha do tempo (passos em ordem) e Árvore (quem chamou quem).
+let vistaMissao = guardado('vistaMissao', 'escritorio');
+const VISTAS_MISSAO = [['escritorio', '🏢 Escritório'], ['linha', '◷ Linha do tempo'], ['arvore', '🌳 Árvore']];
+const corAgente = (nome) => nome === 'Orquestrador' ? TIPOS.assistente.cor : fichaDe(nome)?.cor || TIPOS[tipoDe(nome)].cor;
+const nomeAgente = (nome) => nome === 'Orquestrador' ? 'Assistente' : tituloDe(nome);
+const ROT_TIPO_PASSO = { inicio: 'começou', pedido: 'pedido', fim: 'entregou', erro: 'erro', alerta: 'pediu permissão', escalacao: 'escalação', atividade: 'passo', espera: 'parou' };
+const rotuloFerramenta = (e) => e.ferramenta === 'Skill' && e.alvo ? `Skill › ${String(e.alvo).split(':').pop()}` : String(e.ferramenta || '').startsWith('mcp__') ? `🔌 ${nomeConector(String(e.ferramenta).split('__')[1])} › ${String(e.ferramenta).split('__').pop()}` : e.ferramenta || ROT_TIPO_PASSO[e.tipo] || e.tipo || 'passo';
+async function htmlLinhaTempo(m) {
+  const fimT = m.fim || (m.status === 'trab' ? Date.now() : m.ultimo);
+  const todos = [{ t: m.inicio, agente: 'Orquestrador', tipo: 'inicio', _pedido: true }, ...m.passos];
+  const itens = todos.map((e, i) => ({ e, dur: Math.max(0, (todos[i + 1]?.t ?? fimT) - e.t) }));
+  const maior = itens.reduce((a, b) => (b.dur > a.dur ? b : a), itens[0]);
+  const LIMITE = 150, mostrar = itens.length > LIMITE ? [itens[0], ...itens.slice(-LIMITE + 1)] : itens;
+  const linhas = await Promise.all(mostrar.map(async (x) => {
+    const ag = x.e.agente || 'Orquestrador', lento = x === maior && maior.dur >= 1000 && itens.length > 1;
+    const txt = x.e._pedido ? `Pedido: ${primeiraFrase(m.pedido, 110)}` : primeiraFrase(frase(x.e) || ROT_TIPO_PASSO[x.e.tipo] || '', 120);
+    return `<li class="lt-passo ${lento ? 'lento' : ''} t-${esc(x.e.tipo || '')}" style="--cor:${corAgente(ag)}">
+      <span class="lt-h">${D.hora(x.e.t)}</span><img src="${await retratoDe(ag)}" alt="">
+      <div class="lt-txt"><div><b>${esc(nomeAgente(ag))}</b> <span class="lt-ferr">${iconePasso(x.e.ferramenta, x.e.modo)} ${esc(rotuloFerramenta(x.e))}</span></div><small>${esc(txt)}</small>${lento ? '<em class="lt-selo">⏳ passo mais demorado</em>' : ''}</div>
+      <span class="lt-dur" title="Tempo até o próximo passo">${D.duracao(x.dur)}</span></li>`;
+  }));
+  const fim = m.fim ? `<li class="lt-passo t-resposta" style="--cor:${D.ESTADOS[m.status]?.cor || '#4fbf82'}"><span class="lt-h">${D.hora(m.fim)}</span><span class="lt-ic">✓</span><div class="lt-txt"><div><b>Resposta</b></div><small>${esc(primeiraFrase(m.resposta || 'terminou', 140))}</small></div><span class="lt-dur"></span></li>` : '';
+  return `<p class="lt-resumo">${todos.length} passos em ${D.duracao(m.duracao)}${maior.dur >= 1000 && itens.length > 1 ? ` · o mais demorado foi de <b>${esc(nomeAgente(maior.e.agente || 'Orquestrador'))}</b> (${D.duracao(maior.dur)})` : ''}${itens.length > mostrar.length ? ` · mostrando o começo e os últimos ${LIMITE - 1}` : ''}</p>
+    <ol class="linha-tempo">${linhas.join('')}${fim}</ol>`;
+}
+async function htmlArvore(m) {
+  const itensEsc = m.alvo === 'codex' ? [] : D.escalacao(m);
+  // Cada ajudante: passos, ferramentas usadas (com quantas vezes) e a nota de uso da entrega.
+  const nos = new Map();
+  const no = (nome) => { if (!nos.has(nome)) nos.set(nome, { nome, passos: 0, ferr: new Map(), uso: null, ult: null }); return nos.get(nome); };
+  no(m.alvo === 'codex' ? 'Codex' : 'Orquestrador');
+  for (const e of m.passos) {
+    const x = no(e.agente || 'Orquestrador'); x.passos++; x.ult = e;
+    if (e.ferramenta) { const k = rotuloFerramenta(e); x.ferr.set(k, (x.ferr.get(k) || 0) + 1); }
+    if (e.tipo === 'fim' && e.uso) x.uso = e.uso;
+  }
+  for (const x of itensEsc) if ((x.tipo === 'agente' || x.tipo === 'programa') && ![...nos.keys()].some((n) => n.toLowerCase() === String(x.nome).toLowerCase())) no(x.nome);
+  const EST_DA_MISSAO = { fim: 'pronto', erro: 'erro', semsinal: 'semsinal', trab: 'trabalhando', alerta: 'trabalhando' };
+  const estadoNo = (nome, raiz) => raiz ? EST_DA_MISSAO[m.status] || 'pronto' : itensEsc.find((x) => String(x.nome).toLowerCase() === nome.toLowerCase())?.estado || 'pronto';
+  const folhas = (x) => x.ferr.size ? `<ul class="arv-ferr">${[...x.ferr].sort((a, b) => b[1] - a[1]).map(([f, n]) => `<li>${esc(f)}${n > 1 ? ` <small>×${n}</small>` : ''}</li>`).join('')}</ul>` : '<ul class="arv-ferr"><li class="fraco">nenhuma ferramenta registrada</li></ul>';
+  const cab = async (x, raiz) => {
+    const est = estadoNo(x.nome, raiz), [g, r] = ROT_EST[est] || ROT_EST.pronto;
+    const nota = raiz ? `⏱ ${D.duracao(m.duracao)} no total` : (D.notaFiscal(x.uso)?.texto || (est === 'planejado' ? 'ainda não começou' : '⏱ 🪙 não medido'));
+    return `<summary style="--cor:${corAgente(x.nome)}"><img src="${await retratoDe(x.nome)}" alt=""><span class="arv-nome"><b>${esc(nomeAgente(x.nome))}</b><small>${x.passos} passo(s) · ${esc(nota)}</small></span><i class="arv-est est-${est}">${g} ${r}</i></summary>`;
+  };
+  const [raiz, ...filhos] = [...nos.values()];
+  const filhosHtml = await Promise.all(filhos.map(async (x) => `<li><details class="arv-no" open>${await cab(x, false)}${folhas(x)}</details></li>`));
+  const skills = itensEsc.filter((x) => x.tipo === 'skill' || x.tipo === 'conector');
+  return `<p class="lt-resumo">Toque num nome para recolher ou abrir. A nota de uso (tempo e tokens) vem da entrega de cada ajudante (sub-agente ${glo('sub-agente')}).</p>
+    <details class="arv-no raiz" open>${await cab(raiz, true)}${folhas(raiz)}
+      ${filhosHtml.length ? `<ul class="arv-filhos">${filhosHtml.join('')}</ul>` : '<p class="fraco arv-vazio">Fez tudo sozinha, sem chamar ajudantes.</p>'}
+      ${skills.length ? `<div class="arv-skills">${skills.map((x) => `<span class="tipo" style="--cor:${TIPOS[x.tipo].cor}">${TIPOS[x.tipo].icone} ${esc(nomeBonito(x.tipo, x.nome))}</span>`).join('')} ${glo('skill')}</div>` : ''}
+    </details>`;
+}
 async function desenharMissao() {
   const m = D.missoes().find((x) => x.id === missaoAberta);
   if (!m) { $('#detalheMissao').innerHTML = '<div class="vazio">Missão não encontrada (talvez seja antiga demais: carregue mais no Histórico).</div>'; return; }
   const st = D.ESTADOS[m.status] || D.ESTADOS.espera;
+  const cabecalho = `
+    <div class="etqs">${chipFrente(m.frente)}<span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : ''}<span class="sub">${esc(m.projeto || '')}${m.origem ? ` · pelo ${m.origem === 'vscode' ? 'VS Code' : 'site'}` : ''}</span></div>
+    <h3 class="titulo-missao">${esc(m.titulo)}</h3>
+    <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)} · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+    <div class="seg-conversas vistas-missao" role="tablist" aria-label="Como ver a missão">${VISTAS_MISSAO.map(([v, t]) => `<button type="button" role="tab" data-vista-missao="${v}" class="${v === vistaMissao ? 'on' : ''}" aria-selected="${v === vistaMissao}">${t}</button>`).join('')}</div>`;
+  const ligarVistas = () => { $('#detalheMissao .vistas-missao').onclick = (e) => { const b = e.target.closest('[data-vista-missao]'); if (!b) return; vistaMissao = b.dataset.vistaMissao; guarda('vistaMissao', vistaMissao); desenharMissao(); }; };
+  if (vistaMissao !== 'escritorio') {
+    $('#detalheMissao').innerHTML = cabecalho + (vistaMissao === 'linha' ? await htmlLinhaTempo(m) : await htmlArvore(m));
+    ligarVistas(); return;
+  }
   const urls = await R.urlsMiniaturas(m.miniaturas.map((x) => x.caminho)).catch(() => []);
   const fs = fases(m.passos);
   const linhasFases = await Promise.all(fs.map(async (f) => `<div class="etapa ${esc(f.tipo)}"><span class="h">${D.hora(f.t)}</span><img src="${await retratoDe(f.agente)}" title="${esc(tituloDe(f.agente))}" alt=""><span><b>${esc(f.agente === 'Orquestrador' ? 'Assistente' : tituloDe(f.agente))}</b> <span class="sub2">${ICONE_CAT[f.cat] || ''} ${esc(f.texto)}</span></span></div>`));
   const quem = await Promise.all([...m.agentes].map(async (a) => `<div class="quem-linha"><img src="${await retratoDe(a)}" alt=""><b>${esc(tituloDe(a))}</b>${etiquetaTipo(tipoDe(a))}</div>`));
   const res = resumo(m.passos);
   const escalacaoHtml = m.alvo === 'codex' ? '' : await htmlEscalacao(m);
-  $('#detalheMissao').innerHTML = `
-    <div class="etqs">${chipFrente(m.frente)}<span class="dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${m.alvo === 'codex' ? '<span class="modelo gpt">GPT · Codex</span>' : ''}<span class="sub">${esc(m.projeto || '')}${m.origem ? ` · pelo ${m.origem === 'vscode' ? 'VS Code' : 'site'}` : ''}</span></div>
-    <h3 class="titulo-missao">${esc(m.titulo)}</h3>
-    <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot} · ${D.duracao(m.duracao)} · ${new Date(m.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+  $('#detalheMissao').innerHTML = cabecalho + `
     ${escalacaoHtml}
     ${temQuadro ? (() => { const mc = marcoDaMissao(m); const op = marcos.filter((x) => x.coluna !== 'feito' || x === mc); return `<div class="linha-marco">🏁 <select id="marcoDaMissao"><option value="">${mc ? '' : 'sem marco'}</option>${op.map((x) => `<option value="${x.id}" ${x === mc ? 'selected' : ''}>${jogoPorId(x.jogo).icone} ${esc(x.titulo)}</option>`).join('')}<option value="nenhum">não é de marco nenhum</option></select>${mc ? `<a href="#" id="verMarco">ver marco ›</a><span class="sub">${comoPendurou(m)}</span>` : ''}</div>`; })() : ''}
     ${m.resposta ? `<div class="bloco destaque"><h4>✅ Resultado</h4><div class="msg assistente" style="box-shadow:none;background:none;padding:0;max-width:100%">${md(m.resposta)}</div></div>` : ''}
@@ -1107,6 +1222,7 @@ async function desenharMissao() {
     <details class="bloco tecnico"><summary>Passo a passo (${fs.length} fases, ${m.passos.length} passos)</summary>${linhasFases.join('') || '<div class="sub" style="text-align:left">Sem passos registrados.</div>'}</details>`;
   $$('#detalheMissao [data-mini]').forEach((el) => { el.onclick = () => abrirMidia(m.miniaturas[Number(el.dataset.mini)], urls[Number(el.dataset.mini)], m.pessoa); });
   $('#compartilharMissao').onclick = () => compartilharMissao(m);
+  ligarVistas();
   $('#verMarco')?.addEventListener('click', (e) => { e.preventDefault(); abrirMarco(marcoDaMissao(m).id); });
   $('#marcoDaMissao')?.addEventListener('change', async (e) => {
     const v = e.target.value, id = v === 'nenhum' ? null : Number(v) || null;
@@ -1189,16 +1305,15 @@ async function desenharHud() {
   if (!EU) return;
   const ativos = quemTrabalha();
   const cartoes = await Promise.all(ativos.slice(0, 12).map(async ({ m, cls, fr }) => {
-    const acao = D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano' : m.ult ? primeiraFrase(frase(m.ult), 70) : 'pensando…';
+    const acao = D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano' : cls === 'semsinal' ? 'sem sinal há um tempo' : m.ult ? primeiraFrase(frase(m.ult), 70) : 'pensando…';
     const marco = marcoDaMissao(m.ult?._m);
     const desde = m.pedido?.t || m.ult?.t;
     const icone = cls === 'alerta' ? '⚠️' : cls === 'erro' ? '❌' : ICONE_CAT[categoria(m.ult || {})] || '⚙️';
-    return `<button class="agora-card ${cls}" data-k="${esc(m.k)}" style="--cor:${fr?.cor || '#9a90a8'};--pessoa:${corPessoa(m.pessoa)}">
+    const quanto = desde ? D.ha(desde) : '';
+    const titulo = `${tituloAgente(m)} (${m.pessoa})${fr ? ' · ' + fr.nome : ''}${marco ? ' · 🏁 ' + marco.titulo : ''}: ${acao}`;
+    return `<button class="agora-card ${cls}" data-k="${esc(m.k)}" style="--cor:${fr?.cor || '#9a90a8'};--pessoa:${corPessoa(m.pessoa)}" title="${esc(titulo)}">
       <img src="${await retratoDe(m.nome)}" alt="">
-      <span class="ac-txt"><span class="ac-nome"><b>${esc(tituloAgente(m))}</b><span class="ac-pes">${esc(m.pessoa)}</span></span>
-        <span class="ac-fr">${fr ? `${fr.icone}${fr.iconeSetor} ${esc(fr.nome)}` : ''}${marco ? ` · 🏁 ${esc(marco.titulo)}` : ''}</span>
-        <span class="ac-acao">${icone} ${esc(acao)}</span></span>
-      <span class="ac-t">${desde ? D.ha(desde) : ''}</span></button>`;
+      <span class="ac-linha"><b>${esc(CURTO[m.nome] || tituloAgente(m))}</b> ${icone} ${esc(primeiraFrase(acao, 34))}${quanto ? ` <i>· ${quanto === 'agora' ? 'agora' : 'há ' + quanto}</i>` : ''}</span></button>`;
   }));
   $('#frentes').innerHTML = htmlFiltros() + `<div class="agora ${guardado('agoraCompacto', '') ? 'compacto' : ''}"><span class="agora-tit" title="Encolher/abrir">${ativos.length ? `⚙ ${ativos.length} trabalhando${ativos.filter((a) => a.cls === 'alerta').length ? ` · ⚠ ${ativos.filter((a) => a.cls === 'alerta').length}` : ''}` : 'ninguém trabalhando'}</span>${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12}</span>` : ''}</div>`;
 }
@@ -1263,21 +1378,13 @@ function resumoMarco(mc) {
 function quemTrabalhaTodos() { return todosAgentes().filter((a) => TRABALHANDO.includes(a.st.cls)); }
 
 // ---------- tela do quadro ----------
-function marcarVista() {
-  const v = !$('#equipeVista').hidden ? 'equipe' : !$('#quadro').hidden ? 'quadro' : 'mapa';
-  const gav = !$('#gaveta').classList.contains('fechada') && innerWidth <= 760;
-  $$('#vistas button').forEach((b) => b.classList.toggle('on', b.dataset.acao === v));
-  if (!gav) $$('#abasCelular button').forEach((b) => b.classList.toggle('on', b.dataset.acao === v));
-}
 function abrirQuadro() {
   $('#equipeVista').hidden = true;
-  $('#quadro').hidden = false; guarda('quadro', '1'); marcarVista();
-  $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.add('on'));
+  $('#quadro').hidden = false; guarda('quadro', '1'); marcarNav();
   desenharQuadro();
 }
 function fecharQuadro() {
-  $('#quadro').hidden = true; guarda('quadro', ''); marcarVista();
-  $$('#botoesTopo [data-acao=quadro], #abasCelular [data-acao=quadro]').forEach((b) => b.classList.remove('on'));
+  $('#quadro').hidden = true; guarda('quadro', ''); marcarNav();
 }
 const passaMarco = (mc) => (!filtroJogo || mc.jogo === filtroJogo) && (!filtroSetor || mc.setor === filtroSetor) && (!pessoaQuadro || mc.responsavel === pessoaQuadro);
 async function cartaoMarco(mc) {
@@ -1326,7 +1433,6 @@ async function desenharQuadro() {
   if (!marcos.length) $('#quadroCorpo').insertAdjacentHTML('afterbegin', '<div class="quadro-dica">Crie o primeiro marco no <b>+</b> de uma coluna. Só os grandes: “Trailer de lançamento”, “Loja de classes”, “Página da Steam”. Os pedidos do dia a dia se penduram sozinhos.</div>');
 }
 function ligarQuadro() {
-  $('#fecharQuadro').onclick = fecharQuadro;
   $('#novoMarco').onclick = () => abrirMarco(null, 'afazer');
   $('#quadroFiltros').onclick = (e) => {
     if (cliqueFiltro(e)) return;
@@ -1539,6 +1645,7 @@ function desenharSeletorConversas() {
   // O 🕘 avisa se alguma aba fechada precisa de você.
   const fechadas = conversas.filter((c) => !abasAbertas.includes(c.id));
   $('#btnAbasFechadas').classList.toggle('aviso', fechadas.some((c) => seloAba(c.id)));
+  desenharPendencias();
   $('#btnAbasFechadas').title = `Abas fechadas / histórico (${fechadas.length})`;
   const on = faixa.querySelector('.aba-conv.on');
   if (on) { const fr = faixa.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8; else if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; }
@@ -1756,7 +1863,7 @@ async function reagir(id, emoji) {
 const comMencao = (s) => esc(s).replace(/@(\p{L}+)/gu, '<b class="mencao">@$1</b>');
 function desenharDupla() {
   if (aba !== 'dupla' || !EU) return;
-  guarda('recadosVistos', Date.now()); for (const el of [$('#badgeMural'), $('#badgeDuplaCel'), ...$$('[data-badge-dupla]')]) el.hidden = true;
+  guarda('recadosVistos', Date.now()); for (const el of $$('[data-badge-dupla]')) el.hidden = true; desenharPendencias();
   const fixados = recados.filter((r) => CORES_FIXADO[r.cor]);
   $('#fixados').innerHTML = fixados.length ? `<details class="fixados" ${fixados.length <= 3 ? 'open' : ''}><summary>📌 Recados fixados (${fixados.length})</summary><div class="recados">${fixados.map((r, i) => `<div class="recado" style="--cor:${CORES_FIXADO[r.cor]};--r:${((i * 37) % 5) - 2}deg"><button data-tirar="${r.id}" title="Tirar do mural">×</button>${comMencao(r.texto)}<small>${esc(r.pessoa)} · ${D.ha(new Date(r.criado).getTime())}</small></div>`).join('')}</div></details>` : '';
   const reacoes = new Map();
@@ -1882,7 +1989,7 @@ async function htmlEscalacao(m, { compacto = false, mapa = false } = {}) {
   // Placar honesto: só agente/programa que entregou de verdade conta como entrega (skill aberta não é entrega).
   const placar = [n('trabalhando') && `<em class="t">${n('trabalhando')} trabalhando</em>`, n('semsinal') && `<em class="s">${n('semsinal')} sem sinal</em>`, n('pronto') && `<em class="p">${n('pronto')} entregou</em>`, n('erro') && `<em class="e">${n('erro')} erro</em>`, n('planejado') && `<em>${n('planejado')} na fila</em>`].filter(Boolean).join('');
   return `<div class="esc ${compacto ? 'compacta' : ''}" data-missao="${esc(m.id)}">
-    <div class="esc-cab"><span class="esc-rei">👑</span><div class="esc-tit"><b>Escalação${m.pessoa !== EU.pessoa ? ' · ' + esc(m.pessoa) : ''}</b><small>${esc(primeiraFrase(m.titulo, 80))}</small></div><span class="esc-placar">${placar}</span>${mapa ? `<button class="esc-abrir" data-abrir-missao="${esc(m.id)}" title="Abrir a missão">›</button><button class="esc-recolher" title="Recolher">${hudFechado ? '▴' : '▾'}</button>` : ''}</div>
+    <div class="esc-cab"><span class="esc-rei">👑</span><div class="esc-tit"><b>Escalação${m.pessoa !== EU.pessoa ? ' · ' + esc(m.pessoa) : ''} ${glo('escalação')}</b><small>${esc(primeiraFrase(m.titulo, 80))}</small></div><span class="esc-placar">${placar}</span>${mapa ? `<button class="esc-abrir" data-abrir-missao="${esc(m.id)}" title="Abrir a missão">›</button><button class="esc-recolher" title="Recolher">${hudFechado ? '▴' : '▾'}</button>` : ''}</div>
     <div class="esc-arvore">${linhas.join('')}</div></div>`;
 }
 let hudFechado = guardado('hudFechado', innerWidth <= 760 ? '1' : '') === '1'; // no celular começa recolhido
@@ -2003,10 +2110,10 @@ async function cartaoItem(x) {
 }
 function abrirEquipeVista() {
   if ($('#quadro') && !$('#quadro').hidden) { $('#quadro').hidden = true; guarda('quadro', ''); }
-  $('#equipeVista').hidden = false; marcarVista(); desenharEquipeVista();
+  $('#equipeVista').hidden = false; marcarNav(); desenharEquipeVista();
   if (innerWidth <= 760) $('#gaveta').classList.add('fechada');
 }
-function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarVista(); } }
+function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarNav(); } }
 let pendenteEq = false, deNovoEq = false; // se pedirem enquanto desenha, desenha de novo no fim (não perde o filtro)
 async function desenharEquipeVista() {
   if (!EU || $('#equipeVista').hidden) return;
@@ -2025,7 +2132,8 @@ async function desenharEquipeVista() {
       const doTipo = lista.filter((x) => x.tipo === tipo).sort((a, b) => (uso.get(b.k)?.length || 0) - (uso.get(a.k)?.length || 0) || a.nome.localeCompare(b.nome));
       if (!doTipo.length) continue;
       const info = TIPO_EQ[tipo];
-      html += `<section class="eq-sec" style="--cor:${info.cor}"><h3>${info.icone} ${info.plural} <small>${doTipo.length}</small></h3><p class="eq-explica">${esc(info.explica)}</p><div class="eq-grade">${(await Promise.all(doTipo.map(cartaoItem))).join('')}</div></section>`;
+      const termo = { agente: 'sub-agente', skill: 'skill' }[tipo];
+      html += `<section class="eq-sec" style="--cor:${info.cor}"><h3>${info.icone} ${info.plural} <small>${doTipo.length}</small>${termo ? glo(termo) : ''}</h3><p class="eq-explica">${esc(info.explica)}</p><div class="eq-grade">${(await Promise.all(doTipo.map(cartaoItem))).join('')}</div></section>`;
     }
     $('#equipeCorpo').innerHTML = html + (lista.length ? '' : '<div class="vazio">Nada encontrado.</div>');
   } finally { pendenteEq = false; if (deNovoEq) { deNovoEq = false; desenharEquipeVista(); } }
@@ -2062,9 +2170,10 @@ async function pedirCom(x) {
   setTimeout(() => { const e = $('#entrada'); if (e && texto && !e.value.trim()) e.value = texto; e?.focus(); }, 120);
 }
 
-// ---------- "Mais" (celular) ----------
+// ---------- "Mais" (⋯): Diário, Galeria, Ajustes e Ajuda ----------
 function desenharMais() {
-  const itens = [['missoes', '◆', 'Missões', 'Cada pedido, com resumo'], ['equipe', '☰', 'Equipe', 'Agentes, skills, conectores e programas'], ['historico', '◷', 'Histórico', 'O que fizemos, por dia e por frente'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['jornal', '▤', 'Diário do Estúdio', 'O jornal do dia'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa']];
+  const j = jornais.find((x) => x.conteudo);
+  const itens = [['jornal', '▤', 'Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório e os atalhos']];
   $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
   $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
 }
@@ -2073,11 +2182,8 @@ function desenharMais() {
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const jornalNovo = () => { const j = jornais[0]; return !!j?.conteudo && j.dia === hoje() && guardado('jornalLido', '') !== j.dia; };
 function desenharManchete() {
-  const j = jornais.find((x) => x.conteudo);
-  const el = $('#manchete');
-  if (!j) { el.hidden = true; return; }
-  el.hidden = false;
-  el.innerHTML = `<small>${j.dia === hoje() ? 'Hoje' : new Date(j.dia + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</small>${esc(j.conteudo.manchete)}`;
+  $('#pontoMais').hidden = !jornalNovo();
+  if (aba === 'mais') desenharMais();
 }
 function abrirJornal(dia) {
   const j = (dia ? jornais.find((x) => x.dia === dia) : jornais.find((x) => x.conteudo)) || null;
@@ -2113,14 +2219,13 @@ function abrirAjuda() {
       <h3>Estados</h3>
       <div class="legenda">${est('alerta')}${est('erro')}${est('trab')}${est('semsinal')}${est('fim')}${est('planejado')}${est('livre')}</div>
       <p>Trabalhando, o boneco digita e a tela do PC anima. Livre, às vezes levanta para tomar café.</p>
-      <h3>Onde ver as coisas</h3>
-      <p><b>Resumo</b> (🔔): precisa de você, travou, rodando agora e pronto nas últimas 12 h. É onde ligar os avisos no celular e o modo <b>Estou longe do PC</b>.</p>
-      <p><b>Equipe</b>: todo mundo agrupado por atenção. Clique para a câmera ir até a pessoa.</p>
-      <p><b>Missões</b>: cada pedido, agrupado por frente, com um resumo em português, quem ajudou e o resultado. O passo a passo técnico fica recolhido.</p>
-      <p><b>Histórico</b>: o que vocês fizeram por dia, com o placar de cada frente.</p>
-      <p><b>Dupla</b>: a conversa entre vocês dois, com reações, recados fixados e missões compartilhadas.</p>
-      <p><b>Assistente</b>: uma conversa por tarefa, com a assistente (Claude) ou com o Codex (GPT). Pedidos de permissão aparecem com Permitir/Negar.</p>
-      <p><b>Diário</b>: o jornal do dia (manchete no topo; o jornal fica na mesa do salão).</p>
+      <h3>Onde ver as coisas (a barra)</h3>
+      <p><b>🏢 Escritório</b>: o mapa. Clique num boneco para ver o que ele faz.</p>
+      <p><b>💬 Conversas</b>: <b>Assistente</b> (uma aba por tarefa, com o Claude ou o Codex; aprovações com Permitir/Negar) e <b>Dupla</b> (vocês dois, com reações e recados fixados).</p>
+      <p><b>◷ Atividade</b>: <b>Resumo</b> (precisa de você, travou, rodando, pronto; avisos no celular e modo <b>Estou longe do PC</b>), <b>Missões</b> (cada pedido por frente; abra uma para ver em Escritório, Linha do tempo ou Árvore) e <b>Histórico</b> (por dia).</p>
+      <p><b>▥ Quadro</b>: os grandes marcos. <b>🧩 Equipe</b>: quem é quem (agentes, skills, conectores, programas).</p>
+      <p><b>⋯ Mais</b>: Diário do Estúdio, Galeria, Ajustes e esta ajuda.</p>
+      <p>No topo, sempre à vista: o projeto e a ponte do seu PC (bolinha verde = ligada) e as pendências: <b>✋</b> precisa de você, <b>💬</b> resposta que você não viu. O <b>?</b> ao lado de um termo explica o que ele é.</p>
       <h3>Atalhos</h3>
       <p>Clique no chão para andar · <kbd>WASD</kbd> também anda</p>
       <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>L</kbd> histórico · <kbd>C</kbd> assistente · <kbd>M</kbd> dupla · <kbd>G</kbd> galeria · <kbd>I</kbd> quem é quem · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
