@@ -243,6 +243,20 @@ export async function salvarMarco(m) {
   if (error) throw error;
   return data;
 }
+// Etapas: aplica a mudança na lista MAIS NOVA do banco e só grava se ninguém gravou no meio
+// (filtro pelo "atualizado" lido); se alguém gravou, lê de novo (até 3 vezes). Assim duas pessoas
+// (ou a IA pela ponte) marcando etapas juntas não apagam a marcação uma da outra.
+export async function mudarEtapas(id, mudar) {
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const { data: m, error } = await sb.from('marcos').select('etapas,atualizado').eq('id', id).single();
+    if (error) throw error;
+    const etapas = mudar([...(m.etapas || [])]);
+    const { data, error: e2 } = await sb.from('marcos').update({ etapas, atualizado: new Date().toISOString() }).eq('id', id).eq('atualizado', m.atualizado).select();
+    if (e2) throw e2;
+    if (data?.length) return data[0];
+  }
+  throw new Error('O marco mudou ao mesmo tempo em outro lugar. Tente de novo.');
+}
 export async function apagarMarco(id) { const { error } = await sb.from('marcos').delete().eq('id', id); if (error) throw error; }
 export async function vincular(missao, marco_id) { const { error } = await sb.from('marcos_missoes').upsert({ missao, marco_id }); if (error) throw error; }
 export async function desvincular(missao) { const { error } = await sb.from('marcos_missoes').delete().eq('missao', missao); if (error) throw error; }

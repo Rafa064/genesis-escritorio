@@ -375,17 +375,21 @@ tela.addEventListener('pointermove', (ev) => {
   if (gesto.pinca && dedos.size === 2) {
     const [a, b] = [...dedos.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
     const alvo = Math.max(1, Math.min(4, Math.round(gesto.zoom * d / gesto.pinca * 4) / 4));
-    if (alvo !== zoom) { const centro = [cam.x + VW / 2, cam.y + VH / 2]; zoom = alvo; guarda('zoom', zoom); dimensionar(); cam.alvo = centro; }
+    if (alvo !== zoom) { const centro = [cam.x + VW / 2, cam.y + VH / 2]; zoom = alvo; guarda('zoom', zoom); dimensionar(); if (centro.every(Number.isFinite)) cam.alvo = centro; }
     return;
   }
+  if (gesto.pinca) return; // pinça com 3 dedos ou no meio da troca: não arrasta
   const dx = ev.clientX - gesto.x0, dy = ev.clientY - gesto.y0;
   if (!gesto.moveu && Math.hypot(dx, dy) < 10) return;
   gesto.moveu = true;
-  cam.alvo = [gesto.cx - dx / zoom, gesto.cy - dy / zoom];
+  const alvo = [gesto.cx - dx / zoom, gesto.cy - dy / zoom];
+  if (alvo.every(Number.isFinite)) cam.alvo = alvo;
 });
 const soltar = (ev) => {
   dedos.delete(ev.pointerId);
   const g = gesto; if (!dedos.size) gesto = null;
+  // Saiu um dedo da pinça: o arrasto recomeça do dedo que ficou (sem pulo e sem virar toque).
+  if (g?.pinca && dedos.size === 1) { const [d] = [...dedos.values()]; gesto = { x0: d.x, y0: d.y, cx: cam.x + VW / 2, cy: cam.y + VH / 2, moveu: true, ev: null }; return; }
   if (!g || g.pinca || g.moveu || ev.type === 'pointercancel') return;
   tocarMapa(g.ev);
 };
@@ -1479,6 +1483,18 @@ async function salvar(campos) {
   mudouMarcos();
   return d;
 }
+// Muda as etapas sem atropelar quem gravou ao mesmo tempo: "mudar" recebe a lista mais nova do banco.
+async function salvarEtapas(mc, mudar, novo) {
+  mc.etapas = mudar([...(mc.etapas || [])]); // na tela já, antes do banco responder
+  if (novo) return;
+  if (DEMO) { mudouMarcos(); return; }
+  const d = await R.mudarEtapas(mc.id, mudar);
+  Object.assign(mc, d);
+  const i = marcos.findIndex((x) => x.id === d.id); if (i >= 0) marcos[i] = d;
+  mudouMarcos();
+}
+// Acha a etapa pelo texto (a lista do banco pode ter mudado de ordem); -1 se ela sumiu.
+const indiceEtapa = (lista, i, t) => (lista[i]?.t === t ? i : lista.findIndex((e) => e.t === t));
 
 // ---------- detalhe do marco (na gaveta) ----------
 let rascunho = null;
@@ -1541,18 +1557,17 @@ async function desenharMarco() {
       return;
     }
     const ch = e.target.closest('[data-etapa]');
-    if (ch) { const lista = [...(mc.etapas || [])]; lista[Number(ch.dataset.etapa)] = { ...lista[Number(ch.dataset.etapa)], feito: ch.checked, por: ch.checked ? EU.pessoa : undefined }; mc.etapas = lista; if (!novo) await salvar({ id: mc.id, etapas: lista }).catch(() => {}); desenharMarco(); desenharQuadro(); }
+    if (ch) { const i = Number(ch.dataset.etapa), t = mc.etapas?.[i]?.t, feito = ch.checked; await salvarEtapas(mc, (lista) => { const j = indiceEtapa(lista, i, t); if (j >= 0) lista[j] = { ...lista[j], feito, por: feito ? EU.pessoa : undefined }; return lista; }, novo).catch(() => {}); desenharMarco(); desenharQuadro(); }
   };
   el.onclick = async (e) => {
     const am = e.target.closest('[data-abrir-missao]'); if (am) { e.preventDefault(); return abrirMissao(am.dataset.abrirMissao); }
-    const te = e.target.closest('[data-tirar-etapa]'); if (te) { e.preventDefault(); const lista = (mc.etapas || []).filter((_, i) => i !== Number(te.dataset.tirarEtapa)); mc.etapas = lista; if (!novo) await salvar({ id: mc.id, etapas: lista }).catch(() => {}); desenharMarco(); return; }
+    const te = e.target.closest('[data-tirar-etapa]'); if (te) { e.preventDefault(); const i = Number(te.dataset.tirarEtapa), t = mc.etapas?.[i]?.t; await salvarEtapas(mc, (lista) => { const j = indiceEtapa(lista, i, t); if (j >= 0) lista.splice(j, 1); return lista; }, novo).catch(() => {}); desenharMarco(); return; }
     const dp = e.target.closest('[data-despendurar]'); if (dp) { if (DEMO) { vinculos.set(dp.dataset.despendurar, null); mudouMarcos(); desenharMarco(); } else R.vincular(dp.dataset.despendurar, null).catch((err) => toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' })); return; }
     const mi = e.target.closest('[data-mini]'); if (mi) { const i = Number(mi.dataset.mini); abrirMidia(r.minis[i], urls[i], r.minis[i].pessoa); }
   };
   $('#formEtapa').onsubmit = async (e) => {
     e.preventDefault(); const t = $('#novaEtapa').value.trim(); if (!t) return;
-    mc.etapas = [...(mc.etapas || []), { t, feito: false }];
-    if (!novo) await salvar({ id: mc.id, etapas: mc.etapas }).catch((err) => toast({ titulo: 'Não salvei', texto: err.message, cor: '#ef6a55' }));
+    await salvarEtapas(mc, (lista) => [...lista, { t, feito: false }], novo).catch((err) => toast({ titulo: 'Não salvei', texto: err.message, cor: '#ef6a55' }));
     desenharMarco(); setTimeout(() => $('#novaEtapa')?.focus(), 0); desenharQuadro();
   };
   $('#criarMarco')?.addEventListener('click', async () => {
