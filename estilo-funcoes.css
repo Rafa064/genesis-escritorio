@@ -155,3 +155,52 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
 .hj-como { background: var(--hj-cartao); border-radius: var(--raio); padding: 10px 12px; font-size: 13px; box-shadow: inset 0 0 0 1px var(--hj-borda); }
 .hj-como summary { cursor: pointer; font-weight: 600; color: var(--hj-acento); min-height: 28px; display: flex; align-items: center; }
 .hj-como p { margin: 6px 0 0; color: var(--hj-texto2); line-height: 1.45; }
+
+/* rodada 4 (superfícies): cartão = papel sem contorno, campo = papel claro; laranja só no "Enviar pedido".
+   Cartão fechado curto (≈140-180 px): título, motivo em 1 linha, duração e "Revisar pedido". */
+.hoje { gap: 12px; }
+.hoje .hj-abas { box-shadow: none; }
+.hoje .hj-cab b { font: 600 22px var(--titulo); color: var(--tinta); }
+.hoje .hj-cab small, .hoje .hj-nota, .hoje .hj-intro { font-size: 13px; color: var(--meta, #5b3f26); }
+.hoje .hj-cab .btn.mini { min-height: 44px; font-size: 14px; }
+.hoje .hj-lista { gap: 10px; }
+.hoje .hj-sug { gap: 8px; padding: 14px 14px 12px; background: var(--cartao-papel, #fbf0d6); box-shadow: 0 2px 0 rgba(90, 58, 34, .22); }
+.hoje .hj-sug header { align-items: center; }
+.hoje .hj-sug header b { font: 600 17px/1.3 var(--ui); color: var(--tinta); padding: 0; }
+.hoje .hj-n { width: 28px; height: 28px; background: var(--papel-escuro); color: var(--tinta); box-shadow: none; font: 600 18px var(--titulo); }
+.hoje .hj-motivo { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 6px; width: 100%; min-height: 24px; cursor: pointer; font: 15px/1.4 var(--ui); color: var(--meta, #4e3520); }
+.hoje .hj-motivo span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hoje .hj-motivo::after { content: "ver motivo ▾"; flex: none; font: 600 13px var(--ui); color: var(--laranja); }
+.hoje .hj-motivo.todo span { white-space: normal; }
+.hoje .hj-motivo.todo::after { content: "menos ▴"; }
+.hoje .hj-motivo:focus-visible { outline: 3px solid var(--acao); outline-offset: 2px; }
+.hoje .hj-sug.compacta { gap: 6px; padding: 12px 12px 10px; }
+.hoje, .hoje .hj-corpo, .hoje .hj-lista, .hoje .hj-sug { grid-template-columns: minmax(0, 1fr); }
+.hoje .hj-sug > *, .hoje .hj-motivo { min-width: 0; max-width: 100%; }
+.hoje .hj-rodape { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hoje .hj-meta { flex: 1; min-width: 0; font: 600 13px/1.35 var(--ui); color: var(--meta, #5b3f26); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hoje .hj-revisar { min-height: 44px; font-size: 15px; }
+.hoje .hj-ok { margin: 0; color: var(--ok, #2f7a45); font-size: 14px; }
+.hoje .hj-sug.enviada { opacity: 1; box-shadow: 0 2px 0 rgba(90, 58, 34, .22), inset 4px 0 0 var(--ok, #2f7a45); }
+.hoje .hj-sug.enviada .hj-n { background: var(--ok-fundo, #dff0d8); color: var(--ok, #2f7a45); }
+/* cartão aberto: papel claro, com a ficha e o texto completo */
+.hoje .hj-sug.aberta { background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), 3px 4px 0 1px rgba(30, 18, 8, .25); }
+.hoje .hj-sug.aberta .hj-n { background: var(--acao); color: var(--contorno); }
+.hoje .hj-motivo-todo { margin: 0; font: 15px/1.45 var(--ui); color: var(--tinta); }
+.hoje .hj-ficha { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font: 14px/1.4 var(--ui); }
+.hoje .hj-ficha dt { color: var(--meta, #5b3f26); font-weight: 600; }
+.hoje .hj-ficha dd { margin: 0; color: var(--tinta); }
+.hoje .hj-ficha small { color: var(--meta, #5b3f26); font-size: 13px; }
+.hoje .hj-rot { font: 600 13px var(--ui); color: var(--meta, #5b3f26); margin: 4px 0 0; }
+.hoje .hj-texto { font: 15px/1.5 var(--ui); color: var(--tinta); padding: 10px 12px; border: 0; background: #fffbef; box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .3); }
+.hoje .hj-acoes .btn { min-height: 44px; }
+.hoje .hj-sug.editando textarea { font: 15px/1.5 var(--ui); background: #fffbef; border: 0; box-shadow: inset 0 0 0 2px var(--contorno); }
+.hoje .hj-melhoria { background: var(--cartao-papel, #fbf0d6); box-shadow: 0 2px 0 rgba(90, 58, 34, .22); padding: 12px 14px; }
+.hoje .hj-melhoria b { font-size: 16px; }
+.hoje .hj-melhoria p { font-size: 14px; color: var(--meta, #5b3f26); }
+.hoje .hj-melhoria .btn.mini { min-height: 44px; }
+.hoje .hj-sec { font: 600 21px var(--titulo); color: var(--tinta); }
+.hoje .hj-ag, .hoje .hj-tile, .hoje .hj-como, .hoje .hj-vazio { background: var(--cartao-papel, #fbf0d6); box-shadow: 0 2px 0 rgba(90, 58, 34, .22); }
+.hoje .hj-ag ul, .hoje .hj-barra { font-size: 14px; }
+.hoje .hj-est, .hoje .hj-feitos, .hoje .hj-depois li em, .hoje .hj-tile small, .hoje .hj-tile span, .hoje .hj-legenda, .hoje .hj-ag li.mais, .hoje .hj-pessoa h3 small, .hoje .hj-barra .v { font-size: 13px; color: var(--meta, #5b3f26); }
+.hoje .hj-rotulo { font-size: 12px; }

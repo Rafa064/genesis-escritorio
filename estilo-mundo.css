@@ -8,13 +8,13 @@
   animation: balao-vida-entra .22s steps(3) both;
 }
 .balao-vida::after { content: ""; position: absolute; left: 50%; bottom: -8px; margin-left: -4px; border: 4px solid transparent; border-top-color: #2a1d12; }
-.balao-vida.some { opacity: 0; transition: opacity .25s; }
+.balao-vida.some { opacity: 0; transition: opacity .25s; animation: none; }
 @keyframes balao-vida-entra { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
 
 .cartao-vida {
   position: absolute; left: 0; top: 0; width: max-content; max-width: 220px; display: grid; gap: 2px;
   padding: 7px 10px 8px; background: #f4ecd8; color: #2a1d12;
-  font: 12.5px/1.3 var(--ui, system-ui, sans-serif);
+  font: 14px/1.35 var(--ui, system-ui, sans-serif);
   box-shadow: 0 0 0 2px #6b4424, 0 0 0 4px #2a1a10, 4px 5px 0 3px rgba(20, 12, 6, .35);
   pointer-events: none; z-index: 4; animation: balao-vida-entra .2s steps(3) both;
 }

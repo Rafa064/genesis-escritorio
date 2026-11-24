@@ -17,7 +17,7 @@ const inicioDoDia = (t = Date.now()) => new Date(t).setHours(0, 0, 0, 0);
 const ultimosDias = (n) => Array.from({ length: n }, (_, i) => diaDe(inicioDoDia() - (n - 1 - i) * DIA + 12 * 3600e3));
 const dinheiro = (v) => `US$ ${(v || 0).toFixed(2).replace('.', ',')}`;
 const milhar = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')} mi` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(Math.round(n || 0)));
-const TAMANHO = { P: ['P', 'até 15 min'], M: ['M', '15 a 45 min'], G: ['G', 'mais de 45 min'] };
+const TAMANHO = { P: ['P', 'até 15 min', 'até 15 min'], M: ['M', '15 a 45 min', '15–45 min'], G: ['G', 'mais de 45 min', '45+ min'] };
 
 export function ligar(c) {
   ctx = c;
@@ -60,6 +60,7 @@ export async function desenhar(forcar = false) {
 }
 
 async function clique(e) {
+  const mo = e.target.closest('[data-motivo]'); if (mo) { const ab = mo.classList.toggle('todo'); mo.setAttribute('aria-expanded', ab); return; }
   const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo]');
   if (!t) return;
   if (t.dataset.hsub) { sub = t.dataset.hsub; guarda('hojeSub', sub); editando = confirmar = null; return desenhar(true); }
@@ -135,7 +136,7 @@ function htmlSugestoes() {
   const velho = (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
   const projs = s.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(x.projeto)} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
-  const cab = `<div class="hj-cab"><div><b>Para mandar hoje</b><small>${esc(p.projeto)} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())} · lidas ${p.fontes ? `${p.fontes.skills} skills, ${p.fontes.marcos} marcos, ${p.fontes.commits} commits` : 'do catálogo e do quadro'}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ De novo</button></div>`;
+  const cab = `<div class="hj-cab"><div><b>Sugestões para hoje</b><small>${esc(p.projeto)} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar sugestões</button></div>`;
   const destino = (x) => `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · ${esc(p.projeto)}`;
   const editor = (titulo, n, rows, extra = '') => `<article class="hj-sug editando"><header><span class="hj-n">${n}</span><b>${esc(titulo)}</b></header>
       <label class="hj-rot" for="hjEditor">Revise o pedido. Nada é enviado até você tocar em “Enviar pedido”.</label><textarea id="hjEditor" rows="${rows}">${esc(editando.texto)}</textarea>
@@ -144,24 +145,28 @@ function htmlSugestoes() {
   const cartoes = p.prompts.map((x, i) => {
     const enviada = foiEnviada(s, p, x), tam = TAMANHO[x.tamanho] || TAMANHO.M, mc = x.marco && marcos.get(x.marco);
     if (editando && editando.i === i) return editor(x.titulo, i + 1, 8, `="${i}"`);
+    const quemCurto = x.agente ? esc(ctx.nomeAgente(x.agente)) : x.alvo === 'codex' ? 'Codex' : 'Sua assistente';
     const quem = x.agente ? `${esc(ctx.nomeAgente(x.agente))} <small>com ${x.alvo === 'codex' ? 'o Codex' : 'o Claude'}</small>` : x.alvo === 'codex' ? 'Codex <small>(segunda opinião)</small>' : 'Sua assistente <small>(Claude)</small>';
-    const detalhes = [`⏱ ${tam[1]}`, (mc || x.marco) && `🏁 ${esc(mc ? primeiraFrase(mc.titulo, 40) : 'marco #' + x.marco)}`].filter(Boolean).join(' · ');
     const conf = confirmar === i;
-    return `<article class="hj-sug ${enviada ? 'enviada' : ''} ${conf ? 'confirmando' : ''}" style="--atraso:${i * 60}ms">
+    // Fechado: cartão curto (título, motivo em 1 linha, duração, "Revisar pedido"). Aberto: tudo, antes de enviar.
+    if (!conf) return `<article class="hj-sug compacta ${enviada ? 'enviada' : ''}" style="--atraso:${i * 60}ms">
       <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
-      <p class="hj-quemfaz"><span>Quem faz:</span> ${quem}</p>
-      ${x.por ? `<p class="hj-por">${esc(x.por)}</p>` : ''}
-      <p class="hj-det">${detalhes}</p>
-      ${conf ? `<div class="hj-conf"><b>Confira antes de enviar</b><p class="hj-texto">${esc(textoParaMandar(x))}</p><small>Vai para: ${destino(x)}${x.skill ? ` · com a receita pronta “${esc(x.skill)}”` : ''}</small></div>
-      <div class="hj-acoes"><button class="btn" data-cancelar="${i}">Cancelar</button><button class="btn" data-editar="${i}">✎ Editar</button><button class="btn forte" data-mandar="${i}">Enviar pedido ▶</button></div>`
-      : `<p class="hj-texto curto" id="hjTxt${i}">${esc(x.prompt)}</p><button type="button" class="hj-ler" data-expandir="hjTxt${i}" aria-expanded="false" aria-controls="hjTxt${i}">Ler pedido completo ▾</button>
-      <div class="hj-acoes">${enviada ? '<span class="hj-ok">Mandado ✓</span>' : ''}<button class="btn" data-editar="${i}">✎ Editar antes</button><button class="btn forte" data-mandar="${i}">${enviada ? 'Mandar de novo' : 'Mandar ▶'}</button></div>`}
+      ${x.por ? `<button type="button" class="hj-motivo" data-motivo aria-expanded="false" title="Tocar para ler o motivo inteiro"><span>${esc(x.por)}</span></button>` : ''}
+      <div class="hj-rodape"><span class="hj-meta">⏱ ${tam[2]} · ${quemCurto}</span>${enviada ? '<span class="hj-ok">Enviado ✓</span>' : ''}<button class="btn hj-revisar" data-mandar="${i}" aria-expanded="false">${enviada ? 'Ver de novo' : 'Revisar pedido'}</button></div>
+    </article>`;
+    return `<article class="hj-sug aberta ${enviada ? 'enviada' : ''}" style="--atraso:0ms">
+      <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
+      ${x.por ? `<p class="hj-motivo-todo"><b>Por quê:</b> ${esc(x.por)}</p>` : ''}
+      <dl class="hj-ficha"><dt>Quem faz</dt><dd>${quem}</dd><dt>Duração</dt><dd>${tam[1]}</dd>${mc || x.marco ? `<dt>Marco</dt><dd>${esc(mc ? mc.titulo : 'marco #' + x.marco)}</dd>` : ''}<dt>Vai para</dt><dd>${destino(x)}${x.skill ? ` · receita “${esc(x.skill)}”` : ''}</dd></dl>
+      <p class="hj-rot">O pedido que será enviado:</p>
+      <p class="hj-texto">${esc(textoParaMandar(x))}</p>
+      <div class="hj-acoes"><button class="btn" data-cancelar="${i}">Fechar</button><button class="btn" data-editar="${i}">Editar</button><button class="btn forte" data-mandar="${i}">Enviar pedido ▶</button></div>
     </article>`;
   }).join('');
   const melhorias = (p.melhorias || []).length ? `<h3 class="hj-sec">🛠 Ideias de melhoria</h3>${p.melhorias.map((m, i) => editando && editando.melhoria === i
     ? editor(m.titulo, '★', 5)
     : `<div class="hj-melhoria"><div><b>${esc(m.titulo)}</b><p>${esc(m.texto)}</p></div><button class="btn mini" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button></div>`).join('')}` : '';
-  return projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + '<p class="hj-nota">Enviar abre uma conversa nova com a sua assistente. As sugestões vêm de um modelo barato (Haiku): confira antes de pedir coisa grande.</p>';
+  return projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + '<p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões vêm de um modelo barato (Haiku): confira antes de pedir coisa grande.</p>';
 }
 
 // ======================= 📋 fila do dia =======================

@@ -58,8 +58,8 @@ export function htmlEstado({ st = {}, ponte, ocupada, conv, gpt }) {
   else if (!ponte) { cor = '#8a8fa6'; txt = 'PC desligado: o pedido espera a ponte ligar (até 3 min) ou volta com aviso'; }
   else if (g?.tipo === 'login') { cor = '#ffd23f'; txt = '🔑 Login do Claude vencido no PC: rode claude e /login'; acao = botao('codex', 'Usar o Codex'); }
   else if (g?.tipo === 'limite') { cor = '#ffd23f'; txt = `⏳ Claude no limite${g.hora ? ' até ' + g.hora : ''}`; acao = botao('codex', 'Usar o Codex'); }
-  else if (ocupada) { cor = '#f0973d'; txt = `${gpt ? 'O Codex' : 'A assistente'} está trabalhando · o que você mandar agora espera ela terminar`; }
-  else { cor = '#4fbf82'; txt = `Pronta · 📁 ${conv?.projeto || st.projeto || 'genesis-game'}${st.branch ? ' · ⎇ ' + st.branch : ''}`; }
+  // Tudo certo (ou só trabalhando): o cartão do pedido já conta; a linha some para não repetir.
+  else return '';
   return `<i style="--cor:${cor}"></i><span class="ep-txt">${esc(txt)}</span>${acao}`;
 }
 // Estado curto da barra de comando (no mapa).
@@ -69,7 +69,7 @@ export function estadoBarra({ st = {}, ligado, ocupada, alvo }) {
   if (!ligado) return ['#8a8fa6', 'PC desligado: espera a ponte'];
   if (g?.tipo === 'login') return ['#ffd23f', '🔑 login vencido no PC'];
   if (g?.tipo === 'limite') return ['#ffd23f', `⏳ limite até ${g.hora || '?'}: use o Codex`];
-  if (ocupada) return ['#f0973d', 'ocupada: entra na fila'];
+  if (ocupada) return ['#f0973d', 'Ela está ocupada nesta conversa: seu pedido entra na fila e começa depois.'];
   return ['#4fbf82', 'pronta'];
 }
 const botao = (acao, rot, forte = false) => `<button type="button" class="btn mini cmd-acao${forte ? ' forte' : ''}" data-cmd-acao="${acao}">${esc(rot)}</button>`;

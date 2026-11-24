@@ -15,6 +15,8 @@ import * as CE from './comando-erros.js';
 import * as CP from './comando-progresso.js';
 import * as CDu from './comando-dupla.js';
 import * as CB from './comando-barra.js';
+import * as CA from './comando-aprovacao.js';
+import { ico } from './comando-icones.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -348,7 +350,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
-  else if (k === '/') { e.preventDefault(); (document.body.classList.contains('chat-aberto') ? $('#entrada') : $('#bcTexto'))?.focus(); }
+  else if (k === '/') { e.preventDefault(); if (document.body.classList.contains('chat-aberto')) $('#entrada').focus(); else abrirBarraCel(true); }
   else if (k === 'tab') { e.preventDefault(); if ($('#equipeVista').hidden) abrirEquipeVista(); else fecharEquipeVista(); }
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
@@ -519,33 +521,43 @@ function porqueCurto(m) {
 function rotulos(c) {
   for (const el of poolRotulos.values()) el.dataset.v = '';
   const visivel = (x, y) => x > c.x - 30 && x < c.x + VW + 30 && y > c.y - 10 && y < c.y + VH + 50;
+  // Um balão aberto por vez: o boneco selecionado; senão o que está sob o mouse; senão o mais perto de você.
+  // Os outros mostram só o ícone de estado (desenhado no canvas), sem nome nem fala.
+  const todosB = [...mundo.agentes.values()];
+  const focoB = todosB.find((b) => b.m?.k === selecionado && visivel(b.x, b.y)) || todosB.find((b) => hoverId === b.id) || (perto && todosB.includes(perto) ? perto : null);
+  let balaoAberto = false;
   for (const b of mundo.agentes.values()) {
     if (!visivel(b.x, b.y)) continue;
-    const sel = b.m?.k === selecionado, foco = sel || b === perto || hoverId === b.id;
-    const fixo = b.lugar.assistente || b.lugar.codex;
-    const ativo = TRABALHANDO.includes(b.status) && !b.lugar.copa, cel = innerWidth <= 760;
-    if (!(foco || (ativo && !cel) || b.status === 'alerta' || (fixo && !cel)) && zoom < 3) continue;
+    const sel = b.m?.k === selecionado, foco = b === focoB;
+    const cel = innerWidth <= 760;
+    const minhaAssist = b.lugar.assistente && b.pessoa === EU.pessoa;
+    if (!(foco || (minhaAssist && !focoB && algumaOcupada('claude'))) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
     const cracha = corCracha(b);
-    const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}${cracha ? ' cracha' : ''}`);
-    if (cracha && el.style.getPropertyValue('--cracha') !== cracha) el.style.setProperty('--cracha', cracha);
-    const nome = nomeNoMapa(b);
-    if (el.textContent !== nome) el.textContent = nome;
-    colocar(el, b.x, b.y + 2, c);
+    if (foco || !cel || zoom >= 3) { // no celular, a assistente "pensando" mostra só o balãozinho (sem crachá por cima das placas)
+      const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}${cracha ? ' cracha' : ''}`);
+      if (cracha && el.style.getPropertyValue('--cracha') !== cracha) el.style.setProperty('--cracha', cracha);
+      const nome = nomeNoMapa(b);
+      if (el.textContent !== nome) el.textContent = nome;
+      colocar(el, b.x, b.y + 2, c);
+    }
     const recente = b.m?.ult && Date.now() - b.m.ult.t < 8 * 60e3;
     let fala = '', curta = false;
-    if ((b.lugar.assistente || b.lugar.codex) && b.pessoa === EU.pessoa && algumaOcupada(b.lugar.codex ? 'codex' : 'claude')) fala = 'pensando…';
-    else if (b.m?.ult && (foco || b.status === 'alerta')) fala = primeiraFrase(frase(b.m.ult), 80);
-    else if (b.m?.ult && ativo && !cel && !foraDoFiltro(b) && b.modo === 'sentado') { const t = D.emSegundoPlano(b.m) ? 'segundo plano…' : primeiraFrase(frase(b.m.ult), 34); fala = `${b.status === 'erro' ? '❌' : ICONE_CAT[categoria(b.m.ult)] || '⚙️'} ${t}`; curta = true; }
-    // Balão "por quê" na baia (só com foco): quem chamou e o motivo da escalação.
-    const pq = foco && b.m?.ult && b.m.nome !== 'Orquestrador' ? porqueCurto(b.m) : '';
-    if (pq) { const q = rotulo(b.id + 'q', 'porque-mapa'); if (q.textContent !== pq) q.textContent = pq; colocar(q, b.x, b.y + 14, c); }
+    if (foco && b.m?.ult) fala = primeiraFrase(frase(b.m.ult), 80);
+    else if (!focoB && minhaAssist && algumaOcupada('claude')) { fala = 'pensando…'; curta = true; }
+    // Balão "por quê" na baia (só no mouse/perto; selecionado, o "por quê" já está na lateral).
+    const pq = foco && !sel && b.m?.ult && b.m.nome !== 'Orquestrador' ? porqueCurto(b.m) : '';
+    // perto da borda, o balão entra para dentro da tela (não corta)
+    const xb = Math.min(Math.max(b.x, c.x + 124 / zoom), c.x + VW - 124 / zoom);
+    if (pq) { const q = rotulo(b.id + 'q', 'porque-mapa'); if (q.textContent !== pq) q.textContent = pq; colocar(q, xb, b.y + 14, c); }
     if (fala) {
+      if (!curta) balaoAberto = true;
       const f = rotulo(b.id + 'f', `fala ${b.status}${curta ? ' curta' : ''}`);
       if (f.textContent !== fala) f.textContent = fala;
-      colocar(f, b.x, (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar.dir === 'cima' ? 30 : 14), c, true);
+      colocar(f, curta ? b.x : xb, (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar.dir === 'cima' ? 30 : 14), c, true);
     }
   }
+  mundo.calado = balaoAberto; // com um balão aberto, as conversas de corredor (vida.js) esperam
   // placas das alas, das fileiras (jogo) e da copa
   for (const [i, p] of mundo.planta.placas.entries()) {
     if (!visivel(p.x, p.y) || (innerWidth <= 760 && p.jogo)) continue;
@@ -609,9 +621,25 @@ function irAtePessoa(p) {
   else { const s = SALAS[pessoas().indexOf(p)]; if (s) teleportar(s.dono[0] * T, (s.dono[1] + 1.5) * T); }
 }
 
+// No PC a lateral (conversas, atividade…) pode ser recolhida: o mapa ocupa a tela toda; a alça reabre.
+function ligarAlternaLateral() {
+  if ($('#alternaLateral')) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.id = 'alternaLateral'; b.className = 'alterna-lateral';
+  const marcar = () => { const fechada = $('#gaveta').classList.contains('fechada'); b.classList.toggle('fechada', fechada); b.innerHTML = fechada ? '<span aria-hidden="true">‹</span> Conversas' : '<span aria-hidden="true">›</span> Fechar'; b.title = fechada ? 'Abrir a lateral (conversas e detalhes)' : 'Fechar a lateral (o mapa fica maior)'; b.setAttribute('aria-label', b.title); };
+  const recolher = () => { $('#gaveta').classList.add('fechada'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); };
+  b.onclick = () => {
+    if ($('#gaveta').classList.contains('fechada')) { guarda('lateralPC', 'aberta'); abrirAba(guardado('abaConversa', 'dupla')); }
+    else { guarda('lateralPC', 'fechada'); recolher(); }
+  };
+  new MutationObserver(marcar).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
+  marcar(); $('#palco').appendChild(b);
+  // No PC o escritório abre inteiro: a lateral começa recolhida (abre ao selecionar alguém ou pela alça) — a não ser que a pessoa a tenha deixado aberta.
+  setTimeout(() => { if (innerWidth > 760 && guardado('lateralPC', 'fechada') === 'fechada' && ['chat', 'dupla'].includes(aba)) recolher(); }, 0);
+}
 /// ======================= gaveta =======================
 const ABAS_ATIVIDADE = ['atencao', 'missoes', 'historico'];
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Missão', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Ajustes', marco: 'Marco' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Pedido', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (nome === 'equipe' || nome === 'catalogo') { abrirEquipeVista(); return; }
@@ -639,12 +667,13 @@ function fecharGaveta() {
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
 
-// ---------- barra de navegação: uma só, 6 destinos (no PC em cima, no celular embaixo) ----------
+// ---------- barra de navegação: uma só, 4 destinos (no PC em cima, no celular embaixo) ----------
+// Escritório · Conversas · Atividade · Mais (Quadro, Equipe, Hoje, Diário, Galeria e Ajuda moram no Mais).
 // No PC o mapa/quadro/equipe ficam no meio e a gaveta ao lado: os dois destinos acendem.
 // No celular a gaveta cobre a tela: acende só o que está por cima.
-const NAV_DA_ABA = { chat: 'conversas', dupla: 'conversas', atencao: 'atividade', missoes: 'atividade', missao: 'atividade', historico: 'atividade', galeria: 'mais', ajustes: 'mais', mais: 'mais', marco: 'quadro', item: 'equipe' };
+const NAV_DA_ABA = { chat: 'conversas', dupla: 'conversas', atencao: 'atividade', missoes: 'atividade', missao: 'atividade', historico: 'atividade', galeria: 'mais', mais: 'mais', marco: 'mais', item: 'mais' };
 function marcarNav() {
-  const centro = !$('#equipeVista').hidden ? 'equipe' : !$('#quadro').hidden ? 'quadro' : 'mapa';
+  const centro = !$('#equipeVista').hidden || !$('#quadro').hidden ? 'mais' : 'mapa';
   const aberta = !$('#gaveta').classList.contains('fechada');
   const painel = aberta ? NAV_DA_ABA[aba] : null;
   const cel = innerWidth <= 760;
@@ -673,7 +702,16 @@ function montarInterface() {
   $('#btnIrAte').onclick = () => irAtePessoa(outraPessoa());
   $('#formChat').onsubmit = (e) => { e.preventDefault(); enviarChat(); };
   $('#entrada').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarChat(); } };
-  $('#btnParar').onclick = () => { if (DEMO) return; R.parar(temSql2 ? conversaAtual : null).then(({ error }) => { if (error) toast({ titulo: 'Não consegui parar', texto: error.message, cor: '#ef6a55' }); }); };
+  // O Enviar só fica laranja com texto escrito: antes disso a ação principal da tela pode ser outra (ex.: Decidir).
+  $('#entrada').addEventListener('input', marcarTexto);
+  $('#cmpFila').onclick = async (e) => {
+    if (!e.target.closest('[data-fila-agora]')) return;
+    if (!$('#entrada').value.trim()) { toast({ titulo: 'Escreva o pedido primeiro', texto: 'Depois toque de novo para interromper o atual e começar este.', cor: '#ffd23f' }); $('#entrada').focus(); return; }
+    try { await pararConversa(conversaAtual); await enviarChat(); } catch (err) { toast({ titulo: 'Não consegui interromper', texto: err.message, cor: '#ef6a55' }); }
+  };
+  // "Sobre: X · Alterar" (no compositor da conversa) abre a lista de conversas; o perfil abre perfil e ajustes.
+  $('#cmpSobre').onclick = (e) => { if (!e.target.closest('[data-cmp-alterar]')) return; const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) { desenharAbasFechadas(); el.scrollIntoView({ block: 'nearest' }); } };
+  $('#perfilTopo').onclick = () => { if (aba === 'ajustes' && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba('ajustes'); };
   $('#btnNovaConversa').onclick = () => mostrarNovaConversa();
   $('#cancelarConversa').onclick = () => { $('#formNovaConversa').hidden = true; };
   $('#formNovaConversa').onsubmit = (e) => { e.preventDefault(); criarConversa(); };
@@ -690,17 +728,19 @@ function montarInterface() {
   $('#gerarJornal').onclick = async () => { try { await R.pedirJornal(); toast({ titulo: 'Pedi a edição de hoje', texto: 'A ponte escreve em ~1 min (precisa estar ligada).', cor: '#f4ecd8' }); } catch (e) { toast({ titulo: 'Não deu', texto: e.message, cor: '#ef6a55' }); } };
   $('#buscaMissoes').oninput = () => desenharMissoes();
   document.addEventListener('click', (e) => { const sg = e.target.closest('[data-seg]'); if (sg) abrirAba(sg.dataset.seg); });
-  $('#filtrosQuadroCel').onclick = () => $('#quadroFiltros').classList.toggle('abertos');
+  $('#filtrosQuadroCel').onclick = () => { $('#quadroFiltros').classList.toggle('abertos'); desenharQuadro(); };
   $('#pedidosCel').onclick = () => abrirAba('missoes');
   ligarHud(); ligarQuadro();
   if (guardado('quadro', '')) abrirQuadro();
   $('#btnAjuda').onclick = abrirAjuda;
   $('#fecharAjuda').onclick = () => { $('#ajuda').hidden = true; };
-  if (!guardado('boasVindas', '')) {
-    if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para andar pelo mapa · o <b>✋</b> no topo mostra o que precisa de você';
-    // começa recolhido num chip pequeno: o mapa fica livre; tocar abre a explicação
-    $('#bvChip').onclick = () => { const a = $('#boasVindas').classList.toggle('aberto'); $('#bvChip').setAttribute('aria-expanded', a); };
-    $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
+  // Tutorial = um "?" pequeno no canto do mapa (sempre à mão); tocar abre a explicação, "Entendi" recolhe de novo.
+    if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para andar pelo mapa · o botão amarelo <b>precisam de você</b>, no topo, mostra o que espera a sua decisão';
+  const bv = (abrir) => { $('#boasVindas').classList.toggle('aberto', abrir); $('#bvChip').setAttribute('aria-expanded', abrir); };
+  $('#bvChip').onclick = () => bv(!$('#boasVindas').classList.contains('aberto'));
+  $('#fecharBoasVindas').onclick = () => { bv(false); guarda('boasVindas', '1'); };
+  $('#boasVindas').hidden = false;
+  ligarAlternaLateral();
   dimensionar();
   // No celular a primeira tela é o MAPA; o Resumo abre como folha no ✋ do topo.
   if (innerWidth <= 760) { abrirAba('atencao'); fecharGaveta(); } else abrirAba(guardado('abaConversa', 'dupla'));
@@ -709,7 +749,11 @@ function montarInterface() {
   abrirDeUrl(new URL(location.href));
   $('#buscaEquipe').oninput = (e) => { buscaEq = e.target.value; desenharEquipeVista(); };
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
-  $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
+  $('#equipeCorpo').onclick = (e) => {
+    const ir = e.target.closest('[data-eqaba-ir]'); if (ir) { abaEq = ir.dataset.eqabaIr; guarda('abaEq', abaEq); desenharEquipeVista(); return; }
+    if (e.target.closest('[data-revisar-permissao]')) { abrirAba('atencao'); return; }
+    const ag = e.target.closest('.eqa-card[data-k]'); if (ag) { fecharEquipeVista(); localizar(ag.dataset.k); return; }
+    const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
   ligarComandoNoApp();
   desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra(); ligarHoje();
@@ -743,7 +787,7 @@ document.addEventListener('click', (e) => {
   const h = pop.offsetHeight;
   pop.style.top = (r.bottom + 8 + h > innerHeight - 8 ? Math.max(8, r.top - h - 8) : r.bottom + 8) + 'px';
 }, true);
-addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#glossario').hidden = true; });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#glossario').hidden = true; $('#folhaAprov').hidden = true; } });
 
 // ---------- topo ----------
 async function desenharTopo() {
@@ -761,28 +805,38 @@ async function desenharTopo() {
   const todos = todosAgentes();
   const meusAlertas = todos.filter((a) => a.m.pessoa === EU.pessoa && (a.st.cls === 'alerta' || a.st.cls === 'erro')).length + aprovacoes.length;
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
-  for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = novosRecados; }
+  for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = `${novosRecados} nova${novosRecados > 1 ? 's' : ''}`; }
   desenharPendencias(meusAlertas, novosRecados);
+  await desenharPerfil();
   document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
 }
-// Sempre à vista no topo: projeto + ponte do seu PC e as pendências (✋ precisa de você, 💬 resposta não vista).
+// Linha 1 do topo: você (rosto, nome) + o projeto e se o seu PC está ligado. Toque abre perfil e ajustes.
+async function desenharPerfil() {
+  const el = $('#perfilTopo'); if (!el || !EU) return;
+  const st = estados.get(EU.pessoa) || {}, ligada = pcLigado(EU.pessoa);
+  const projeto = st.projeto || st.info?.projetos?.[0]?.nome || 'sem projeto';
+  const html = `<img src="${await retratoDe(EU.pessoa)}" alt=""><span class="pf-txt"><b>${esc(EU.pessoa)}</b><small><i class="pf-pc ${ligada ? 'on' : 'off'}"></i>${esc(projeto)}${ligada ? '' : ' · PC desligado'}</small></span><span class="pf-seta" aria-hidden="true">▾</span>`;
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.title = `Você: ${EU.pessoa} · projeto ${projeto}${st.branch ? ' · branch ' + st.branch : ''} · PC ${ligada ? 'ligado (as IAs do seu PC estão conectadas)' : 'desligado'}. Toque para perfil e ajustes.`;
+  el.classList.toggle('pc-off', !ligada);
+}
+// Linha 2 do topo: "N trabalhando" e "N precisam de você" (as respostas não vistas viram um ponto em Conversas).
 let ultPend = { alertas: 0, recados: 0 };
 function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ? 0 : ultPend.recados) {
   if (!EU) return;
   ultPend = { alertas, recados: novos };
-  const st = estados.get(EU.pessoa) || {}, ligada = pcLigado(EU.pessoa);
-  const projeto = st.projeto || st.info?.projetos?.[0]?.nome || 'sem projeto';
   const naoVistasN = naoVistas.size + novos;
-  const pend = [
-    alertas ? `<button class="pend-topo urgente" data-pend="atencao" title="${alertas} coisa(s) precisam de você: aprovações, alertas e erros">✋ <b>${alertas}</b></button>` : '',
-    naoVistasN ? `<button class="pend-topo" data-pend="conversas" title="${naoVistasN} resposta(s) ou mensagem(ns) que você ainda não viu">💬 <b>${naoVistasN}</b></button>` : '',
-  ].join('');
-  $('#statusTopo').innerHTML = `<span class="proj-topo ${ligada ? 'on' : 'off'}" title="${esc(`Projeto: ${projeto}${st.branch ? ' · ⎇ ' + st.branch : ''} · ponte ${ligada ? 'ligada: as IAs do seu PC estão conectadas' : 'desligada: o PC não está mandando notícias'}`)}"><i></i><span>${esc(projeto)}</span></span>${pend || '<span class="pend-ok" title="Nada esperando você">✓<span> em dia</span></span>'}`;
+  const trab = quemTrabalha().length; // o mesmo número da faixa do mapa
+  $('#statusTopo').innerHTML = `<button type="button" class="pend-topo trab${trab ? '' : ' zero'}" data-pend="trab" title="Agentes trabalhando agora (seus e do ${esc(outraPessoa() || 'outro')})">${trab ? '<i class="pt-pulso"></i>' : ''}<b>${trab || 'Ninguém'}</b> trabalhando</button>`
+    + (alertas ? `<button type="button" class="pend-topo urgente" data-pend="atencao" title="Autorizações, alertas e erros esperando você">${ico('mao')}<b>${alertas}</b> decis${alertas > 1 ? 'ões pendentes' : 'ão pendente'}</button>`
+      : '<button type="button" class="pend-topo ok" data-pend="atencao" title="Nada esperando você">' + ico('check') + 'Nada esperando você</button>');
+  const pc = $('#pontoConversas'); if (pc) { pc.hidden = !naoVistasN; pc.title = `${naoVistasN} resposta(s) que você ainda não viu`; }
   $('#statusTopo').onclick = (e) => {
     const b = e.target.closest('[data-pend]'); if (!b) return;
     const aberta = !$('#gaveta').classList.contains('fechada');
-    if (b.dataset.pend === 'atencao') { if (aberta && aba === 'atencao') fecharGaveta(); else abrirAba('atencao'); } // segundo toque no ✋ fecha a folha
-    else abrirAba(naoVistas.size ? 'chat' : 'dupla');
+    if (aberta && aba === 'atencao') { fecharGaveta(); return; } // segundo toque fecha a folha
+    abrirAba('atencao');
+    if (b.dataset.pend === 'trab') setTimeout(() => $('#listaAtencao .cx-rodando')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 350);
   };
 }
 function todosAgentes() {
@@ -882,13 +936,13 @@ async function desenharAtencao() {
   let html = await cartaoAvisos();
   if (aprovacoes.length || alerta.length) html += sec('🔐', `Precisa de você ${glo('aprovação')}`, aprovacoes.length + alerta.length, aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
   if (travou.length) html += sec('❌', 'Travou', travou.length, (await Promise.all(travou.map(linhaAgente))).join(''));
-  html += sec('⚙️', 'Rodando agora', rodando.length, rodando.length ? (await Promise.all(rodando.slice(0, 8).map(linhaCompacta))).join('') + (rodando.length > 8 ? `<button class="link" data-ir-aba="equipe">ver os ${rodando.length}</button>` : '') : '<div class="vazio">Ninguém trabalhando agora.</div>');
+  html += sec('⚙️', 'Rodando agora', rodando.length, rodando.length ? (await Promise.all(rodando.slice(0, 8).map(linhaCompacta))).join('') + (rodando.length > 8 ? `<button class="link" data-ir-aba="equipe">ver os ${rodando.length}</button>` : '') : '<div class="vazio">Ninguém trabalhando agora.</div>', 'cx-rodando');
   html += sec('✅', 'Pronto nas últimas 12 h', prontos.length, prontos.length ? (await Promise.all(prontos.map(cartaoPronto))).join('') : '<div class="vazio">Nada entregue ainda.</div>');
   el.innerHTML = html;
   ligarAprovacoes(el);
   const antes = el.onclick;
   el.onclick = (e) => {
-    if (e.target.closest('[data-decide]')) return antes?.(e);
+    if (e.target.closest('[data-decide],[data-ap-sel],[data-ap-confirmar]')) return antes?.(e);
     const ia = e.target.closest('[data-ir-aba]'); if (ia) return abrirAba(ia.dataset.irAba, true);
     const mi = e.target.closest('[data-missao]'); if (mi) return abrirMissao(mi.dataset.missao);
     const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k);
@@ -917,46 +971,18 @@ async function cartaoPronto(m) {
     ${m.resposta ? `<span class="p-txt">${esc(primeiraFrase(m.resposta, 160))}</span>` : ''}
     ${urls.filter(Boolean).length ? `<span class="p-minis">${urls.filter(Boolean).map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</span>` : ''}</button>`;
 }
-// Aviso de risco simples, só pelo texto do pedido (não substitui ler o comando).
-function riscosDe(ferramenta, campos, projeto) {
-  const cmd = String(campos.command || ''), out = [];
-  if (/(^|[\s;&|(])(rm|del|erase|rmdir|rd|unlink|Remove-Item|ri)\s|shutil\.rmtree|fs\.(rm|unlink)/i.test(cmd)) out.push('🗑 apaga arquivos');
-  if (/\bgit\s+push\b/i.test(cmd)) out.push('⬆ git push (manda para o GitHub)');
-  if (/\bgit\s+(reset\s+--hard|clean\s+-\w*f|checkout\s+--\s|restore\s|branch\s+-D|push\s.*(--force|-f\b))/i.test(cmd)) out.push('⚠ pode desfazer trabalho no git');
-  if (/publicar\.mjs|npm\s+publish|gh\s+(pr\s+merge|release)|butler\s+push/i.test(cmd)) out.push('🌐 publica');
-  if (/\b(curl|wget|Invoke-WebRequest|iwr)\b/i.test(cmd)) out.push('🌐 baixa/manda pela internet');
-  if (/\.env\b|credential|secret|token|\.ssh|id_rsa/i.test(cmd + ' ' + (campos.file_path || ''))) out.push('🔑 mexe com arquivo sensível');
-  // Caminhos absolutos fora da pasta do projeto (o temporário do sistema não conta).
-  if (projeto) {
-    const caminhos = [campos.file_path, campos.notebook_path, campos.path, ...(cmd.match(/[A-Za-z]:[\\/][^\s"'`|;&]+/g) || [])].filter(Boolean).map((x) => String(x).replace(/\\/g, '/').toLowerCase());
-    if (caminhos.some((x) => /^[a-z]:\//.test(x) && !x.includes('/' + String(projeto).toLowerCase()) && !/\/(temp|tmp)\//.test(x) && !/\.genesis-estudio|\.claude\//.test(x))) out.push('📁 mexe fora do projeto');
-  }
-  return out;
-}
-const curtoTxt = (t, n) => { t = String(t).replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
-const VERBO_FERRAMENTA = { Bash: 'rodar', PowerShell: 'rodar', Edit: 'editar', MultiEdit: 'editar', Write: 'criar/sobrescrever', NotebookEdit: 'editar', Read: 'ler', WebFetch: 'abrir', WebSearch: 'pesquisar', Agent: 'chamar', Task: 'chamar', Skill: 'usar a skill' };
-function cartaoAprovacao(a) {
-  const entrada = lerJson(a.detalhe);
-  const { origem, cortado, pedidoDe, ...campos } = entrada;
+// Pedido de autorização: o cartão (comando-aprovacao.js) explica o que vai acontecer; aqui só o contexto.
+function infoAprovacao(a) {
+  const { origem, pedidoDe, ...campos } = lerJson(a.detalhe);
   const cv = conversas.find((c) => c.id === a.conversa_id);
   const agente = origem?.agente || pedidoDe?.agente || null;
   const projeto = origem?.projeto || pedidoDe?.projeto || cv?.projeto || '';
-  const quem = !agente ? (cv ? 'A assistente desta aba' : 'A assistente') : agente === 'Orquestrador' ? 'A assistente' : `O agente ${tituloDe(agente)}`;
-  const verbo = VERBO_FERRAMENTA[a.ferramenta] || `usar ${String(a.ferramenta).replace(/^mcp__(\w+?)__/, '$1 › ')}`;
-  const alvo = campos.command || campos.file_path || campos.notebook_path || campos.url || campos.query || campos.skill || campos.subagent_type || campos.pattern || campos.description || '';
-  // Dentro de qual aba/missão: a aba do chat (com a cor dela) ou a missão da sessão do terminal.
+  const quem = !agente || agente === 'Orquestrador' ? 'A assistente' : `O ${tituloDe(agente)}`;
   const mi = origem?.sessao ? D.missoes().find((m) => m.pessoa === EU.pessoa && m.sessao && origem.sessao.startsWith(m.sessao)) : null;
-  const dentro = cv ? `na aba <span class="pq-aba" style="--cor:${visualAba(cv).cor}">${esc(visualAba(cv).icone)} ${esc(visualAba(cv).nome || cv.titulo)}</span>` : origem?.terminal ? `no terminal${mi ? ` · missão “${esc(primeiraFrase(mi.titulo, 60))}”` : ''}` : '';
-  const riscos = riscosDe(a.ferramenta, campos, projeto);
-  const completo = Object.entries(campos).map(([k, v]) => `${k}: ${v}`).join('\n');
-  return `<div class="aprovacao" data-ap="${a.id}">
-    <div class="ap-frase"><b>${esc(quem)}</b> quer <b>${esc(verbo)}</b> ${alvo ? `<code>${esc(curtoTxt(alvo, 90))}</code>` : ''}${projeto ? ` em <b>${esc(projeto)}</b>` : ''}${dentro ? `, ${dentro}` : ''}</div>
-    <div class="ap-o-que">${esc(passo(a.ferramenta, null, campos))}</div>
-    ${riscos.length ? `<div class="ap-riscos">${riscos.map((r) => `<span>${esc(r)}</span>`).join('')}</div>` : ''}
-    <details class="ap-det" ${String(completo).length < 400 ? 'open' : ''}><summary>ver ${campos.command ? 'o comando' : 'o pedido'} completo</summary><pre class="det">${esc(completo || a.ferramenta)}</pre></details>${cortado ? '<div class="cortado">⚠ O pedido é grande demais e foi cortado aqui. Confira no PC antes de permitir.</div>' : ''}
-    <div class="sub" style="text-align:left">${origem?.terminal ? 'Terminal' : 'Chat do escritório'} · ${D.ha(new Date(a.criado).getTime())}</div>
-    <div class="linha"><button class="btn verde" data-decide="permitido">Permitir</button><button class="btn perigo" data-decide="negado">Negar</button></div></div>`;
+  const dentroHtml = cv ? `conversa <span class="pq-aba" style="--cor:${visualAba(cv).cor}">${esc(visualAba(cv).icone)} ${esc(visualAba(cv).nome || cv.titulo)}</span>` : origem?.terminal ? `terminal${mi ? ` · pedido “${esc(primeiraFrase(mi.titulo, 60))}”` : ''}` : '';
+  return { quem, projeto, dentroHtml, origemTxt: origem?.terminal ? 'Veio do terminal do PC' : 'Veio do chat do escritório', quando: D.ha(new Date(a.criado).getTime()), passoTxt: passo(a.ferramenta, null, campos) };
 }
+function cartaoAprovacao(a) { return CA.html(a, infoAprovacao(a)); }
 
 // ---------- notificações no aparelho (Web Push mandado pela ponte do PC) ----------
 let registroSw = null;
@@ -1042,12 +1068,57 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('online', () => ressincronizar());
 function ligarAprovacoes(el) {
   el.onclick = async (e) => {
-    const b = e.target.closest('[data-decide]'); if (!b) return;
-    const id = Number(b.closest('[data-ap]').dataset.ap);
-    try { await R.decidir(id, b.dataset.decide); aprovacoes = aprovacoes.filter((a) => a.id !== id); agendarInterface(); desenharChat(); if (aba === 'atencao') desenharAtencao(); }
+    // Várias ações num pedido só: cada uma tem o seu botão; o "Autorizar…" de baixo confirma o que foi marcado.
+    const sel = e.target.closest('[data-ap-sel]');
+    if (sel) {
+      const card = sel.closest('[data-ap]'), a = aprovacoes.find((x) => x.id === Number(card.dataset.ap)); if (!a) return;
+      sel.setAttribute('aria-pressed', sel.getAttribute('aria-pressed') !== 'true');
+      const marc = [...card.querySelectorAll('[data-ap-sel][aria-pressed=true]')].map((x) => Number(x.dataset.apSel));
+      const r = CA.rotuloConfirmar(a, marc), bt = card.querySelector('[data-ap-confirmar]');
+      bt.className = r.cls; bt.textContent = r.txt; bt.disabled = !!r.off;
+      card.querySelector('.ap-parcial').hidden = !marc.length || marc.length === card.querySelectorAll('[data-ap-sel]').length;
+      return;
+    }
+    const conf = e.target.closest('[data-ap-confirmar]');
+    const b = conf || e.target.closest('[data-decide]'); if (!b) return;
+    const card = b.closest('[data-ap]'), id = Number(card.dataset.ap), a = aprovacoes.find((x) => x.id === id);
+    const marc = conf ? [...card.querySelectorAll('[data-ap-sel][aria-pressed=true]')].map((x) => Number(x.dataset.apSel)) : [];
+    const todas = conf && marc.length === card.querySelectorAll('[data-ap-sel]').length;
+    const decisao = conf ? (todas ? 'permitido' : 'negado') : b.dataset.decide;
+    const parcial = conf && !todas && marc.length > 0;
+    const sim = decisao === 'permitido';
+    try {
+      if (!DEMO) await R.decidir(id, decisao);
+      aprovacoes = aprovacoes.filter((x) => x.id !== id);
+      if (parcial && a) await mandarNaConversa(CA.recadoParcial(a, marc), a.conversa_id);
+      agendarInterface(); desenharChat(); if (aba === 'atencao') desenharAtencao();
+      if (!$('#folhaAprov').hidden) abrirAutorizacoes();
+      toast(parcial ? { titulo: 'Autorizado só em parte', texto: 'Ela recebe a recusa e, em seguida, o recado com o que pode fazer.', cor: '#4fbf82' }
+        : { titulo: sim ? 'Autorizado' : 'Não autorizado', texto: sim ? 'Ela segue o pedido. Você acompanha no cartão do pedido.' : 'Ela não faz essa parte. Se quiser, diga na conversa o que pode.', cor: sim ? '#4fbf82' : '#f0973d' });
+    }
     catch (err) { toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
   };
 }
+// Manda um texto numa conversa (mesmo que não seja a aberta). Se ela estiver ocupada, entra na fila.
+async function mandarNaConversa(texto, convId) {
+  const lista = convId === conversaAtual ? mensagens : cacheMsgs.get(convId);
+  lista?.push({ de: 'eu', texto, conversa_id: convId });
+  if (DEMO) { comandosAbertos.set(-Date.now(), convId ?? null); return; }
+  const cmd = await R.pedir(texto, temSql2 ? convId : null);
+  pedidoEnviado(cmd, convId);
+}
+// "Decidir" no cartão do pedido: as autorizações desta conversa numa folha só, com espaço para ler.
+function abrirAutorizacoes() {
+  const folha = $('#folhaAprov'), lista = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && a.conversa_id === conversaAtual);
+  if (!lista.length) { folha.hidden = true; return; }
+  $('#tituloFolhaAprov').textContent = lista.length > 1 ? `${lista.length} autorizações esperando você` : 'Precisa da sua autorização';
+  $('#listaFolhaAprov').innerHTML = lista.map(cartaoAprovacao).join('');
+  ligarAprovacoes($('#listaFolhaAprov'));
+  folha.hidden = false;
+  $('#listaFolhaAprov').scrollTop = 0;
+}
+$('#fecharFolhaAprov').onclick = () => { $('#folhaAprov').hidden = true; };
+$('#folhaAprov').addEventListener('click', (e) => { if (e.target.id === 'folhaAprov') $('#folhaAprov').hidden = true; });
 
 // ---------- localizar e detalhe do agente ----------
 function localizar(k) {
@@ -1076,18 +1147,22 @@ function htmlNota(uso) {
   const n = D.notaFiscal(uso);
   return n ? `<div class="nota-fiscal" title="${esc(n.dica)}">${esc(n.texto)}</div>` : '<div class="nota-fiscal vazia" title="O Claude Code não mandou tempo nem tokens deste trabalho">⏱ 🪙 não medido</div>';
 }
+// lembra quais "Por quê" estão abertos (a lateral se redesenha sozinha)
+const pqAbertos = new Set();
+document.addEventListener('toggle', (e) => { const d = e.target; if (d?.dataset?.pqk) { if (d.open) pqAbertos.add(d.dataset.pqk); else pqAbertos.delete(d.dataset.pqk); } }, true);
 function htmlPorque(m) {
   const pq = D.porqueDe(m); if (!pq) return '';
   const k = `${m.k}|${pq.inicio?.aid || pq.pedido?.ref || ''}`;
   const pedido = pq.pedido?.prompt || pq.pedido?.descricao || (pq.pedido ? frase(pq.pedido).replace(/^.*? pediu: /, '') : '');
   const rel = pq.fim ? pq.fim.relatorio || pq.fim.texto : '';
-  return `<div class="bloco porque"><h4>💬 Por quê</h4>
+  // Recolhido: a lateral mostra primeiro a missão e o que ele faz agora; o contexto abre quando pedem.
+  return `<details class="bloco porque" data-pqk="${esc(k)}" ${pqAbertos.has(k) ? 'open' : ''}><summary><h4>💬 Por quê (ver contexto)</h4>${pq.motivo ? `<span class="pq-resumo">${esc(primeiraFrase(pq.motivo, 70))}</span>` : ''}</summary>
     <div class="pq-linha"><span>Quem chamou</span><div>${quemChamouHtml(pq.chamou, pq.sessao, pq.projeto, m.pessoa)}${pq.missao ? ` · <a href="#" class="link-missao" data-abrir-missao="${esc(pq.missao.id)}">missão</a>` : ''}</div></div>
     <div class="pq-linha"><span>Motivo</span><div>${pq.motivo ? esc(pq.motivo) : '<i class="fraco">não declarado na escalação</i>'}</div></div>
     ${pq.pedido?.descricao || pq.inicio?.descricao ? `<div class="pq-linha"><span>Tarefa</span><div>${esc(pq.pedido?.descricao || pq.inicio?.descricao)}</div></div>` : ''}
     ${recolhido('Pedido completo', pedido, k + '|p') || '<div class="pq-linha"><span>Pedido</span><div><i class="fraco">não registrado (pedido antigo, de antes do hook novo)</i></div></div>'}
     ${pq.fim ? `${recolhido(pq.fim.tipo === 'erro' ? 'Erro' : 'Relatório final', rel, k + '|r')}${pq.fim.tipo === 'fim' ? htmlNota(pq.fim.uso) : ''}` : ''}
-  </div>`;
+  </details>`;
 }
 async function desenharAgente() {
   let [p, nome] = (selecionado || '').split('|');
@@ -1332,6 +1407,7 @@ function cliqueFiltro(e) {
   if (s) { mudarFiltro(filtroJogo, s.dataset.fs === filtroSetor ? '' : s.dataset.fs); return true; }
   return false;
 }
+let agoraAberto = false; // lista do contador aberta por cima do mapa
 async function desenharHud() {
   if (!EU) return;
   const ativos = quemTrabalha();
@@ -1346,10 +1422,13 @@ async function desenharHud() {
       <img src="${await retratoDe(m.nome)}" alt="">
       <span class="ac-linha"><b>${esc(CURTO[m.nome] || tituloAgente(m))}</b> ${icone} ${esc(primeiraFrase(acao, 34))}${quanto ? ` <i>· ${quanto === 'agora' ? 'agora' : 'há ' + quanto}</i>` : ''}</span></button>`;
   }));
-  $('#frentes').innerHTML = htmlFiltros() + `<div class="agora ${guardado('agoraCompacto', '') ? 'compacto' : ''}"><span class="agora-tit" title="Encolher/abrir">${ativos.length ? `⚙ ${ativos.length} trabalhando${ativos.filter((a) => a.cls === 'alerta').length ? ` · ⚠ ${ativos.filter((a) => a.cls === 'alerta').length}` : ''}` : 'ninguém trabalhando'}</span>${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12}</span>` : ''}</div>`;
+  // Faixa de cima = um contador ("11 trabalhando · 1 precisa de você"); tocar abre a lista por cima do mapa.
+  const alertas = ativos.filter((a) => a.cls === 'alerta').length;
+  const cont = `<button type="button" class="agora-tit" aria-expanded="${agoraAberto}" title="${agoraAberto ? 'Fechar a lista' : 'Ver quem está trabalhando em quê'}"><span class="ag-n">${ativos.length || 'ninguém'}</span> ${ativos.length ? 'trabalhando' : 'trabalhando agora'}${alertas ? ` <span class="ag-alerta">${alertas} precisa${alertas > 1 ? 'm' : ''} de você</span>` : ''}<span class="ag-seta" aria-hidden="true">${agoraAberto ? '▴' : '▾'}</span></button>`;
+  $('#frentes').innerHTML = htmlFiltros() + `<div class="agora contador ${agoraAberto ? 'aberto' : ''}">${cont}${agoraAberto ? `<div class="agora-lista">${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12} na Equipe</span>` : ''}</div>` : ''}</div>`;
 }
 function ligarHud() {
-  $('#frentes').onclick = (e) => { if (cliqueFiltro(e)) return; if (e.target.closest('.agora-tit')) { guarda('agoraCompacto', guardado('agoraCompacto', '') ? '' : '1'); desenharHud(); return; } const c = e.target.closest('.agora-card'); if (c) localizar(c.dataset.k); };
+  $('#frentes').onclick = (e) => { if (cliqueFiltro(e)) return; if (e.target.closest('.agora-tit')) { agoraAberto = !agoraAberto; desenharHud(); return; } const c = e.target.closest('.agora-card'); if (c) { agoraAberto = false; desenharHud(); localizar(c.dataset.k); } };
 }
 
 // ======================= QUADRO DE MARCOS (kanban que substitui o Notion) =======================
@@ -1362,7 +1441,7 @@ const COLUNAS = [
   { id: 'revisar', nome: 'Revisar', icone: '👀' },
   { id: 'feito', nome: 'Feito', icone: '✅' },
 ];
-let marcos = [], vinculos = new Map(), comentarios = [], temQuadro = false, versaoMarcos = 0, marcoAberto = null, agruparPor = guardado('agrupar', ''), pessoaQuadro = '';
+let marcos = [], vinculos = new Map(), comentarios = [], temQuadro = false, versaoMarcos = 0, marcoAberto = null, agruparPor = guardado('agrupar', ''), pessoaQuadro = null;
 const mudouMarcos = () => { versaoMarcos++; cacheVinculo.v = -1; };
 
 // ---------- pendurar pedidos nos marcos ----------
@@ -1422,14 +1501,17 @@ async function cartaoMarco(mc) {
   const r = resumoMarco(mc), j = jogoPorId(mc.jogo), s = setorPorId(mc.setor);
   const et = mc.etapas || [], feitas = et.filter((e) => e.feito).length;
   const atrasado = mc.prazo && mc.coluna !== 'feito' && new Date(mc.prazo + 'T23:59') < new Date();
-  const rostos = await Promise.all(r.agentes.slice(0, 5).map(async (a) => `<img src="${await retratoDe(a.m.nome)}" title="${esc(tituloAgente(a.m))}: ${esc(primeiraFrase(frase(a.m.ult), 60))}" alt="">`));
-  return `<div class="cartao ${r.agentes.length ? 'vivo' : ''} ${r.alertas ? 'atencao' : ''}" draggable="true" data-marco="${mc.id}" style="--cor:${j.cor};--setor:${s.cor}">
-    <div class="ct-topo"><span class="ct-jogo">${j.icone} ${esc(j.curto || j.nome)}</span><span class="ct-setor">${s.icone} ${esc(s.nome)}</span>${mc.prioridade === 1 ? '<span class="ct-pri">🔥 alta</span>' : ''}</div>
-    <div class="ct-tit">${esc(mc.titulo)}</div>
-    ${et.length ? `<div class="ct-prog"><i style="width:${Math.round(feitas / et.length * 100)}%"></i><span>☑ ${feitas}/${et.length}</span></div>` : ''}
-    ${r.agentes.length ? `<div class="ct-vivo">${rostos.join('')}<span>trabalhando agora</span></div>` : ''}
-    ${r.alertas ? '<div class="ct-alerta">⚠️ precisa de você</div>' : ''}
-    <div class="ct-rodape">${mc.responsavel ? `<span class="ct-resp" style="--pessoa:${corPessoa(mc.responsavel)}">${esc(mc.responsavel)}</span>` : '<span class="ct-resp vazio">sem dono</span>'}${mc.prazo ? `<span class="ct-prazo ${atrasado ? 'atrasado' : ''}">📅 ${new Date(mc.prazo + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<span class="espaco"></span>${r.ms.length ? `<span class="ct-ped" title="pedidos pendurados neste marco">▸ ${r.ms.length}${r.hoje ? ` · ${r.hoje} hoje` : ''}</span>` : ''}</div>
+  // Cartão enxuto: o que o dono decide — responsável, prazo e próximo passo (jogo/setor ficam na cor da borda e no detalhe).
+  const prox = et.find((e) => !e.feito);
+  const passo = mc.coluna === 'feito' ? '<div class="ct-prox ok">Concluído</div>'
+    : prox ? `<div class="ct-prox"><b>Próximo: ${esc(primeiraFrase(prox.t, 70))}</b>${et.length > 1 ? `<span>etapa ${feitas + 1} de ${et.length}</span>` : ''}</div>`
+    : '<div class="ct-prox sem-passo">+ Definir próximo passo</div>';
+  const prazo = mc.prazo ? new Date(mc.prazo + 'T12:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+  return `<div class="cartao q2 ${r.agentes.length ? 'vivo' : ''} ${r.alertas ? 'atencao' : ''}" draggable="true" data-marco="${mc.id}" style="--cor:${j.cor};--setor:${s.cor}" title="${esc(`${j.nome} · ${s.nome}`)}">
+    <div class="ct-tit">${mc.prioridade === 1 ? '<span class="ct-pri" title="Prioridade alta">Alta</span> ' : ''}${esc(mc.titulo)}</div>
+    ${passo}
+    ${r.alertas ? '<div class="ct-alerta">Precisa de você</div>' : ''}
+    <div class="ct-rodape">${mc.responsavel ? `<span class="ct-resp" style="--pessoa:${corPessoa(mc.responsavel)}">${esc(mc.responsavel)}</span>` : '<span class="ct-resp vazio">sem responsável</span>'}${prazo ? `<span class="ct-prazo ${atrasado ? 'atrasado' : ''}">${atrasado ? 'atrasado · ' : 'prazo '}${prazo}</span>` : '<span class="ct-prazo sem">sem prazo</span>'}<span class="espaco"></span>${r.agentes.length ? `<span class="ct-vivo2" title="agentes trabalhando neste marco agora">● ${r.agentes.length} trabalhando</span>` : ''}</div>
   </div>`;
 }
 async function desenharQuadro() {
@@ -1438,8 +1520,20 @@ async function desenharQuadro() {
     $('#quadroCorpo').innerHTML = `<div class="quadro-vazio"><h3>Falta ligar o quadro</h3><p>Rode o arquivo <code>supabase/escritorio-3.sql</code> no Supabase (SQL Editor › New query › colar › Run). É uma vez só.</p></div>`;
     return;
   }
-  $('#quadroFiltros').innerHTML = htmlFiltros() + '<div class="filtros">' + [['', 'Os dois'], ...pessoas().map((p) => [p, p])].map(([v, t]) => `<button data-pq="${esc(v)}" class="${pessoaQuadro === v ? 'on' : ''}">${esc(t)}</button>`).join('')
-    + '<span class="sep-f"></span>' + [['', 'Sem faixas'], ['jogo', 'Faixas por jogo'], ['setor', 'Faixas por setor']].map(([v, t]) => `<button data-ag="${v}" class="${agruparPor === v ? 'on' : ''}">${t}</button>`).join('') + '</div>';
+  // Escopo primeiro ("Meus marcos" é o padrão); jogo, setor e faixas ficam recolhidos em "Filtrar".
+  if (pessoaQuadro === null) pessoaQuadro = guardado('pessoaQuadro', EU.pessoa);
+  let esc0 = $('#escopoQuadro');
+  if (!esc0) {
+    esc0 = document.createElement('div'); esc0.id = 'escopoQuadro'; esc0.className = 'q-escopo'; esc0.setAttribute('role', 'tablist');
+    $('#quadro .quadro-topo h2').after(esc0);
+    esc0.onclick = (e) => { const b = e.target.closest('[data-pq]'); if (b) { pessoaQuadro = b.dataset.pq; guarda('pessoaQuadro', pessoaQuadro); desenharQuadro(); } };
+  }
+  const outros = pessoas().filter((p) => p !== EU.pessoa);
+  esc0.innerHTML = [[EU.pessoa, 'Meus marcos'], ...outros.map((p) => [p, `Do ${p}`]), ['', 'Todos']].map(([v, t]) => `<button role="tab" data-pq="${esc(v)}" class="${pessoaQuadro === v ? 'on' : ''}" aria-selected="${pessoaQuadro === v}">${esc(t)} <small>${marcos.filter((m) => (!v || m.responsavel === v) && m.coluna !== 'feito').length}</small></button>`).join('');
+  const nFiltros = (filtroJogo ? 1 : 0) + (filtroSetor ? 1 : 0) + (agruparPor ? 1 : 0);
+  $('#filtrosQuadroCel').innerHTML = `Filtrar${nFiltros ? ` <i class="q-nf">${nFiltros}</i>` : ''} ${$('#quadroFiltros').classList.contains('abertos') ? '▴' : '▾'}`;
+  $('#filtrosQuadroCel').setAttribute('aria-expanded', $('#quadroFiltros').classList.contains('abertos'));
+  $('#quadroFiltros').innerHTML = htmlFiltros() + '<div class="filtros">' + [['', 'Sem faixas'], ['jogo', 'Faixas por jogo'], ['setor', 'Faixas por setor']].map(([v, t]) => `<button data-ag="${v}" class="${agruparPor === v ? 'on' : ''}">${t}</button>`).join('') + '</div>';
   const lista = marcos.filter(passaMarco);
   const faixas = agruparPor === 'jogo' ? todosJogos().filter((j) => lista.some((m) => m.jogo === j.id)).map((j) => ({ id: j.id, nome: `${j.icone} ${j.nome}`, cor: j.cor, f: (m) => m.jogo === j.id }))
     : agruparPor === 'setor' ? SETORES.map((s) => ({ id: s.id, nome: `${s.icone} ${s.nome}`, cor: s.cor, f: (m) => m.setor === s.id }))
@@ -1447,7 +1541,7 @@ async function desenharQuadro() {
   let html = '';
   for (const fx of faixas) {
     if (fx.nome) html += `<div class="faixa-nome" style="--cor:${fx.cor}">${esc(fx.nome)}</div>`;
-    if (!fx.nome || fx === faixas[0]) html += `<div class="nav-colunas">${COLUNAS.map((c) => `<button data-ir-coluna="${c.id}">${c.icone} ${lista.filter((m) => m.coluna === c.id).length}</button>`).join('')}</div>`;
+    if (!fx.nome || fx === faixas[0]) html += `<div class="nav-colunas">${COLUNAS.map((c) => `<button data-ir-coluna="${c.id}" class="${lista.some((m) => m.coluna === c.id) ? '' : 'zero'}">${c.nome} <b>${lista.filter((m) => m.coluna === c.id).length}</b></button>`).join('')}</div>`;
     html += '<div class="colunas-quadro">';
     for (const c of COLUNAS) {
       const doC = lista.filter((m) => m.coluna === c.id && fx.f(m)).sort((a, b) => (c.id === 'feito' ? new Date(b.concluido || b.atualizado) - new Date(a.concluido || a.atualizado) : a.prioridade - b.prioridade || a.ordem - b.ordem));
@@ -1696,9 +1790,10 @@ function desenharSeletorConversas() {
 function desenharAbasFechadas() {
   const el = $('#listaAbasFechadas');
   const lista = [...conversas].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado)).slice(0, 80);
-  el.innerHTML = `<div class="af-topo"><b>Abas fechadas / histórico</b><button type="button" class="btn mini" data-af-fechar title="Fechar">×</button></div>` + (lista.length ? lista.map((c) => {
-    const v = visualAba(c), selo = seloAba(c.id), aberta = abasAbertas?.includes(c.id);
-    return `<button type="button" class="af-item${aberta ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${aberta ? ' · aberta' : ''}</small></span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}</button>`;
+  el.innerHTML = `<div class="af-topo"><b>Em qual conversa?</b><button type="button" class="btn mini" data-af-fechar title="Fechar" aria-label="Fechar">×</button></div>
+    <div class="af-acoes"><button type="button" class="btn" data-af-nova>＋ Conversa nova</button>${conversaAtual ? '<button type="button" class="btn" data-af-renomear>Renomear ou apagar esta</button>' : ''}</div>` + (lista.length ? lista.map((c) => {
+    const v = visualAba(c), selo = seloAba(c.id), atual = c.id === conversaAtual;
+    return `<button type="button" class="af-item${atual ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${atual ? ' · esta' : ''}${selo ? ' · ' + selo[1] : ''}</small></span></button>`;
   }).join('') : '<p class="sub">Nenhuma conversa ainda.</p>');
 }
 function fecharAbaConversa(id) {
@@ -1726,6 +1821,8 @@ function ligarAbasConversa() {
   $('#btnAbasFechadas').onclick = () => { const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) desenharAbasFechadas(); };
   $('#listaAbasFechadas').onclick = (e) => {
     if (e.target.closest('[data-af-fechar]')) { $('#listaAbasFechadas').hidden = true; return; }
+    if (e.target.closest('[data-af-nova]')) { $('#listaAbasFechadas').hidden = true; mostrarNovaConversa(alvoAtual()); return; }
+    if (e.target.closest('[data-af-renomear]')) { $('#listaAbasFechadas').hidden = true; menuConversa(); return; }
     const b = e.target.closest('[data-reabrir]'); if (!b) return;
     $('#listaAbasFechadas').hidden = true; abrirConversa(Number(b.dataset.reabrir));
   };
@@ -1845,17 +1942,29 @@ function desenharChat() {
   // No chat só as aprovações desta conversa (as do terminal ficam no Resumo).
   const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && (!conv || a.conversa_id === conv.id || !a.conversa_id));
   html += pend.map(cartaoAprovacao).join('');
-  msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Peça algo!` : `Oi, ${esc(EU.pessoa)}! Crie uma aba (+) para cada tarefa: com a assistente (Claude) ou com o Codex (GPT). Abas diferentes rodam ao mesmo tempo.`}</div>`;
+  msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Escreva abaixo o que você quer fazer.` : `Oi, ${esc(EU.pessoa)}! Escreva abaixo o que você quer fazer. Cada assunto vira uma conversa; várias podem rodar ao mesmo tempo.`}</div>`;
   ligarAprovacoes(msgs); CE.decorarErros(msgs);
   if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { msgs.scrollTop = rolarPendente < 0 ? msgs.scrollHeight : rolarPendente; rolarPendente = null; }
   else if (noFim) msgs.scrollTop = msgs.scrollHeight;
-  $('#btnEnviar').textContent = ocupada ? 'Pôr na fila' : 'Enviar';
-  $('#btnParar').disabled = !ocupada;
+  $('#estadoPonte').hidden = !$('#estadoPonte').innerHTML.trim();
+  // Compositor: "Sobre: X · Alterar" + caixa + Enviar pedido (ou Enviar para a fila, quando ela está ocupada).
+  $('#btnEnviar').textContent = ocupada ? 'Enviar para a fila' : 'Enviar pedido';
+  marcarTexto();
   const v = visualAba(conv);
   $('#formChat').style.setProperty('--cor-aba', conv ? v.cor : 'var(--borda-clara)');
-  $('#entrada').placeholder = conv ? `${v.icone} ${conv.titulo} · Enter envia, Shift+Enter quebra linha` : 'Peça algo… (começa uma aba nova)';
+  $('#cmpSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${gpt ? '<span class="cmp-quem">Codex</span>' : ''}<button type="button" class="cmp-alterar" data-cmp-alterar>Trocar</button>`;
+  const fila = $('#cmpFila');
+  fila.hidden = !ocupada; fila.innerHTML = ocupada ? '<span>Ela está ocupada: o que você mandar entra na fila e começa depois.</span><button type="button" class="fila-agora" data-fila-agora>Interromper o atual e começar este</button>' : '';
   desenharHudChat();
 }
+// Interrompe o pedido de uma conversa (usado por "Interromper o atual e começar este").
+async function pararConversa(id) {
+  if (DEMO) { for (const [k, v] of comandosAbertos) if (v === id) comandosAbertos.delete(k); return; }
+  const { error } = await R.parar(temSql2 ? id : null); if (error) throw error;
+}
+const marcarTexto = () => $('#formChat').classList.toggle('tem-texto', !!$('#entrada').value.trim());
+// Passo 2 do percurso: "Pedido recebido" (e se ele foi para a fila).
+const avisarRecebido = (naFila) => toast({ titulo: 'Pedido recebido', texto: naFila ? 'Ela termina o pedido atual e começa o seu em seguida. Acompanhe no cartão do pedido.' : 'Acompanhe as etapas no cartão do pedido, no alto da conversa.', cor: '#4fbf82' });
 // Marca a aba como ocupada assim que o pedido é aceito (antes do aviso do banco chegar).
 const pedidoEnviado = (cmd, destino) => { if (cmd?.id) comandosAbertos.set(cmd.id, destino ?? null); versaoMundo = -1; sincronizarMundo(); desenharSeletorConversas(); };
 async function enviarChat() {
@@ -1868,9 +1977,10 @@ async function enviarChat() {
   const destino = conversaAtual, lista = mensagens;
   $('#entrada').value = '';
   lista.push({ de: 'eu', texto: t, conversa_id: destino });
+  const naFila = convOcupada(destino);
   rolarPendente = -1; desenharChat();
-  if (DEMO) return;
-  try { const cmd = await R.pedir(t, temSql2 ? destino : null); pedidoEnviado(cmd, destino); desenharChat(); }
+  if (DEMO) { comandosAbertos.set(-Date.now(), destino); avisarRecebido(naFila); desenharChat(); desenharSeletorConversas(); return; }
+  try { const cmd = await R.pedir(t, temSql2 ? destino : null); pedidoEnviado(cmd, destino); avisarRecebido(naFila); desenharChat(); }
   catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; const i = lista.findIndex((m) => m.de === 'eu' && m.texto === t && !m.id); if (i >= 0) lista.splice(i, 1); desenharChat(); }
 }
 
@@ -1947,13 +2057,22 @@ function desenharBarra() {
   f.classList.toggle('gpt', alvoBarra === 'codex');
   const st = estados.get(EU.pessoa) || {}, ligado = pcLigado(EU.pessoa);
   const conv = conversaDaBarra();
-  $('#bcTexto').placeholder = innerWidth <= 760 ? (alvoBarra === 'codex' ? 'Peça ao Codex…' : 'Peça algo…') : `${alvoBarra === 'codex' ? 'Peça ao Codex' : 'Peça à sua assistente'}${conv ? ` · ${conv.titulo}` : ' · conversa nova'}…`;
-  const [cor, txt] = CE.estadoBarra({ st, ligado, ocupada: conv && convOcupada(conv.id), alvo: alvoBarra });
+  const ocupada = !!conv && convOcupada(conv.id);
+  const [cor, txt] = CE.estadoBarra({ st, ligado, ocupada, alvo: alvoBarra });
   const v = visualAba(conv);
-  const destinoHtml = conv ? `<span class="bc-aba" style="--cor:${v.cor}" title="O pedido vai para esta aba">→ ${v.icone} ${esc(conv.titulo)}</span>` : '<span class="bc-aba nova">→ ＋ aba nova</span>';
-  $('#bcEstado').innerHTML = `${destinoHtml && CB.htmlDestino(conv, alvoBarra, v)}${CB.htmlProjeto(conv)}<span class="bc-st${cor === '#4fbf82' ? ' ok' : ''}" title="${esc(txt)}"><i style="--cor:${cor}"></i>${esc(txt)}</span>`;
+  // "Sobre: X · Alterar": para onde o pedido vai, numa linha; Alterar abre as Opções.
+  $('#bcSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${alvoBarra === 'codex' ? '<span class="cmp-quem">Codex</span>' : ''}<button type="button" class="cmp-alterar" data-bc-alterar>Trocar</button>`;
+  // Estado só quando foge do normal (ocupada, PC desligado, login, limite).
+  const normal = cor === '#4fbf82';
+  $('#bcEstado').hidden = normal;
+  $('#bcEstado').innerHTML = normal ? '' : `<i style="--cor:${cor}"></i><span>${esc(txt)}${ocupada ? '<button type="button" class="fila-agora" data-fila-agora>Interromper o atual e começar este</button>' : ''}</span>`;
+  $('#bcEnviar').textContent = ocupada ? 'Enviar para a fila' : 'Enviar pedido';
+  $('#bcContinuar').innerHTML = conv ? `Continuar <small>${esc(v.nome || conv.titulo)}</small>` : 'Continuar <small>nenhuma ainda</small>';
+  $('#bcContinuar').disabled = !ultimaDoAlvo(alvoBarra) && !conversas.some((c) => c.id === conversaAtual && c.alvo === alvoBarra);
+  $('#bcContinuar').classList.toggle('on', !novaNaBarra && !!conv);
+  $('#bcProjeto').innerHTML = CB.htmlProjeto(conv);
   f.style.setProperty('--cor-aba', conv ? v.cor : '');
-  $('#bcNova').classList.toggle('on', novaNaBarra);
+  $('#bcNova').classList.toggle('on', novaNaBarra || !conv);
 }
 const ultimaDoAlvo = (alvo) => [...conversas].filter((c) => c.alvo === alvo).sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado))[0] || null;
 function conversaDaBarra() {
@@ -1977,7 +2096,8 @@ async function enviarBarra() {
       } else if (!conv && DEMO) { conv = { id: Date.now(), titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: CB.projetoNovo(), atualizado: new Date().toISOString() }; conversas = [conv, ...conversas]; cacheMsgs.set(conv.id, []); }
     }
     const destino = conv?.id ?? null;           // capturado AGORA: trocar de conversa no meio não muda o destino
-    novaNaBarra = false; projetoBarra = null;
+    const naFila = convOcupada(destino);
+    novaNaBarra = false; projetoBarra = null; mostrarOpcoesBarra(false);
     caixa.value = ''; caixa.style.height = '';
     fecharEquipeVista(); fecharQuadro();
     if (destino !== conversaAtual) await abrirConversa(destino);
@@ -1985,7 +2105,9 @@ async function enviarBarra() {
     if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
     const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null);
     enviado = true;
+    if (DEMO) comandosAbertos.set(-Date.now(), destino);
     pedidoEnviado(cmd, destino);
+    avisarRecebido(naFila);
     if (conv) { conv.atualizado = new Date().toISOString(); conversas = [conv, ...conversas.filter((c) => c.id !== conv.id)]; desenharSeletorConversas(); }
   } catch (e) {
     if (!enviado) { caixa.value = texto; const i = mensagens.findIndex((m) => m.de === 'eu' && m.texto === texto && !m.id); if (i >= 0) mensagens.splice(i, 1); desenharChat(); }
@@ -1995,7 +2117,14 @@ async function enviarBarra() {
 }
 function abrirBarraCel(abrir) {
   document.body.classList.toggle('bc-aberta', !!abrir);
-  if (abrir) $('#bcTexto').focus();
+  if (abrir) $('#bcTexto').focus(); else mostrarOpcoesBarra(false);
+}
+// Opções do pedido (quem faz, conversa, projeto): recolhidas; o pedido em si é só escrever e enviar.
+function mostrarOpcoesBarra(abrir) {
+  const op = $('#bcOpcoes'); if (!op) return;
+  op.hidden = !abrir; $('#bcOpcoesBtn').setAttribute('aria-expanded', !!abrir);
+  $('#bcOpcoesBtn').classList.toggle('on', !!abrir);
+  $('#barraComando').classList.toggle('com-opcoes', !!abrir);
 }
 // O que está no meio da tela (mapa, quadro ou equipe) vai para o <body>: o CSS esconde o que é só do mapa.
 function ligarVistaNoBody() {
@@ -2015,7 +2144,16 @@ function ligarBarra() {
     if (aba === 'chat' && !$('#gaveta').classList.contains('fechada')) { const c = ultimaDoAlvo(alvoBarra); if (c && c.id !== conversaAtual) abrirConversa(c.id); }
     desenharBarra(); $('#bcTexto').focus();
   };
-  $('#bcNova').onclick = () => { novaNaBarra = !novaNaBarra; desenharBarra(); if (novaNaBarra) toast({ titulo: 'Conversa nova', texto: 'A próxima mensagem começa uma conversa nova.', cor: '#a785f0' }); $('#bcTexto').focus(); };
+  $('#bcNova').onclick = () => { novaNaBarra = true; desenharBarra(); };
+  $('#bcContinuar').onclick = () => { novaNaBarra = false; desenharBarra(); };
+  $('#bcOpcoesBtn').onclick = () => mostrarOpcoesBarra($('#bcOpcoes').hidden);
+  $('#bcSobre').onclick = (e) => { if (e.target.closest('[data-bc-alterar]')) mostrarOpcoesBarra(true); };
+  // Ocupada: em vez de esperar na fila, dá para interromper o pedido atual e começar este agora.
+  $('#bcEstado').onclick = async (e) => {
+    if (!e.target.closest('[data-fila-agora]')) return;
+    if (!$('#bcTexto').value.trim()) { toast({ titulo: 'Escreva o pedido primeiro', texto: 'Depois toque de novo para interromper o atual e começar este.', cor: '#ffd23f' }); $('#bcTexto').focus(); return; }
+    try { await pararConversa(conversaDaBarra()?.id ?? null); await enviarBarra(); } catch (err) { toast({ titulo: 'Não consegui interromper', texto: err.message, cor: '#ef6a55' }); }
+  };
   // No celular a barra some quando a gaveta (tela cheia) está aberta: lá já tem a caixa da conversa.
   new MutationObserver(() => { document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada')); marcarChatAberto(); }).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
@@ -2046,7 +2184,7 @@ function ligarComandoNoApp() {
       R.parar(temSql2 ? conversaAtual : null).then(({ error }) => toast(error ? { titulo: 'Não consegui parar', texto: error.message, cor: '#ef6a55' } : { titulo: 'Pedi para parar', texto: 'A ponte para esta conversa em alguns segundos.', cor: '#f0973d' }));
     },
     mandarRecado, tirarRecado: async (r) => { if (DEMO) recados = recados.filter((x) => x !== r); else await R.tirarRecado(r.id); },
-    abrirBola: (o) => CDu.abrirBola(o),
+    abrirBola: (o) => CDu.abrirBola(o), abrirAutorizacoes, redesenharPedido: () => desenharHudChat(),
   });
   CE.ligarAcoes($('#estadoPonte')); CE.ligarAcoes($('#msgs'));
   CP.ligarAgora($('#hudChat'), () => missaoDaConversa(conversas.find((c) => c.id === conversaAtual)));
@@ -2097,11 +2235,19 @@ function missaoDaConversa(conv) {
 async function desenharHudChat() {
   const el = $('#hudChat'); if (!el || !EU) return;
   const conv = conversas.find((c) => c.id === conversaAtual), m = missaoDaConversa(conv), ocupada = convOcupada(conversaAtual);
-  const html = CP.htmlAgora({ m, conv, ocupada, escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
+  // Pendências desta conversa entram no mesmo cartão (com um resumo humano do que ela quer fazer).
+  const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id).map((a) => ({ id: a.id, titulo: CA.explicar(a, infoAprovacao(a)).titulo }));
+  const fila = Math.max(0, [...comandosAbertos.values()].filter((id) => id === conversaAtual).length - 1);
+  const pedido = mensagens.filter((x) => x.de === 'eu').at(-1)?.texto || '';
+  const html = CP.htmlAgora({ m, conv, ocupada, pend, fila, pedido, titulo: conv ? visualAba(conv).nome : '', escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
   if (!html) { el.hidden = true; el.innerHTML = ''; return; }
-  const esc0 = el.querySelector('.cp-esc'), escAberta = esc0 && !esc0.hidden;
   el.hidden = false; el.innerHTML = html;
-  if (escAberta) { el.querySelector('.cp-esc')?.removeAttribute('hidden'); const b = el.querySelector('[data-cp=escalacao]'); if (b) b.textContent = 'Quem faz o quê ▴'; }
+}
+// Abre o pedido: a conversa onde ele nasceu (com o cartão) ou, se veio do terminal, o passo a passo.
+function abrirPedido(id) {
+  const m = D.missoes().find((x) => x.id === id);
+  const c = m?.sessao && conversas.find((x) => x.alvo !== 'codex' && x.sessao && String(x.sessao).startsWith(m.sessao));
+  if (c) { fecharEquipeVista(); fecharQuadro(); abrirConversa(c.id); abrirAba('chat'); } else if (m) abrirMissao(m.id);
 }
 // Cartão sobre o mapa: a escalação da missão que está rodando (a sua primeiro).
 async function desenharHudMapa() {
@@ -2110,6 +2256,16 @@ async function desenharHudMapa() {
   const m = ativas.find((x) => x.pessoa === EU.pessoa) || ativas[0];
   if (!m) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false; el.classList.toggle('fechado', hudFechado);
+  el.onclick = (e) => { const b = e.target.closest('[data-pedido-abrir]'); if (b) { e.stopPropagation(); abrirPedido(b.dataset.pedidoAbrir); } };
+  // Recolhido e é seu: vira o chip do pedido (etapa + pendência); tocar leva ao cartão na conversa.
+  if (hudFechado && m.pessoa === EU.pessoa) {
+    const conv = conversas.find((x) => x.alvo !== 'codex' && x.sessao && m.sessao && String(x.sessao).startsWith(m.sessao));
+    const pend = aprovacoes.filter((a) => conv && a.conversa_id === conv.id).length;
+    el.classList.add('pedido');
+    el.innerHTML = CP.htmlChipMapa({ m, pend, titulo: conv ? visualAba(conv).nome : '' });
+    return;
+  }
+  el.classList.remove('pedido');
   el.innerHTML = await htmlEscalacao(m, { compacto: true, mapa: true }) + (ativas.length > 1 && !hudFechado ? `<div class="esc-mais">+${ativas.length - 1} missão(ões) rodando · veja no Resumo</div>` : '');
 }
 
@@ -2201,11 +2357,47 @@ function abrirEquipeVista() {
 }
 function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarNav(); } }
 let pendenteEq = false, deNovoEq = false; // se pedirem enquanto desenha, desenha de novo no fim (não perde o filtro)
+let abaEq = guardado('abaEq', 'agora');
+// "Quem está trabalhando em quê": um cartão por agente ocupado (o que faz, para qual pedido/marco, desde quando).
+async function htmlEquipeAgora() {
+  const ativos = quemTrabalha();
+  const alertas = ativos.filter((a) => a.cls === 'alerta');
+  const linha = async ({ m, cls }) => {
+    let acao = D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano' : cls === 'semsinal' ? 'Sem sinal há um tempo' : m.ult ? primeiraFrase(frase(m.ult), 90) : 'Pensando…';
+    if (cls === 'alerta') acao = acao.replace(/^Quer permissão para:?\s*/i, 'Precisa da sua autorização para: ').replace(/: gerando /, ': gerar ');
+    const ms = m.ult?._m, marco = marcoDaMissao(ms);
+    const para = marco ? `Marco: ${marco.titulo}` : ms?.titulo ? `Pedido: ${ms.titulo}` : '';
+    const desde = m.pedido?.t || m.ult?.t;
+    const estado = cls === 'alerta' ? '<span class="eqa-est bloq">Precisa de você</span>' : cls === 'erro' ? '<span class="eqa-est bloq">Deu erro</span>' : cls === 'semsinal' ? '<span class="eqa-est">Sem sinal</span>' : '';
+    return `<button class="eqa-card ${cls}" data-k="${esc(m.k)}" title="Ver no mapa e abrir o detalhe">
+      <img src="${await retratoDe(m.nome)}" alt="">
+      <span class="eqa-txt"><span class="eqa-nome"><b>${esc(tituloAgente(m))}</b><span class="eq-dono" style="--cor:${corPessoa(m.pessoa)}">${esc(m.pessoa)}</span>${estado}</span>
+        <span class="eqa-acao">${esc(acao)}</span>
+        <span class="eqa-meta">${para ? esc(primeiraFrase(para, 70)) + ' · ' : ''}${desde ? (D.ha(desde) === 'agora' ? 'agora' : 'há ' + D.ha(desde)) : ''}</span>
+        ${cls === 'alerta' ? '<span class="btn forte eqa-acao-btn" data-revisar-permissao>Revisar autorização</span>' : ''}</span></button>`;
+  };
+  if (!ativos.length) return '<div class="eqa-vazio"><b>Ninguém trabalhando agora.</b><p>Quando você pedir algo, a assistente chama os agentes e eles aparecem aqui.</p></div>';
+  const resto = ativos.filter((a) => a.cls !== 'alerta');
+  return `<p class="eqa-resumo"><b>${ativos.length}</b> trabalhando agora${alertas.length ? ` · <span class="bloq">${alertas.length} precisa${alertas.length > 1 ? 'm' : ''} de você</span>` : ''}</p>
+    ${alertas.length ? `<h3 class="eqa-sec">Precisa de você</h3><div class="eqa-lista">${(await Promise.all(alertas.map(linha))).join('')}</div>` : ''}
+    <h3 class="eqa-sec">Trabalhando</h3><div class="eqa-lista">${(await Promise.all(resto.map(linha))).join('')}</div>
+    <p class="eqa-nota">Toque num cartão para ver o agente no mapa. Agentes, skills e conectores ficam em <button type="button" class="link" data-eqaba-ir="catalogo">Catálogo e ajustes</button>.</p>`;
+}
 async function desenharEquipeVista() {
   if (!EU || $('#equipeVista').hidden) return;
   if (pendenteEq) { deNovoEq = true; return; }
   pendenteEq = true;
   try {
+    // Abas: "Quem está trabalhando em quê" (a decisão do dono) primeiro; o catálogo (agentes, skills, conectores…) fica na segunda.
+    let abasEq = $('#abasEquipe');
+    if (!abasEq) {
+      abasEq = document.createElement('div'); abasEq.id = 'abasEquipe'; abasEq.className = 'eq-abas'; abasEq.setAttribute('role', 'tablist');
+      $('#equipeVista .eq-topo h2').after(abasEq);
+      abasEq.onclick = (e) => { const b = e.target.closest('[data-eqaba]'); if (b) { abaEq = b.dataset.eqaba; guarda('abaEq', abaEq); desenharEquipeVista(); } };
+    }
+    abasEq.innerHTML = [['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo e ajustes']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
+    $('#equipeVista').dataset.aba = abaEq;
+    if (abaEq === 'agora') { $('#equipeCorpo').innerHTML = await htmlEquipeAgora(); return; }
     const pes = ['', ...pessoas()];
     $('#filtrosEquipe').innerHTML = `<div class="eq-grupo">${pes.map((p) => `<button data-fpes="${esc(p)}" class="${p === filtroPesEq ? 'on' : ''}">${p ? esc(p) : 'Os dois'}</button>`).join('')}</div><div class="eq-grupo">${FILTROS_TIPO_EQ.map(([t, r]) => `<button data-ftipo="${t}" class="${t === filtroTipoEq ? 'on' : ''}">${r}</button>`).join('')}</div>`;
     const q = buscaEq.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2259,9 +2451,15 @@ async function pedirCom(x) {
 // ---------- "Mais" (⋯): Diário, Galeria, Ajustes e Ajuda ----------
 function desenharMais() {
   const j = jornais.find((x) => x.conteudo);
-  const itens = [['hoje', '☀', 'Hoje', 'Sugestões de pedido, fila dos agentes e custo de IA'], ['jornal', '▤','Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório e os atalhos']];
-  $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
-  $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
+  const itens = [['quadro', 'quadro', 'Quadro', 'Os marcos do projeto: o que está em andamento e o que vem depois'], ['equipe', 'equipe', 'Equipe', 'Quem é quem: agentes, receitas e ferramentas'], ['hoje', 'sol', 'Hoje', 'Sugestões de pedido, fila dos agentes e custo de IA'], ['jornal', 'jornal', 'Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', 'imagem', 'Galeria', 'Vídeos e imagens entregues'], ['ajuda', 'ajuda', 'Ajuda', 'Como ler o escritório e os atalhos']];
+  $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ico(ic)}</span><b>${t}</b><small>${d}</small></button>`).join('')
+    + '<p class="mais-dica">Perfil, avisos e ajustes ficam no seu nome, no alto da tela.</p>';
+  $('#listaMais').onclick = (e) => {
+    const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba;
+    if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda();
+    else if (id === 'quadro' || id === 'equipe') { if (innerWidth <= 760) fecharGaveta(); if (id === 'quadro') { fecharEquipeVista(); abrirQuadro(); } else { fecharQuadro(); abrirEquipeVista(); } marcarNav(); }
+    else abrirAba(id, true);
+  };
 }
 
 // ---------- painel "Hoje" (funcoes-hoje.js): sugestões do dia, fila por agente, custo de IA ----------
@@ -2326,7 +2524,7 @@ function abrirAjuda() {
       <p><b>◷ Atividade</b>: <b>Resumo</b> (precisa de você, travou, rodando, pronto; avisos no celular e modo <b>Estou longe do PC</b>), <b>Missões</b> (cada pedido por frente; abra uma para ver em Escritório, Linha do tempo ou Árvore) e <b>Histórico</b> (por dia).</p>
       <p><b>▥ Quadro</b>: os grandes marcos. <b>🧩 Equipe</b>: quem é quem (agentes, skills, conectores, programas).</p>
       <p><b>⋯ Mais</b>: Diário do Estúdio, Galeria, Ajustes e esta ajuda.</p>
-      <p>No topo, sempre à vista: o projeto e a ponte do seu PC (bolinha verde = ligada) e as pendências: <b>✋</b> precisa de você, <b>💬</b> resposta que você não viu. O <b>?</b> ao lado de um termo explica o que ele é.</p>
+      <p>No topo, sempre à vista: você e o projeto (quadradinho verde = seu PC ligado; toque para perfil e ajustes), o seu parceiro, <b>quantos estão trabalhando</b> e <b>quantas coisas precisam de você</b>. Um ponto laranja em Conversas = resposta que você ainda não viu. O <b>?</b> ao lado de um termo explica o que ele é.</p>
       <h3>Atalhos</h3>
       <p>Clique no chão para andar · <kbd>WASD</kbd> também anda</p>
       <p><kbd>Tab</kbd> equipe · <kbd>H</kbd> missões · <kbd>L</kbd> histórico · <kbd>C</kbd> assistente · <kbd>M</kbd> dupla · <kbd>G</kbd> galeria · <kbd>I</kbd> quem é quem · <kbd>J</kbd> diário · <kbd>?</kbd> esta ajuda</p>
@@ -2340,8 +2538,9 @@ function desenharAjustes() {
   const st = estados.get(EU.pessoa) || {};
   const notif = 'Notification' in window ? Notification.permission : 'indisponível';
   const info = st.info || {};
+  const ligadaPc = pcLigado(EU.pessoa), projetoAtual = st.projeto || info.projetos?.[0]?.nome || 'sem projeto';
   $('#ajustes').innerHTML = `
-    <div class="campo"><span>Você</span>${esc(EU.pessoa)} · ${esc(EU.email)}</div>
+    <div class="perfil-cab"><img src="${$('#perfilTopo img')?.src || ''}" alt=""><div><b>${esc(EU.pessoa)}</b><small>${esc(EU.email)}</small><span class="pf-linha"><i class="pf-pc ${ligadaPc ? 'on' : 'off'}"></i>Projeto ${esc(projetoAtual)}${st.branch ? ` · branch ${esc(st.branch)}` : ''} · PC ${ligadaPc ? 'ligado' : 'desligado'}</span></div></div>
     <div class="campo"><span>Seu status</span><select id="selStatus"><option value="disponivel">Disponível</option><option value="focado">Focado (não perturbe)</option><option value="ausente">Ausente</option></select></div>
     <div class="campo"><span>Avisos</span>
       <label class="chk"><input type="checkbox" id="chkSom" ${guardado('som', '1') === '1' ? 'checked' : ''}> som quando alguém precisa de você ou termina</label>

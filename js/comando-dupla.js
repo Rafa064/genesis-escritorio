@@ -46,16 +46,16 @@ function arquivosRecentes(p) {
 export function conflitos() {
   const eu = ctx.eu()?.pessoa, outro = ctx.outra(); if (!eu || !outro) return [];
   const a = presenca(eu), b = presenca(outro), lista = [];
-  if (a.branch && a.branch === b.branch && ctx.pcLigado(outro)) lista.push({ k: `branch|${a.branch}`, icone: '⎇', texto: `Vocês dois estão na branch <b>${esc(a.branch)}</b>`, recado: `⚠ Estamos os dois na branch ${a.branch}. Combina quem commita primeiro?` });
+  if (a.branch && a.branch === b.branch && ctx.pcLigado(outro)) lista.push({ k: `branch|${a.branch}`, icone: '⎇', texto: `Vocês dois estão na branch <b>${esc(a.branch)}</b>`, curto: `Você e ${outro} estão trabalhando na mesma versão do projeto. Combinem quem salva primeiro.`, recado: `⚠ Estamos os dois na branch ${a.branch}. Combina quem commita primeiro?` });
   const meus = arquivosRecentes(eu), dele = arquivosRecentes(outro);
   const juntos = [...meus.keys()].filter((k) => dele.has(k));
   if (juntos.length) {
     const k0 = juntos[0], nomes = juntos.slice(0, 2).map((k) => esc(nomeArq(meus.get(k).a))).join(', ');
-    lista.push({ k: `arq|${juntos.sort().join(',')}`, icone: '📝', missao: dele.get(k0).missao,
+    lista.push({ k: `arq|${juntos.sort().join(',')}`, icone: '📝', missao: dele.get(k0).missao, curto: `Você e ${outro} mexeram no mesmo arquivo (${nomeArq(meus.get(k0).a)}). Combinem quem continua.`,
       texto: `<b>${nomes}</b>${juntos.length > 2 ? ` +${juntos.length - 2}` : ''}: sua IA mexeu ${haT(meus.get(k0).t)} e a do ${esc(outro)} ${haT(dele.get(k0).t)}. Combine quem segue antes de commitar.`,
       recado: `⚠ Nossas IAs mexeram em ${juntos.slice(0, 3).map((k) => nomeArq(meus.get(k).a)).join(', ')}. Segura um pouco que eu termino e te aviso?` });
   }
-  if (a.marco && b.marco && a.marco.id === b.marco.id && (a.ativa || b.ativa)) lista.push({ k: `marco|${a.marco.id}`, icone: '🏁', texto: `As IAs dos dois estão no marco <b>${esc(a.marco.titulo)}</b>`, recado: `⚠ Nossas IAs estão no mesmo marco (${a.marco.titulo}). Divide: eu fico com uma parte e você com outra?` });
+  if (a.marco && b.marco && a.marco.id === b.marco.id && (a.ativa || b.ativa)) lista.push({ k: `marco|${a.marco.id}`, icone: '🏁', texto: `As IAs dos dois estão no marco <b>${esc(a.marco.titulo)}</b>`, curto: `As IAs de vocês dois estão no mesmo marco (${a.marco.titulo}). Dividam o trabalho.`, recado: `⚠ Nossas IAs estão no mesmo marco (${a.marco.titulo}). Divide: eu fico com uma parte e você com outra?` });
   return lista;
 }
 
@@ -145,12 +145,14 @@ function desenharChip(po, nConf, nBolas) {
   chip.style.setProperty('--cor', corP(po.p));
   chip.title = `${po.p}: ${po.site[1]} · ${po.pc[1]}${po.projeto ? ' · ' + po.projeto : ''}${po.agora ? ' · ' + po.agora : ''}`;
   ctx.retrato(po.p).then((src) => {
-    chip.innerHTML = `<img src="${src}" alt=""><i class="cd-dot ${cls}"></i><span class="cd-nome">${esc(po.p)}</span>${po.ativa ? '<span class="cd-trab" title="A IA dele está trabalhando">⚙</span>' : ''}${nConf ? `<b class="cd-aviso" title="Conflito">⚠</b>` : ''}${nBolas ? `<b class="cd-n">🏀${nBolas}</b>` : ''}`;
+    // Nome + onde ele está (em palavras) + quantos pedidos dele esperam você.
+    const onde = po.pc[0] === 'on' ? 'no PC' : po.site[0] === 'on' ? 'no site' : 'fora';
+    chip.innerHTML = `<img src="${src}" alt=""><i class="cd-dot ${cls}"></i><span class="cd-txt"><span class="cd-nome">${esc(po.p)}</span><small class="cd-onde">${onde}</small></span>${po.ativa ? '<span class="cd-trab" title="A IA dele está trabalhando">⚙</span>' : ''}${nConf ? `<b class="cd-aviso" title="Conflito">⚠</b>` : ''}${nBolas ? `<b class="cd-n" title="${nBolas} pedido(s) dele esperando você">${nBolas} pedido${nBolas > 1 ? "s" : ""}</b>` : ''}`;
   });
   // Conflito novo: avisa uma vez (toast), sem repetir a cada redesenho.
   for (const c of conflitos()) {
     const k = 'cdConf:' + c.k; if (guardado(k, '')) continue; guarda(k, String(Date.now()));
-    ctx.toast({ titulo: '⚠ Possível conflito com ' + po.p, texto: c.texto.replace(/<[^>]+>/g, ''), cor: '#ffd23f', acao: () => ctx.abrirAba('dupla') });
+    ctx.toast({ titulo: 'Combine com o ' + po.p, texto: c.curto || c.texto.replace(/<[^>]+>/g, ''), cor: '#ffd23f', acao: () => ctx.abrirAba('dupla') });
   }
 }
 

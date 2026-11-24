@@ -22,8 +22,8 @@ export function iniciar(w) {
 // ======================= balões =======================
 export function falar(w, b, texto, seg = 3) {
   if (!b || !texto) return;
-  // um balão por vez na mesma rodinha: quem responde "apaga" a fala de quem está do lado
-  w.baloes = w.baloes.filter((x) => x.b !== b && Math.hypot(x.b.x - b.x, x.b.y - b.y) > 40);
+  // um balão por vez no mapa inteiro: a fala nova apaga a anterior (o mapa não vira um mural)
+  w.baloes = [];
   w.baloes.push({ id: ++w.idBalao, b, texto: texto.length > 60 ? texto.slice(0, 58) + '…' : texto, ate: w.t + seg });
 }
 const elBaloes = new Map();
@@ -38,7 +38,8 @@ export function desenharBaloes(w, g, cam) {
     if (!el) { el = document.createElement('div'); el.className = 'balao-vida'; el.textContent = bl.texto; camada.appendChild(el); elBaloes.set(bl.id, el); }
     const topo = bl.b.topo ?? bl.b.y - 31;
     el.style.transform = `translate(calc(${Math.round((bl.b.x - cam.x) * z)}px - 50%), calc(${Math.round((topo - 4 - cam.y) * z)}px - 100%))`;
-    el.classList.toggle('some', bl.ate - w.t < 0.3);
+    // se a pessoa abriu o balão de um boneco (seleção/mouse), a conversa de corredor some até ele fechar
+    el.classList.toggle('some', bl.ate - w.t < 0.3 || !!w.calado);
   }
   for (const [id, el] of elBaloes) if (!vivos.has(id)) { el.remove(); elBaloes.delete(id); }
   // cartão do item tocado
