@@ -78,6 +78,13 @@ export async function montarPersonagem(spec) {
   const chave = JSON.stringify(spec);
   if (cache.has('p:' + chave)) return cache.get('p:' + chave);
   const tarefa = (async () => {
+    // pede todas as camadas de uma vez (antes ia uma por uma: ~17 s para abrir num 4G lento)
+    for (const slot of ORDEM) {
+      if (slot === 'olhos') { ['whites', 'iris.both', 'lashes'].forEach((parte) => imagem(`personagens/eyes/plain/${parte}.png`)); continue; }
+      if (spec.full && (slot === 'top' || slot === 'pants')) continue;
+      const v = slot === 'body' ? [spec.body || 'flat', spec.pele] : spec[slot];
+      if (v) imagem(`personagens/${slot}/${(Array.isArray(v) ? v : [v])[0]}.png`);
+    }
     const w = await guardaRoupa();
     const cv = criarCanvas(128, 96), x = cv.getContext('2d');
     for (const slot of ORDEM) {
@@ -152,6 +159,6 @@ export const MOVEIS = {
 };
 export async function carregarMoveis() {
   const out = {};
-  for (const [k, v] of Object.entries(MOVEIS)) out[k] = Array.isArray(v) ? await Promise.all(v.map(imagem)) : await imagem(v);
+  await Promise.all(Object.entries(MOVEIS).map(async ([k, v]) => { out[k] = Array.isArray(v) ? await Promise.all(v.map(imagem)) : await imagem(v); }));
   return out;
 }

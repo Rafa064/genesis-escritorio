@@ -11,6 +11,7 @@ const hash = (n) => [...String(n)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >
 
 export async function criarMundo() {
   const planta = montarPlanta();
+  montarPersonagem({}).catch(() => null); // já pede o guarda-roupa (167 KB) junto com os móveis
   const mv = await carregarMoveis();
   const fundo = novoCanvas(MW * T, MH * T);
   const b = fundo.getContext('2d');
@@ -18,6 +19,8 @@ export async function criarMundo() {
 
   // ---- pisos (cada combinação piso+cor é colorida uma vez) ----
   const pisos = new Map();
+  const tiposPiso = new Set(planta.tipo.flat().filter((t) => t > 0));
+  await Promise.all([...[...tiposPiso].map((t) => imagem(`pisos/floor_${t - 1}.png`)), imagem('paredes/wall_0.png')]); // todos de uma vez
   const pisoDe = async (t, c) => {
     const k = t + JSON.stringify(c);
     if (!pisos.has(k)) pisos.set(k, colorir(await imagem(`pisos/floor_${t - 1}.png`), c));
@@ -89,6 +92,8 @@ class Mundo {
     // ferramentas (PixelLab, Render, Godot...) não são bonecos: viram itens que voam até quem usa
     const itens = todos.filter((a) => a.item || vida.ehItem(a.nome)), lista = todos.filter((a) => !itens.includes(a));
     const vistos = new Set();
+    // monta os bonecos novos em paralelo (o laço abaixo só espera o que já está pronto)
+    await Promise.all(lista.filter((a) => !this.agentes.has(a.id)).map((a) => montarPersonagem(visualDe(a.nome)).catch(() => null)));
     for (const a of lista) {
       vistos.add(a.id);
       let b = this.agentes.get(a.id);

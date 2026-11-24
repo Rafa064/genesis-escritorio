@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estúdio Genesis</title>
 <meta name="description" content="Escritório virtual do Rafael e do Kenny: veja as IAs trabalhando e fale com a sua assistente.">
-<meta name="theme-color" content="#15131b">
+<meta name="theme-color" content="#5a3a22">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,25 +15,35 @@
 <link rel="icon" href="icones/icone-64.png?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Pixelify+Sans:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Pede todos os módulos junto com o app.js (antes: só depois dele chegar, em cascata). -->
+<link rel="modulepreload" href="js/app.js">
+<link rel="modulepreload" href="js/config.js"><link rel="modulepreload" href="js/mapa.js"><link rel="modulepreload" href="js/mundo.js"><link rel="modulepreload" href="js/arte.js">
+<link rel="modulepreload" href="js/personagens.js"><link rel="modulepreload" href="js/humano.js"><link rel="modulepreload" href="js/frentes.js"><link rel="modulepreload" href="js/tipos.js">
+<link rel="modulepreload" href="js/dados.js"><link rel="modulepreload" href="js/rede.js"><link rel="modulepreload" href="js/funcoes-hoje.js"><link rel="modulepreload" href="js/comando-ctx.js">
+<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js">
+<link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js">
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm" crossorigin>
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
 <link rel="stylesheet" href="estilo-novo.css">
 <link rel="stylesheet" href="estilo-mundo.css">
 <link rel="stylesheet" href="estilo-funcoes.css">
 <link rel="stylesheet" href="estilo-comando.css">
+<link rel="stylesheet" href="estilo-pixel.css">
 </head>
 <body>
 <header id="topo">
   <div class="logo"><span class="quad"></span><span class="nome-logo">Estúdio Genesis</span></div>
   <!-- Uma barra só: no PC fica aqui em cima; no celular o CSS a leva para baixo da tela. -->
   <nav class="nav" id="nav" aria-label="Destinos">
-    <button data-nav="mapa" title="Escritório: o mapa"><span class="ico">🏢</span><span class="txt">Escritório</span></button>
-    <button data-nav="conversas" title="Conversas: assistente e dupla (C / M)"><span class="ico">💬</span><span class="txt">Conversas</span></button>
-    <button data-nav="atividade" title="Atividade: resumo, missões e histórico (H / L)"><span class="ico">◷</span><span class="txt">Atividade</span></button>
-    <button data-nav="quadro" title="Quadro de marcos (B)"><span class="ico">▥</span><span class="txt">Quadro</span></button>
-    <button data-nav="equipe" title="Equipe: quem é quem (Tab / I)"><span class="ico">🧩</span><span class="txt">Equipe</span></button>
-    <button data-nav="mais" title="Mais: Diário, Galeria, Ajustes e Ajuda (J / G)"><span class="ico">⋯</span><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
+    <!-- ícones pixel 16x16 desenhados aqui mesmo (mesma cor do texto, sem emoji misturado) -->
+    <button data-nav="mapa" title="Escritório: o mapa"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M7 1h2v1h2v1h2v1h2v2h-1v8H9v-4H7v4H2V6H1V4h2V3h2V2h2zM4 7h2v2H4zM10 7h2v2h-2z"/></svg><span class="txt">Escritório</span></button>
+    <button data-nav="conversas" title="Conversas: assistente e dupla (C / M)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M2 2h12v1h1v7h-1v1H7v1H6v1H5v1H4v-3H2v-1H1V3h1zM4 6h2v2H4zM7 6h2v2H7zM10 6h2v2h-2z"/></svg><span class="txt">Conversas</span></button>
+    <button data-nav="atividade" title="Atividade: resumo, missões e histórico (H / L)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M5 1h6v1h2v2h1v2h1v4h-1v2h-1v2h-2v1H5v-1H3v-2H2v-2H1V6h1V4h1V2h2zM5 3h6v1h1v1h1v6h-1v1h-1v1H5v-1H4v-1H3V5h1V4h1zM7 5h2v4h3v2H7z"/></svg><span class="txt">Atividade</span></button>
+    <button data-nav="quadro" title="Quadro de marcos (B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M1 2h14v12H1zM2 4h12v9H2zM3 5h3v3H3zM7 5h2v6H7zM10 5h3v4h-3z"/></svg><span class="txt">Quadro</span></button>
+    <button data-nav="equipe" title="Equipe: quem é quem (Tab / I)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h3v3H3zM10 2h3v3h-3zM2 6h5v1h2V6h5v1h1v6H1V7h1z"/></svg><span class="txt">Equipe</span></button>
+    <button data-nav="mais" title="Mais: Hoje, Diário, Galeria, Ajustes e Ajuda (J / G)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7h3v3H1zM6.5 7h3v3h-3zM12 7h3v3h-3z"/></svg><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
   </nav>
   <div id="gente" class="gente"></div>
   <div id="statusTopo" class="status-topo"></div>
@@ -52,7 +62,10 @@
       <button type="button" id="bcNova" title="Começar uma conversa nova">＋</button>
       <button class="btn forte" id="bcEnviar" title="Enviar (Enter)">Enviar</button>
       <span id="bcEstado" class="bc-estado"></span>
+      <button type="button" id="bcFechar" class="bc-fechar" title="Recolher" aria-label="Recolher a caixa de pedido">▾</button>
     </form>
+    <!-- No celular a barra começa recolhida neste botão (o mapa fica livre). -->
+    <button type="button" id="bcAbrir" class="bc-abrir"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 1h2v1h1v1h1v2h-1v1h-1v1h-1v1h-1v1H9v1H8v1H7v1H6v1H2v-4h1v-1h1V9h1V8h1V7h1V6h1V5h1V4h1V3h1V2h1z"/></svg>Pedir algo</button>
     <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos <button type="button" class="glo" data-glo="marco" aria-label="O que é marco?">?</button></h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
@@ -65,7 +78,7 @@
       <button id="btnAjuda" title="Ajuda e legenda (?)">?</button>
     </div>
     <div id="toasts"></div>
-    <div id="boasVindas" class="painel-px" hidden><b>Bem-vindo ao Estúdio!</b><span>Quem está <b>sentado</b> está trabalhando · <b>clique</b> num boneco para ver o que faz · o <b>sino</b> mostra o que precisa de você</span><button class="btn" id="fecharBoasVindas">Entendi</button></div>
+    <div id="boasVindas" class="painel-px" hidden><button type="button" class="bv-chip" id="bvChip" aria-expanded="false">👋 Primeira vez? Veja como funciona</button><b>Bem-vindo ao Estúdio!</b><span>Quem está <b>sentado</b> está trabalhando · <b>clique</b> num boneco para ver o que faz · o <b>✋</b> no topo mostra o que precisa de você</span><button class="btn" id="fecharBoasVindas">Entendi</button></div>
   </div>
 
   <aside id="gaveta" class="painel-px">
@@ -146,7 +159,7 @@
 <div id="jornal" class="modal" hidden><div class="jornal"><div id="conteudoJornal"></div><div class="jornal-rodape"><select id="edicoesJornal" title="Edições anteriores"></select><span class="espaco"></span><button class="btn" id="gerarJornal">Escrever a edição de hoje agora</button><button class="btn forte" id="fecharJornal">Fechar</button></div></div></div>
 <div id="ajuda" class="modal" hidden><div class="caixa-modal painel-px larga"><h2>Como ler o escritório</h2><div id="conteudoAjuda"></div><button class="btn forte" id="fecharAjuda">Fechar</button></div></div>
 <div id="glossario" class="glossario" role="tooltip" hidden></div>
-<div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p></div></div>
+<div id="carregando" class="modal"><div class="caixa-modal painel-px"><div class="logo grande"><span class="quad"></span>Estúdio Genesis</div><p class="sub" id="textoCarregando">Abrindo o escritório…</p><div class="carga" aria-hidden="true"><i></i></div></div></div>
 
 <script type="module" src="js/app.js"></script>
 </body>

@@ -697,10 +697,14 @@ function montarInterface() {
   $('#btnAjuda').onclick = abrirAjuda;
   $('#fecharAjuda').onclick = () => { $('#ajuda').hidden = true; };
   if (!guardado('boasVindas', '')) {
-    if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para mover · <b>pinça</b> para zoom';
+    if (matchMedia('(pointer: coarse)').matches || innerWidth <= 760) $('#boasVindas span').innerHTML = 'Quem está <b>sentado</b> está trabalhando · <b>toque</b> num boneco para ver o que faz · <b>arraste</b> para andar pelo mapa · o <b>✋</b> no topo mostra o que precisa de você';
+    // começa recolhido num chip pequeno: o mapa fica livre; tocar abre a explicação
+    $('#bvChip').onclick = () => { const a = $('#boasVindas').classList.toggle('aberto'); $('#bvChip').setAttribute('aria-expanded', a); };
     $('#boasVindas').hidden = false; $('#fecharBoasVindas').onclick = () => { $('#boasVindas').hidden = true; guarda('boasVindas', '1'); }; }
   dimensionar();
-  if (innerWidth <= 760) abrirAba('atencao'); else abrirAba(guardado('abaConversa', 'dupla'));
+  // No celular a primeira tela é o MAPA; o Resumo abre como folha no ✋ do topo.
+  if (innerWidth <= 760) { abrirAba('atencao'); fecharGaveta(); } else abrirAba(guardado('abaConversa', 'dupla'));
+  ligarVistaNoBody();
   registrarSw();
   abrirDeUrl(new URL(location.href));
   $('#buscaEquipe').oninput = (e) => { buscaEq = e.target.value; desenharEquipeVista(); };
@@ -774,7 +778,12 @@ function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ?
     naoVistasN ? `<button class="pend-topo" data-pend="conversas" title="${naoVistasN} resposta(s) ou mensagem(ns) que você ainda não viu">💬 <b>${naoVistasN}</b></button>` : '',
   ].join('');
   $('#statusTopo').innerHTML = `<span class="proj-topo ${ligada ? 'on' : 'off'}" title="${esc(`Projeto: ${projeto}${st.branch ? ' · ⎇ ' + st.branch : ''} · ponte ${ligada ? 'ligada: as IAs do seu PC estão conectadas' : 'desligada: o PC não está mandando notícias'}`)}"><i></i><span>${esc(projeto)}</span></span>${pend || '<span class="pend-ok" title="Nada esperando você">✓<span> em dia</span></span>'}`;
-  $('#statusTopo').onclick = (e) => { const b = e.target.closest('[data-pend]'); if (!b) return; if (b.dataset.pend === 'atencao') abrirAba('atencao'); else abrirAba(naoVistas.size ? 'chat' : 'dupla'); };
+  $('#statusTopo').onclick = (e) => {
+    const b = e.target.closest('[data-pend]'); if (!b) return;
+    const aberta = !$('#gaveta').classList.contains('fechada');
+    if (b.dataset.pend === 'atencao') { if (aberta && aba === 'atencao') fecharGaveta(); else abrirAba('atencao'); } // segundo toque no ✋ fecha a folha
+    else abrirAba(naoVistas.size ? 'chat' : 'dupla');
+  };
 }
 function todosAgentes() {
   const out = [];
@@ -1972,7 +1981,7 @@ async function enviarBarra() {
     caixa.value = ''; caixa.style.height = '';
     fecharEquipeVista(); fecharQuadro();
     if (destino !== conversaAtual) await abrirConversa(destino);
-    abrirAba('chat');                            // abre o painel mesmo se ele estava fechado (celular)
+    abrirAba('chat'); abrirBarraCel(false);      // abre o painel mesmo se ele estava fechado (celular)
     if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
     const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null);
     enviado = true;
@@ -1983,6 +1992,17 @@ async function enviarBarra() {
     toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' });
   } finally { enviandoBarra = false; $('#bcEnviar').disabled = false; }
   desenharChat(); desenharBarra();
+}
+function abrirBarraCel(abrir) {
+  document.body.classList.toggle('bc-aberta', !!abrir);
+  if (abrir) $('#bcTexto').focus();
+}
+// O que está no meio da tela (mapa, quadro ou equipe) vai para o <body>: o CSS esconde o que é só do mapa.
+function ligarVistaNoBody() {
+  const marcar = () => { document.body.dataset.vista = !$('#equipeVista').hidden ? 'equipe' : !$('#quadro').hidden ? 'quadro' : 'mapa'; };
+  const obs = new MutationObserver(marcar);
+  for (const el of [$('#equipeVista'), $('#quadro')]) obs.observe(el, { attributes: true, attributeFilter: ['hidden'] });
+  marcar();
 }
 function ligarBarra() {
   const f = $('#barraComando'); if (!f) return;
@@ -1999,6 +2019,10 @@ function ligarBarra() {
   // No celular a barra some quando a gaveta (tela cheia) está aberta: lá já tem a caixa da conversa.
   new MutationObserver(() => { document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada')); marcarChatAberto(); }).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
+  // Celular: a barra fica recolhida no botão "Pedir algo" e abre por cima do mapa só quando a pessoa quer pedir.
+  $('#bcAbrir').onclick = () => abrirBarraCel(true);
+  $('#bcFechar').onclick = () => abrirBarraCel(false);
+  $('#tela').addEventListener('pointerdown', () => { if (!$('#bcTexto').value.trim()) abrirBarraCel(false); });
   CB.ligarProjeto(f);
   desenharBarra();
 }
@@ -2010,7 +2034,7 @@ function ligarComandoNoApp() {
     conversaDaBarra, toast, abrirAba, abrirMissao, abrirMarco,
     ultimoPedido: () => mensagens.filter((m) => m.de === 'eu').at(-1)?.texto || '',
     enviarNoChat: (t) => { $('#entrada').value = t; return enviarChat(); },
-    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'), cx = chat ? $('#entrada') : $('#bcTexto'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
+    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'), cx = chat ? $('#entrada') : $('#bcTexto'); if (!chat) document.body.classList.add('bc-aberta'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
     // Pede pela barra: alvo (claude/codex), conversa nova (com projeto) ou a do alvo.
     pedirNaBarra: (t, alvo, { nova = false } = {}) => { alvoBarra = alvo === 'codex' ? 'codex' : 'claude'; guarda('alvoBarra', alvoBarra); novaNaBarra = !!nova; $('#bcTexto').value = t; return enviarBarra(); },
     setNova: (v) => { novaNaBarra = !!v; }, desenharBarra,
@@ -2052,7 +2076,7 @@ async function htmlEscalacao(m, { compacto = false, mapa = false } = {}) {
     <div class="esc-cab"><span class="esc-rei">👑</span><div class="esc-tit"><b>Escalação${m.pessoa !== EU.pessoa ? ' · ' + esc(m.pessoa) : ''} ${glo('escalação')}</b><small>${esc(primeiraFrase(m.titulo, 80))}</small></div><span class="esc-placar">${placar}</span>${mapa ? `<button class="esc-abrir" data-abrir-missao="${esc(m.id)}" title="Abrir a missão">›</button><button class="esc-recolher" title="Recolher">${hudFechado ? '▴' : '▾'}</button>` : ''}</div>
     <div class="esc-arvore">${linhas.join('')}</div></div>`;
 }
-let hudFechado = guardado('hudFechado', innerWidth <= 760 ? '1' : '') === '1'; // no celular começa recolhido
+let hudFechado = guardado('hudFechado', '1') === '1'; // começa recolhido num chip (o mapa fica livre); tocar abre
 function ligarEscalacao(el) {
   if (!el || el.dataset.escLigado) return;
   el.dataset.escLigado = '1';
