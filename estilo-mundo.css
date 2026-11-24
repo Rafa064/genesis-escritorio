@@ -1,0 +1,33 @@
+/* Mundo vivo no mapa: balões de conversa entre agentes, cartão de ferramenta e botão de som ambiente. */
+.balao-vida {
+  position: absolute; left: 0; top: 0; width: max-content; max-width: 190px;
+  padding: 4px 8px 5px; background: #fffaf0; color: #2a1d12;
+  font: 13px/1.2 var(--px, 'DotGothic16', monospace);
+  box-shadow: 0 0 0 2px #2a1d12, 3px 3px 0 2px rgba(20, 12, 6, .35);
+  white-space: normal; overflow-wrap: anywhere; pointer-events: none; z-index: 6;
+  animation: balao-vida-entra .22s steps(3) both;
+}
+.balao-vida::after { content: ""; position: absolute; left: 50%; bottom: -8px; margin-left: -4px; border: 4px solid transparent; border-top-color: #2a1d12; }
+.balao-vida.some { opacity: 0; transition: opacity .25s; }
+@keyframes balao-vida-entra { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+
+.cartao-vida {
+  position: absolute; left: 0; top: 0; width: max-content; max-width: 220px; display: grid; gap: 2px;
+  padding: 7px 10px 8px; background: #f4ecd8; color: #2a1d12;
+  font: 12.5px/1.3 var(--ui, system-ui, sans-serif);
+  box-shadow: 0 0 0 2px #6b4424, 0 0 0 4px #2a1a10, 4px 5px 0 3px rgba(20, 12, 6, .35);
+  pointer-events: none; z-index: 4; animation: balao-vida-entra .2s steps(3) both;
+}
+.cartao-vida b { font: 14px/1.2 var(--px, 'DotGothic16', monospace); color: #5a3418; }
+
+.som-ambiente {
+  position: absolute; right: 10px; top: 64px; z-index: 5;
+  width: 34px; height: 34px; padding: 0; display: grid; place-items: center;
+  font-size: 16px; line-height: 1; cursor: pointer; color: #2a1d12;
+  background: #e9dcc0; border: 0; border-radius: 0;
+  box-shadow: 0 0 0 2px #6b4424, 0 0 0 4px #2a1a10, 2px 3px 0 3px rgba(0, 0, 0, .3);
+  opacity: .92;
+}
+.som-ambiente:hover, .som-ambiente.on { opacity: 1; }
+.som-ambiente.on { background: #ffe9a8; }
+@media (max-width: 760px) { .som-ambiente { top: 60px; right: 8px; width: 30px; height: 30px; font-size: 14px; } .balao-vida { font-size: 12px; max-width: 160px; } }

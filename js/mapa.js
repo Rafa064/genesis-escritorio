@@ -118,7 +118,9 @@ export function montarPlanta() {
   m('plantaGrande', 13, 2, 32, 48); trava(13, 4, 14, 4);
   m('planta', 26, 9, 16, 32); trava(26, 10, 26, 10);
   m('planta2', 13, 9, 16, 32); trava(13, 10, 13, 10);
-  m('lixo', 16, 9, 16, 16); trava(16, 9, 16, 9);
+  m('lixo', 26, 7, 16, 16); trava(26, 7, 26, 7);
+  // estante das ferramentas (PixelLab, Blender, Godot...): desenhada em código (vida.js); os itens moram nela
+  trava(14, 9, 16, 9);
   const mural = { x: 14 * T + 16, y: 2 * T + 12, tile: [15, 2] };
 
   // ---------- duas alas: Criação (esquerda) e Marketing (direita) ----------
@@ -165,9 +167,10 @@ export function montarPlanta() {
   for (const [x, y] of [[13, 23], [26, 23], [1, 25], [38, 25]]) { m(x % 2 ? 'planta' : 'planta2', x, y, 16, 32); trava(x, y + 1, x, y + 1); }
   m('lixo', 12, 26, 16, 16); trava(12, 26, 12, 26);
   // lugares da copa (em pé, conversando, perto do café e dos sofás)
-  const copa = [[4, 24, 'esq'], [4, 25, 'esq'], [2, 25, 'cima'], [3, 26, 'cima'], [7, 26, 'cima'], [8, 26, 'cima'], [10, 24, 'esq'], [10, 25, 'esq'], [5, 23, 'baixo'],
-    [14, 24, 'dir'], [15, 26, 'dir'], [16, 23, 'baixo'], [22, 23, 'baixo'], [22, 26, 'esq'], [23, 24, 'esq'], [24, 25, 'esq'],
-    [28, 24, 'dir'], [28, 25, 'dir'], [30, 26, 'cima'], [31, 26, 'cima'], [33, 24, 'esq'], [33, 25, 'esq'], [35, 25, 'dir'], [36, 26, 'cima'], [35, 23, 'baixo'], [27, 26, 'cima']]
+  // (os primeiros da lista são espalhados: com pouca gente ninguém fica amontoado)
+  const copa = [[5, 23, 'baixo'], [10, 24, 'esq'], [14, 24, 'dir'], [23, 24, 'esq'], [28, 24, 'dir'], [33, 25, 'esq'], [3, 26, 'cima'], [16, 23, 'baixo'],
+    [31, 26, 'cima'], [36, 26, 'cima'], [22, 26, 'esq'], [7, 26, 'cima'], [35, 23, 'baixo'], [27, 26, 'cima'], [15, 26, 'dir'], [22, 23, 'baixo'],
+    [4, 24, 'esq'], [4, 25, 'esq'], [2, 25, 'cima'], [8, 26, 'cima'], [10, 25, 'esq'], [24, 25, 'esq'], [28, 25, 'dir'], [30, 26, 'cima'], [33, 24, 'esq'], [35, 25, 'dir']]
     .map(([x, y, dir], i) => ({ id: `copa|${i}`, copa: true, x: x * T + 8, y: y * T + 12, dir, tile: [x, y] }));
 
   // placas (texto por cima do mapa)
@@ -179,7 +182,40 @@ export function montarPlanta() {
   ];
   // pontos de passeio (só no salão e na copa)
   const passeio = [[15, 8], [16, 6], [21, 3], [23, 4], [26, 5], [15, 4]];
-  return { tipo, cor, solido, moveis, naParede, vidros, divisorias, lugares, assentos, copa, placas, mural, passeio };
+
+  // ---------- vida no mapa: janelas, luminárias, estante de ferramentas e pontos de rotina ----------
+  // janelas na parede de cima (o céu muda com o relógio de verdade)
+  // (as de cima ficam na parede do fundo; as "de lado" nas paredes laterais, visíveis no celular)
+  const janelas = [{ x: 2 * T, y: 3, w: 32 }, { x: 36 * T - 4, y: 3, w: 32 }, { x: 25 * T + 2, y: 3, w: 28 },
+    { x: 3, y: 15 * T, w: 10, h: 40, lado: true }, { x: 3, y: 23 * T + 6, w: 10, h: 36, lado: true },
+    { x: (MW - 1) * T + 3, y: 15 * T, w: 10, h: 40, lado: true }, { x: (MW - 1) * T + 3, y: 23 * T + 6, w: 10, h: 36, lado: true }];
+  // luminárias de chão (acendem à noite)
+  const luminarias = [];
+  for (const [x, y] of [[1, 2], [38, 2], [16, 2], [22, 2], [11, 23], [27, 23], [20, 15], [19, 21], [1, 18], [38, 18]]) if (!solido[y][x]) { luminarias.push({ x: x * T + 8, y: y * T + 14 }); trava(x, y, x, y); }
+  // estante das ferramentas: 3 tiles no salão (x 14..16, y 9), com 8 nichos
+  const estante = { x: 14 * T, y: 9 * T - 12, w: 3 * T, h: 26 };
+  const casasItens = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ x: estante.x + 6 + (i % 4) * 12, y: estante.y + (i < 4 ? 7 : 19) }));
+  // pontos de rotina de quem está livre: café, sofá, janela. aprox = tile onde a pessoa chega andando.
+  const P = (id, tipo, aprox, pose) => ({ id, tipo, aprox, pose });
+  const pe = (tx, ty, dir) => ({ x: tx * T + 8, y: ty * T + 12, dir });
+  const rotina = [
+    P('cafe1', 'cafe', [4, 23], pe(4, 23, 'esq')), P('cafe2', 'cafe', [3, 25], pe(3, 25, 'cima')),
+    P('cafe3', 'cafe', [35, 24], pe(35, 24, 'dir')), P('cafe4', 'cafe', [36, 25], pe(36, 25, 'cima')),
+    P('cafe5', 'cafe', [24, 4], pe(24, 4, 'cima')), P('cafe6', 'cafe', [25, 4], pe(25, 4, 'cima')),
+    // sofás da copa (esquerda e direita) e do salão: sentam em cima do sofá
+    P('sofa1', 'sofa', [7, 22], { x: 7 * T + 8, y: 23 * T + 13, dir: 'baixo', modo: 'sentado', ordem: 23 * T + 17 }),
+    P('sofa2', 'sofa', [8, 22], { x: 8 * T + 8, y: 23 * T + 13, dir: 'baixo', modo: 'sentado', ordem: 23 * T + 17 }),
+    P('sofa3', 'sofa', [5, 24], { x: 6 * T + 8, y: 24 * T + 20, dir: 'dir', modo: 'sentado', ordem: 24 * T + 33 }),
+    P('sofa4', 'sofa', [10, 25], { x: 9 * T + 8, y: 25 * T + 4, dir: 'esq', modo: 'sentado', ordem: 24 * T + 33 }),
+    P('sofa5', 'sofa', [30, 22], { x: 30 * T + 8, y: 23 * T + 13, dir: 'baixo', modo: 'sentado', ordem: 23 * T + 17 }),
+    P('sofa6', 'sofa', [31, 22], { x: 31 * T + 8, y: 23 * T + 13, dir: 'baixo', modo: 'sentado', ordem: 23 * T + 17 }),
+    P('sofa7', 'sofa', [28, 25], { x: 29 * T + 8, y: 25 * T + 4, dir: 'dir', modo: 'sentado', ordem: 24 * T + 33 }),
+    P('sofa8', 'sofa', [33, 24], { x: 32 * T + 8, y: 24 * T + 20, dir: 'esq', modo: 'sentado', ordem: 24 * T + 33 }),
+    P('sofa9', 'sofa', [18, 2], { x: 18 * T + 8, y: 3 * T + 13, dir: 'baixo', modo: 'sentado', ordem: 3 * T + 17 }),
+    P('sofa10', 'sofa', [19, 7], { x: 19 * T + 8, y: 6 * T + 8, dir: 'cima', modo: 'sentado', ordem: 6 * T + 6 }),
+    P('janela1', 'janela', [26, 2], pe(26, 2, 'cima')), P('janela2', 'janela', [25, 5], pe(25, 5, 'cima')),
+  ];
+  return { tipo, cor, solido, moveis, naParede, vidros, divisorias, lugares, assentos, copa, placas, mural, passeio, janelas, luminarias, estante, casasItens, rotina };
 
 }
 

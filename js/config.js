@@ -16,6 +16,8 @@ export const TITULOS = {
   balanceador: 'Balanceador',
   explorador: 'Explorador',
   'revisor-godot': 'Revisor Godot',
+  critico: 'Crítico',
+  'mixador-de-audio': 'Mixador de áudio',
   Codex: 'Codex',
   PixelLab: 'PixelLab',
   Blender: 'Blender',

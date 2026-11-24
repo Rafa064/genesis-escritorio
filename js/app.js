@@ -9,6 +9,12 @@ import { JOGOS, SETORES, jogoPorId, setorPorId, todosJogos, frente, frentePorId,
 import { TIPOS, tipoDe, etiquetaTipo, descricaoHumana, conectorDe, nomeConector } from './tipos.js';
 import * as D from './dados.js';
 import * as R from './rede.js';
+import * as Hoje from './funcoes-hoje.js';
+import { ligarComando } from './comando-ctx.js';
+import * as CE from './comando-erros.js';
+import * as CP from './comando-progresso.js';
+import * as CDu from './comando-dupla.js';
+import * as CB from './comando-barra.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -135,6 +141,7 @@ const vazioMesa = (p, nome) => ({ k: `${p}|${nome}`, pessoa: p, nome, titulo: ti
 // senta numa mesa livre da ala (setor) e da fileira (jogo) da tarefa; quem está livre vai para a copa.
 const ocupacao = new Map(); // agente -> id do lugar (para ninguém trocar de mesa à toa)
 const TRABALHANDO = ['trab', 'semsinal', 'alerta', 'erro']; // sem sinal: ainda rodando (fica na mesa), só está calado
+const TIME_SEMPRE = ['explorador', 'balanceador', 'revisor-godot', 'artista-3d', 'criador-de-conteudo', 'editor-de-video', 'mixador-de-audio', 'critico'];
 function mesasDoMundo() {
   const ps = pessoas(), eq = D.equipes(), lista = [], usados = new Set();
   for (const l of mundo.planta.lugares) {
@@ -156,16 +163,23 @@ function mesasDoMundo() {
   };
   // as outras abas do Claude (além da que está na recepção) entram como se fossem agentes
   const outrasAbas = ps.flatMap((p) => D.abas().filter((a) => a.pessoa === p).slice(1));
-  const outros = [...ps.flatMap((p) => [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex')), ...outrasAbas];
-  const comEstado = outros.map((m) => ({ m, st: D.estadoDe(m).cls })).sort((a, b) => b.m.ult.t - a.m.ult.t);
+  // O time inteiro sempre aparece (quem está livre faz a rotina: café, sofá, papo); ferramentas viram itens, não bonecos.
+  const ehFerramenta = (n) => ['conector', 'programa'].includes(tipoDe(n));
+  const outros = [...ps.flatMap((p) => {
+    const mesas = [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex'), tem = new Set(mesas.map((m) => m.nome));
+    for (const n of new Set([...TIME_SEMPRE, ...agentesInfo(p).map((a) => a.nome)])) if (n && !tem.has(n)) mesas.push(vazioMesa(p, n));
+    return mesas;
+  }), ...outrasAbas];
+  for (const m of outros) if (ehFerramenta(m.nome)) lista.push({ id: m.k, nome: m.nome, item: true, status: D.estadoDe(m).cls, pessoa: m.pessoa, m });
+  const comEstado = outros.filter((m) => !ehFerramenta(m.nome)).map((m) => ({ m, st: D.estadoDe(m).cls })).sort((a, b) => (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
   const A = mundo.planta.assentos;
   for (const { m, st } of comEstado.filter((x) => TRABALHANDO.includes(x.st))) {
     const fr = D.frenteDaMesa(m) || frente('genesis', 'criacao');
     const l = pega(m.k, [A.filter((a) => a.setor === fr.setor && a.jogo === fr.jogo), A.filter((a) => a.setor === fr.setor), A]);
     if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor });
   }
-  // Na copa: quem trabalhou nas últimas 24 h (os outros nem aparecem no mapa).
-  for (const { m, st } of comEstado.filter((x) => !TRABALHANDO.includes(x.st) && Date.now() - x.m.ult.t < 24 * 3600e3)) {
+  // Na copa (e na rotina dela): todo o time que não está trabalhando.
+  for (const { m, st } of comEstado.filter((x) => !TRABALHANDO.includes(x.st))) {
     const l = pega(m.k, [mundo.planta.copa]);
     if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st === 'fim' ? 'fim' : 'livre', ferramenta: null, pessoa: m.pessoa, m });
   }
@@ -186,18 +200,20 @@ function ligarRede() {
   R.on('recado', (p) => {
     if (p.eventType === 'INSERT' && !recados.some((r) => r.id === p.new.id)) {
       recados.unshift(p.new);
-      if (p.new.cor !== 'reacao') balaoPessoa(p.new.pessoa, p.new.cor === 'missao' ? '📎 ' + (lerJson(p.new.texto).titulo || 'missão') : p.new.texto);
+      if (p.new.cor !== 'reacao' && p.new.cor !== 'bola-ok') balaoPessoa(p.new.pessoa, p.new.cor === 'missao' ? '📎 ' + (lerJson(p.new.texto).titulo || 'missão') : CDu.resumoRecado(p.new) ?? p.new.texto);
       if (p.new.pessoa !== EU.pessoa) {
-        const r = p.new, txt = r.cor === 'reacao' ? `reagiu ${r.texto.split(' ')[0]}` : r.cor === 'missao' ? `compartilhou: ${lerJson(r.texto).titulo || 'uma missão'}` : r.texto;
+        const r = p.new, txt = r.cor === 'reacao' ? `reagiu ${r.texto.split(' ')[0]}` : r.cor === 'missao' ? `compartilhou: ${lerJson(r.texto).titulo || 'uma missão'}` : CDu.resumoRecado(r) ?? r.texto;
         toast({ titulo: r.cor === 'reacao' ? `${r.pessoa} ${txt}` : `${r.pessoa} na conversa da dupla`, texto: r.cor === 'reacao' ? '' : txt, cor: corPessoa(r.pessoa), acao: () => abrirAba('dupla') });
         if (r.cor !== 'reacao') { som('recado'); notificar(`${r.pessoa} mandou mensagem`, txt); }
       }
     }
     if (p.eventType === 'DELETE') recados = recados.filter((r) => r.id !== p.old.id);
     if (aba === 'dupla') desenharDupla(); else agendarInterface();
+    CDu.desenhar();
   });
   R.on('estado', (e) => { estados.set(e.pessoa, { ...estados.get(e.pessoa), ...e }); lerFichas(e); if (e.info?.pastas) { definirPastas(e.pessoa, e.info.pastas); D.mudou(); } agendarInterface(); if (aba === 'atencao') desenharAtencao(); });
   R.on('chat', (c) => {
+    CE.viuMensagem(c); if (c.de === 'assistente') CE.viuResposta();
     // Vai para a lista da aba dela (a aberta ou uma já carregada antes): a aba volta de onde parou.
     const atual = (c.conversa_id ?? null) === conversaAtual, lista = atual ? mensagens : cacheMsgs.get(c.conversa_id);
     if (lista && !lista.some((m) => m.id === c.id)) {
@@ -399,6 +415,7 @@ function tocarMapa(ev) {
   const [x, y] = telaParaMundo(ev);
   const b = boneconoPonto(x, y);
   if (b) { abrirAgente(b); return; }
+  if (mundo.tocarItem?.(x, y)) return; // ferramenta (item) no mapa: cartão do que está fazendo
   const ponto = PONTOS.find((p) => Math.hypot(p.x - x, p.y - y) < 18);
   if (ponto) { ponto.acao(); return; }
   const outro = [...mundo.pessoas.values()].find((p) => Math.abs(p.x - x) < 9 && y > p.y - 30 && y < p.y + 3);
@@ -647,7 +664,7 @@ $('#nav').onclick = (e) => { const b = e.target.closest('[data-nav]'); if (b) ir
 
 let pendenteUI = false;
 let montada = false; // nada de redesenhar painéis antes da interface existir (carregamento lento no celular)
-function agendarInterface() { if (!montada || pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); desenharBarra(); if (aba === 'chat') desenharHudChat(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
+function agendarInterface() { if (!montada || pendenteUI) return; pendenteUI = true; setTimeout(() => { pendenteUI = false; desenharTopo(); desenharHud(); desenharHudMapa(); desenharBarra(); if (aba === 'chat') desenharHudChat(); CDu.desenhar(); if (!$('#equipeVista').hidden) desenharEquipeVista(); if (!['chat', 'dupla'].includes(aba)) desenharAba(); }, 150); }
 setInterval(agendarInterface, 15e3);
 
 function montarInterface() {
@@ -690,7 +707,8 @@ function montarInterface() {
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
   $('#equipeCorpo').onclick = (e) => { const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
-  desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra();
+  ligarComandoNoApp();
+  desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra(); ligarHoje();
   montada = true;
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
@@ -769,7 +787,7 @@ function todosAgentes() {
 // ---------- abas ----------
 function desenharAba() {
   if (!mundo || $('#gaveta').classList.contains('fechada')) return;
-  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, item: desenharItem, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco })[aba]?.();
+  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, item: desenharItem, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco, hoje: () => Hoje.desenhar() })[aba]?.();
 }
 function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
@@ -1806,8 +1824,7 @@ function desenharChat() {
   if (conv && !$('#gaveta').classList.contains('fechada') && !document.hidden && naoVistas.delete(conv.id)) { salvarAbas(); desenharSeletorConversas(); }
   $('#alvoAtual').className = `alvo ${gpt ? 'gpt' : 'claude'}`; $('#alvoAtual').textContent = gpt ? 'Codex · GPT' : 'Claude';
   const ponte = st.ponte_visto && Date.now() - new Date(st.ponte_visto).getTime() < 150e3;
-  const [cor, txt] = st.pausado ? ['#ef6a55', 'Pausada (Ajustes › tirar a pausa)'] : !ponte ? ['#6f6788', 'Sua ponte está desligada: o pedido roda quando ela ligar (até 3 min)'] : ocupada ? ['#f0973d', 'Trabalhando nesta aba…'] : ['#4fbf82', `Pronta · ${conv?.projeto || st.projeto || 'genesis-game'}${st.branch ? ' · ⎇ ' + st.branch : ''}`];
-  $('#estadoPonte').innerHTML = `<i style="--cor:${cor}"></i>${esc(txt)}`;
+  $('#estadoPonte').innerHTML = CE.htmlEstado({ st, ponte, ocupada, conv, gpt });
   const msgs = $('#msgs'), noFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60;
   let html = '', rodada = [];
   const fechar = () => { if (rodada.length) html += htmlRodada(rodada, gpt); rodada = []; };
@@ -1820,7 +1837,7 @@ function desenharChat() {
   const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && (!conv || a.conversa_id === conv.id || !a.conversa_id));
   html += pend.map(cartaoAprovacao).join('');
   msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Peça algo!` : `Oi, ${esc(EU.pessoa)}! Crie uma aba (+) para cada tarefa: com a assistente (Claude) ou com o Codex (GPT). Abas diferentes rodam ao mesmo tempo.`}</div>`;
-  ligarAprovacoes(msgs);
+  ligarAprovacoes(msgs); CE.decorarErros(msgs);
   if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { msgs.scrollTop = rolarPendente < 0 ? msgs.scrollHeight : rolarPendente; rolarPendente = null; }
   else if (noFim) msgs.scrollTop = msgs.scrollHeight;
   $('#btnEnviar').textContent = ocupada ? 'Pôr na fila' : 'Enviar';
@@ -1854,7 +1871,7 @@ const CORES_FIXADO = { amarelo: '#ffe58a', rosa: '#ffc2d4', azul: '#bfe0ff', ver
 const REACOES = ['👍', '❤️', '😂', '🔥', '✅', '👀'];
 let reagindo = null;
 async function mandarRecado(texto, cor) {
-  if (DEMO) { recados.unshift({ id: Date.now(), pessoa: EU.pessoa, texto, cor, criado: new Date().toISOString() }); if (cor !== 'reacao') balaoPessoa(EU.pessoa, cor === 'missao' ? '📎 ' + (lerJson(texto).titulo || '') : texto); desenharDupla(); return; }
+  if (DEMO) { recados.unshift({ id: Date.now(), pessoa: EU.pessoa, texto, cor, criado: new Date().toISOString() }); if (cor !== 'reacao' && cor !== 'bola-ok') balaoPessoa(EU.pessoa, cor === 'missao' ? '📎 ' + (lerJson(texto).titulo || '') : CDu.resumoRecado({ cor, texto }) ?? texto); desenharDupla(); return; }
   await R.recado(texto, cor);
 }
 async function enviarDupla(rapida) {
@@ -1904,6 +1921,7 @@ function desenharDupla() {
     const rb = e.target.closest('[data-reagir]'); if (rb) { reagindo = null; reagir(Number(rb.closest('[data-id]').dataset.id), rb.dataset.reagir); return; }
     const b = e.target.closest('.bolha'); if (b) { const id = Number(b.dataset.id); reagindo = reagindo === id ? null : id; desenharDupla(); }
   };
+  CDu.desenhar();
   $('#fixados').onclick = async (e) => { const b = e.target.closest('[data-tirar]'); if (b) { if (DEMO) { recados = recados.filter((r) => r.id !== Number(b.dataset.tirar)); desenharDupla(); } else await R.tirarRecado(Number(b.dataset.tirar)); } };
 }
 
@@ -1913,7 +1931,7 @@ let pessoaCatalogo = null;
 // Fica embaixo do mapa e das outras telas (some quando o painel do chat está aberto: lá a caixa fica embaixo
 // da conversa). Manda para a aba aberta (ou a mais recente do alvo escolhido, ou uma nova com o "+")
 // e mostra para qual aba vai, com a cor e o nome dela.
-let alvoBarra = guardado('alvoBarra', 'claude') === 'codex' ? 'codex' : 'claude', novaNaBarra = false;
+let alvoBarra = guardado('alvoBarra', 'claude') === 'codex' ? 'codex' : 'claude', novaNaBarra = false, projetoBarra = null;
 function desenharBarra() {
   const f = $('#barraComando'); if (!f || !EU) return;
   $$('#bcAlvo [data-alvo]').forEach((b) => b.classList.toggle('on', b.dataset.alvo === alvoBarra));
@@ -1921,10 +1939,10 @@ function desenharBarra() {
   const st = estados.get(EU.pessoa) || {}, ligado = pcLigado(EU.pessoa);
   const conv = conversaDaBarra();
   $('#bcTexto').placeholder = innerWidth <= 760 ? (alvoBarra === 'codex' ? 'Peça ao Codex…' : 'Peça algo…') : `${alvoBarra === 'codex' ? 'Peça ao Codex' : 'Peça à sua assistente'}${conv ? ` · ${conv.titulo}` : ' · conversa nova'}…`;
-  const [cor, txt] = st.pausado ? ['#ef6a55', 'pausada'] : !ligado ? ['#8a8fa6', 'PC desligado: o pedido espera a ponte'] : (conv && convOcupada(conv.id)) ? ['#f0973d', 'esta aba está trabalhando (vai para a fila)'] : ['#4fbf82', 'pronta'];
+  const [cor, txt] = CE.estadoBarra({ st, ligado, ocupada: conv && convOcupada(conv.id), alvo: alvoBarra });
   const v = visualAba(conv);
   const destinoHtml = conv ? `<span class="bc-aba" style="--cor:${v.cor}" title="O pedido vai para esta aba">→ ${v.icone} ${esc(conv.titulo)}</span>` : '<span class="bc-aba nova">→ ＋ aba nova</span>';
-  $('#bcEstado').innerHTML = `${destinoHtml}<i style="--cor:${cor}"></i>${esc(txt)}`;
+  $('#bcEstado').innerHTML = `${destinoHtml && CB.htmlDestino(conv, alvoBarra, v)}${CB.htmlProjeto(conv)}<span class="bc-st${cor === '#4fbf82' ? ' ok' : ''}" title="${esc(txt)}"><i style="--cor:${cor}"></i>${esc(txt)}</span>`;
   f.style.setProperty('--cor-aba', conv ? v.cor : '');
   $('#bcNova').classList.toggle('on', novaNaBarra);
 }
@@ -1945,12 +1963,12 @@ async function enviarBarra() {
     if (temSql2) {
       conv = conversaDaBarra();
       if (!conv && !DEMO) {
-        conv = await R.novaConversa({ titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome || null });
+        conv = await R.novaConversa({ titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: projetoBarra || CB.projetoNovo() || null });
         conversas = [conv, ...conversas];
-      }
+      } else if (!conv && DEMO) { conv = { id: Date.now(), titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: CB.projetoNovo(), atualizado: new Date().toISOString() }; conversas = [conv, ...conversas]; cacheMsgs.set(conv.id, []); }
     }
     const destino = conv?.id ?? null;           // capturado AGORA: trocar de conversa no meio não muda o destino
-    novaNaBarra = false;
+    novaNaBarra = false; projetoBarra = null;
     caixa.value = ''; caixa.style.height = '';
     fecharEquipeVista(); fecharQuadro();
     if (destino !== conversaAtual) await abrirConversa(destino);
@@ -1981,7 +1999,34 @@ function ligarBarra() {
   // No celular a barra some quando a gaveta (tela cheia) está aberta: lá já tem a caixa da conversa.
   new MutationObserver(() => { document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada')); marcarChatAberto(); }).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
+  CB.ligarProjeto(f);
   desenharBarra();
+}
+// Frente "comando e coordenação" (js/comando-*.js): o que os módulos podem ler e fazer.
+function ligarComandoNoApp() {
+  ligarComando({
+    eu: () => EU, estado: (p) => estados.get(p), outra: () => outraPessoa(), corPessoa, retrato: retratoDe,
+    presente: (p) => presentes.get(p), pcLigado, recados: () => recados, marcos: () => marcos, marcoDaMissao,
+    conversaDaBarra, toast, abrirAba, abrirMissao, abrirMarco,
+    ultimoPedido: () => mensagens.filter((m) => m.de === 'eu').at(-1)?.texto || '',
+    enviarNoChat: (t) => { $('#entrada').value = t; return enviarChat(); },
+    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'), cx = chat ? $('#entrada') : $('#bcTexto'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
+    // Pede pela barra: alvo (claude/codex), conversa nova (com projeto) ou a do alvo.
+    pedirNaBarra: (t, alvo, { nova = false } = {}) => { alvoBarra = alvo === 'codex' ? 'codex' : 'claude'; guarda('alvoBarra', alvoBarra); novaNaBarra = !!nova; $('#bcTexto').value = t; return enviarBarra(); },
+    setNova: (v) => { novaNaBarra = !!v; }, desenharBarra,
+    mudarAlvo: (a) => { alvoBarra = a; guarda('alvoBarra', a); desenharBarra(); abrirChatCom(a); },
+    novaConversa: () => mostrarNovaConversa(alvoAtual()),
+    tirarPausa: async () => { if (DEMO) { const st = estados.get(EU.pessoa); if (st) st.pausado = false; } else await R.pausar(false); desenharChat(); desenharBarra(); },
+    parar: () => {
+      if (DEMO) { for (const [k, v] of comandosAbertos) if (v === conversaAtual) comandosAbertos.delete(k); desenharChat(); desenharBarra(); desenharSeletorConversas(); return toast({ titulo: 'Parei esta conversa', cor: '#f0973d' }); }
+      R.parar(temSql2 ? conversaAtual : null).then(({ error }) => toast(error ? { titulo: 'Não consegui parar', texto: error.message, cor: '#ef6a55' } : { titulo: 'Pedi para parar', texto: 'A ponte para esta conversa em alguns segundos.', cor: '#f0973d' }));
+    },
+    mandarRecado, tirarRecado: async (r) => { if (DEMO) recados = recados.filter((x) => x !== r); else await R.tirarRecado(r.id); },
+    abrirBola: (o) => CDu.abrirBola(o),
+  });
+  CE.ligarAcoes($('#estadoPonte')); CE.ligarAcoes($('#msgs'));
+  CP.ligarAgora($('#hudChat'), () => missaoDaConversa(conversas.find((c) => c.id === conversaAtual)));
+  CDu.desenhar();
 }
 
 // ======================= HUD de escalação (quem a assistente chamou, ao vivo) =======================
@@ -2027,10 +2072,12 @@ function missaoDaConversa(conv) {
 }
 async function desenharHudChat() {
   const el = $('#hudChat'); if (!el || !EU) return;
-  const m = missaoDaConversa(conversas.find((c) => c.id === conversaAtual));
-  const ativa = m && (!m.fim || Date.now() - m.fim < 30 * 60e3);
-  if (!ativa) { el.hidden = true; el.innerHTML = ''; return; }
-  el.hidden = false; el.innerHTML = await htmlEscalacao(m, { compacto: true });
+  const conv = conversas.find((c) => c.id === conversaAtual), m = missaoDaConversa(conv), ocupada = convOcupada(conversaAtual);
+  const html = CP.htmlAgora({ m, conv, ocupada, escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
+  if (!html) { el.hidden = true; el.innerHTML = ''; return; }
+  const esc0 = el.querySelector('.cp-esc'), escAberta = esc0 && !esc0.hidden;
+  el.hidden = false; el.innerHTML = html;
+  if (escAberta) { el.querySelector('.cp-esc')?.removeAttribute('hidden'); const b = el.querySelector('[data-cp=escalacao]'); if (b) b.textContent = 'Quem faz o quê ▴'; }
 }
 // Cartão sobre o mapa: a escalação da missão que está rodando (a sua primeiro).
 async function desenharHudMapa() {
@@ -2188,9 +2235,24 @@ async function pedirCom(x) {
 // ---------- "Mais" (⋯): Diário, Galeria, Ajustes e Ajuda ----------
 function desenharMais() {
   const j = jornais.find((x) => x.conteudo);
-  const itens = [['jornal', '▤', 'Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório e os atalhos']];
+  const itens = [['hoje', '☀', 'Hoje', 'Sugestões de pedido, fila dos agentes e custo de IA'], ['jornal', '▤','Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', '▣', 'Galeria', 'Vídeos e imagens entregues'], ['ajustes', '⚙', 'Ajustes', 'Status, avisos, convite, pausa'], ['ajuda', '?', 'Ajuda', 'Como ler o escritório e os atalhos']];
   $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ic}</span><b>${t}</b><small>${d}</small></button>`).join('');
   $('#listaMais').onclick = (e) => { const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba; if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else abrirAba(id, true); };
+}
+
+// ---------- painel "Hoje" (funcoes-hoje.js): sugestões do dia, fila por agente, custo de IA ----------
+TITULO_ABA.hoje = 'Hoje'; NAV_DA_ABA.hoje = 'mais';
+// "Mandar" de uma sugestão: vai pela barra de comando, numa conversa nova do alvo e projeto dela.
+async function mandarPronto(texto, { alvo, projeto } = {}) {
+  if (alvo === 'claude' || alvo === 'codex') { alvoBarra = alvo; guarda('alvoBarra', alvo); }
+  novaNaBarra = true; projetoBarra = projeto || null;
+  $('#bcTexto').value = texto;
+  await enviarBarra();
+}
+function ligarHoje() {
+  Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto,
+    eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
+    abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
 }
 
 // ---------- jornal ----------
@@ -2389,6 +2451,20 @@ async function iniciarDemo() {
   conversaAtual = 1; chatCarregadoDe = 1;
   mensagens = [{ de: 'eu', texto: 'Faz o Short "Raio + Fogo = ?" e pede nota ao Codex' }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Read', entrada: { file_path: 'shots.json' } }) }, { de: 'ferramenta', texto: JSON.stringify({ ferramenta: 'Agent', entrada: { subagent_type: 'editor-de-video', description: 'montar Short' } }) }, { de: 'assistente', texto: 'Mandei o **Editor** montar o Short (~19 s, corte no compasso). Quando sair o render, peço a nota ao `Codex`.\n- trilha: menu 129 BPM\n- 5 cortes' }, { de: 'sistema', texto: JSON.stringify({ nota: { ms: 130000, custo: 0.42, entrada: 2100, saida: 9800, cacheCriado: 33000, cacheLido: 1200000, modelos: ['claude-opus-4-5', 'claude-haiku-4-5'] } }) }];
   cacheMsgs.set(1, mensagens); comandosAbertos.set(-1, 1); // demo: a aba 1 trabalhando
+  // demo da frente "comando e coordenação": resultado pronto, erro de login, conflito e bolas com o Kenny
+  conversas.push({ id: 3, titulo: '🏢 Frentes do escritório', alvo: 'claude', projeto: 'genesis-estudio', sessao: 's4', atualizado: new Date(ag - 170 * 60e3).toISOString() }, { id: 4, titulo: '🎬 Trailer v2', alvo: 'claude', projeto: 'genesis-game', atualizado: new Date(ag - 30 * 60e3).toISOString() });
+  cacheMsgs.set(3, [{ de: 'eu', texto: 'Melhora o escritório: frentes, histórico e conversa da dupla' }, { de: 'assistente', texto: 'Pronto: faixa de frentes no mapa, missões agrupadas, histórico por dia e a conversa da dupla.' }]);
+  cacheMsgs.set(4, [{ de: 'eu', texto: 'Renderiza o trailer v2 com a trilha nova' }, { de: 'erro', texto: '🔑 O login do Claude venceu neste PC (401). Rode claude e depois /login no terminal.' }]);
+  D.adicionar([
+    ev(20, 'Rafael', 'editor-de-video', 'atividade', '', { aid: 'a1', ferramenta: 'Edit', alvo: 'beatgrid.mjs', arq: 'tools/video/beatgrid.mjs', modo: 'escrever' }),
+    ev(5, 'Kenny', 'Orquestrador', 'atividade', '', { ferramenta: 'Edit', alvo: 'beatgrid.mjs', arq: 'tools/video/beatgrid.mjs', modo: 'escrever' }),
+  ]);
+  recados.unshift(
+    { id: 9, pessoa: 'Kenny', texto: JSON.stringify({ id: 8, acao: 'feito' }), cor: 'bola-ok', criado: quando(60) },
+    { id: 10, pessoa: 'Kenny', texto: JSON.stringify({ para: 'Rafael', alvo: 'claude', texto: 'Roda o balanceamento do Veterano de novo com o dash novo (já está na main)', ctx: 'marco Dash do player · branch v0.2-loja-classes · mexeu em player.gd', projeto: 'genesis-game' }), cor: 'bola', criado: quando(6) },
+    { id: 11, pessoa: 'Rafael', texto: `🔥 Kenny|s3|${ag - 15 * 60e3}`, cor: 'reacao', criado: quando(7) },
+  );
+  recados.push({ id: 8, pessoa: 'Rafael', texto: JSON.stringify({ para: 'Kenny', alvo: 'pessoa', texto: 'Dá uma olhada no Short antes de eu subir?', ctx: 'marco Short "Raio + Fogo = ?" · branch gen-186-trailer-v2' }), cor: 'bola', criado: quando(120) });
   aprovacoes = [{ id: 8, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'git push origin gen-186-trailer-v2 && rm -rf _video/tmp', description: 'Sobe a branch e limpa os temporários', pedidoDe: { agente: 'editor-de-video', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }, { id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly', pedidoDe: { agente: 'artista-3d', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
     { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];

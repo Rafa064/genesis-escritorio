@@ -1,7 +1,10 @@
 // O mundo: desenha o escritório e move os bonecos (agentes, você, a outra pessoa).
 import { T, MW, MH, montarPlanta, caminho, tileDe } from './mapa.js';
-import { imagem, colorir, carregarMoveis, montarPersonagem, quadroPersonagem, novoCanvas } from './arte.js';
+import { imagem, colorir, carregarMoveis, montarPersonagem, novoCanvas } from './arte.js';
 import { visualDe } from './personagens.js';
+import { enfeitar, desenharQuadro, caneca } from './bonecos.js';
+import * as vida from './vida.js';
+import { iniciarSomAmbiente } from './som-ambiente.js';
 
 const rnd = (s) => { let x = s >>> 0 || 1; return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 4294967296); };
 const hash = (n) => [...String(n)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
@@ -60,7 +63,10 @@ export async function criarMundo() {
   mx.imageSmoothingEnabled = true; mx.drawImage(fundo, 0, 0, MW * 4, MH * 4);
   mx.fillStyle = 'rgba(10,8,20,.35)'; for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (planta.solido[y][x] && planta.tipo[y][x] !== 0) mx.fillRect(x * 4, y * 4, 4, 4);
 
-  return new Mundo(planta, mv, fundo, mini);
+  const mundo = new Mundo(planta, mv, fundo, mini);
+  vida.iniciar(mundo);
+  try { iniciarSomAmbiente(mundo); } catch (e) { console.warn('som ambiente:', e); }
+  return mundo;
 }
 
 class Mundo {
@@ -75,11 +81,13 @@ class Mundo {
 
   // ---------- bonecos ----------
   async boneco(id, nome, visual) {
-    const folha = await montarPersonagem(visual || visualDe(nome));
-    return { id, nome, folha, x: 0, y: 0, dir: 'baixo', modo: 'parado', caminho: null, quadro: 1, anda: 0, espera: 0 };
+    const folha = enfeitar(await montarPersonagem(visual || visualDe(nome)), nome);
+    return { id, nome, folha, x: 0, y: 0, dir: 'baixo', modo: 'parado', caminho: null, quadro: 1, anda: 0, espera: 0, fase: Math.random() * 5 };
   }
   // Coloca/atualiza os agentes de uma equipe (equipe 0 = sala da esquerda).
-  async sincronizarAgentes(lista) {
+  async sincronizarAgentes(todos) {
+    // ferramentas (PixelLab, Render, Godot...) não são bonecos: viram itens que voam até quem usa
+    const itens = todos.filter((a) => a.item || vida.ehItem(a.nome)), lista = todos.filter((a) => !itens.includes(a));
     const vistos = new Set();
     for (const a of lista) {
       vistos.add(a.id);
@@ -89,10 +97,13 @@ class Mundo {
         b.lugar = a.lugar; b.x = a.lugar.x; b.y = a.lugar.y; b.dir = a.lugar.dir; b.modo = a.lugar.copa ? 'parado' : 'sentado'; b.noLugar = a.lugar.id;
         b.sorte = rnd(hash(a.id)); b.espera = 2 + b.sorte() * 8;
         this.agentes.set(a.id, b);
+        b.novo = true;
       }
       Object.assign(b, { status: a.status, ferramenta: a.ferramenta, pessoa: a.pessoa, m: a.m, lugar: a.lugar, anel: a.anel || null });
+      vida.notarEventos(this, b, b.novo); b.novo = false;
     }
-    for (const id of [...this.agentes.keys()]) if (!vistos.has(id)) this.agentes.delete(id);
+    for (const id of [...this.agentes.keys()]) if (!vistos.has(id)) { vida.liberar(this, this.agentes.get(id)); this.agentes.delete(id); }
+    vida.definirUsos(this, lista, itens);
   }
   async criarEu(nome, pos) {
     this.eu = await this.boneco('eu', nome);
@@ -121,6 +132,10 @@ class Mundo {
   // Cada agente tem um lugar: mesa (trabalhando), copa (livre) ou recepção (assistente/Codex). Se o lugar muda, ele anda até lá.
   pensar(b, dt) {
     const l = b.lugar; if (!l) return;
+    if (b.cena && vida.cena(this, b, dt)) return;
+    if (b.rot && !l.copa) { vida.liberar(this, b); b.noLugar = null; }
+    if (!l.copa) b.acao = null;
+    if (l.copa && vida.rotina(this, b, dt)) return;
     if (b.noLugar === l.id) {
       // na copa: de vez em quando vira para outro lado (parece que conversa)
       if (l.copa && b.modo === 'parado') { b.espera -= dt; if (b.espera <= 0) { b.dir = ['esq', 'dir', 'baixo', 'cima'][Math.floor(b.sorte() * 4)]; b.espera = 4 + b.sorte() * 8; } }
@@ -189,6 +204,7 @@ class Mundo {
       else { p.x += dx * Math.min(1, dt * 10); p.y += dy * Math.min(1, dt * 10); }
       p.modo = d > 1 || p.andandoRemoto ? 'andando' : 'parado'; if (p.modo === 'andando') p.anda += dt;
     }
+    vida.atualizar(this, dt);
     for (const q of this.particulas) q.v -= dt * 1.5;
     this.particulas = this.particulas.filter((q) => q.v > 0);
   }
@@ -201,7 +217,7 @@ class Mundo {
     // anel no chão com a cor do jogo (quem está trabalhando)
     if (b.anel) { const ax = Math.round(b.x), ay = Math.round(b.y); const pisca = 0.55 + Math.sin(this.t * 4) * 0.2; g.globalAlpha = pisca; g.fillStyle = b.anel; g.fillRect(ax - 8, ay - 2, 16, 4); g.fillRect(ax - 6, ay - 3, 12, 6); g.globalAlpha = 1; }
     // sombra
-    g.fillStyle = 'rgba(10,8,20,.28)'; g.fillRect(Math.round(b.x) - 5, Math.round(b.y) - 1, 10, 2); g.fillRect(Math.round(b.x) - 4, Math.round(b.y) - 2, 8, 4);
+    { const sx = Math.round(b.x), sy = Math.round(b.y); g.fillStyle = 'rgba(10,8,20,.18)'; g.fillRect(sx - 6, sy - 1, 12, 2); g.fillStyle = 'rgba(10,8,20,.22)'; g.fillRect(sx - 5, sy - 2, 10, 4); g.fillRect(sx - 3, sy - 3, 6, 6); }
     if (b.modo === 'sentado') {
       y += 3;
       if (b.status === 'trab') q = b.ferramenta === 'ler' ? 5 + (Math.floor(this.t * 1.5) % 2) : 3 + (Math.floor(this.t * 5 + (b.id.length % 3)) % 2);
@@ -219,7 +235,11 @@ class Mundo {
       g.fillStyle = '#1b1a26'; g.fillRect(sx + 3, sy + 3, 2, 2); g.fillRect(sx + 11, sy + 3, 2, 2);
       y -= 3 + (b.modo === 'andando' ? Math.floor(this.t * 6) % 2 : 0);
     }
-    quadroPersonagem(g, b.folha, b.dir, q, x, y);
+    // respiração: parado ou sentado sem digitar, o tronco desce 1 px de vez em quando
+    const digita = b.modo === 'sentado' && b.status === 'trab';
+    const respira = b.modo !== 'andando' && !digita && ((this.t + (b.fase || 0)) % 2.6) > 1.7 ? 1 : 0;
+    desenharQuadro(g, b.folha, b.dir, q, x, y, respira);
+    if (b.acao === 'cafe') caneca(g, b, x, y, this.t);
     b.topo = y;
   }
 
@@ -228,6 +248,7 @@ class Mundo {
     g.fillStyle = '#0e0c15'; g.fillRect(0, 0, vw, vh);
     g.save(); g.translate(-cam.x, -cam.y);
     g.drawImage(this.fundo, 0, 0);
+    vida.desenharJanelas(g, this);
     // estado das telas: anima o PC de quem está trabalhando
     const statusDaMesa = new Map();
     for (const b of this.agentes.values()) if (b.lugar && !b.lugar.copa) statusDaMesa.set(b.lugar.id, b.modo === 'sentado' ? b.status : 'livre');
@@ -245,18 +266,25 @@ class Mundo {
         if (m.img === 'pcFrente' && statusDaMesa.get(m.anima) === 'semsinal') this.telaSemSinal(g, px, py);
       } });
     }
-    for (const b of this.agentes.values()) coisas.push({ y: b.y + (b.modo === 'sentado' ? 0 : 0.5), f: () => this.desenharBoneco(g, b) });
+    for (const b of this.agentes.values()) coisas.push({ y: b.ordemY ?? (b.y + (b.modo === 'sentado' ? 0 : 0.5)), f: () => this.desenharBoneco(g, b) });
+    this.planta.assentos.forEach((a, i) => coisas.push({ y: a.pc.y + 3 * T + 1.6, f: () => vida.desenharCacareco(g, a, i) }));
+    const est = this.planta.estante; coisas.push({ y: est.y + est.h, f: () => vida.desenharEstante(g, this) });
+    for (const l of this.planta.luminarias) coisas.push({ y: l.y, f: () => vida.desenharLuminaria(g, this, l) });
     for (const p of this.pessoas.values()) coisas.push({ y: p.y + 0.6, f: () => this.desenharBoneco(g, p) });
     if (this.eu) coisas.push({ y: this.eu.y + 0.7, f: () => this.desenharBoneco(g, this.eu) });
     coisas.sort((a, b) => a.y - b.y).forEach((c) => c.f());
     for (const q of this.particulas) { g.fillStyle = `rgba(230,225,215,${q.v})`; g.fillRect(Math.round(q.x), Math.round(q.y - (1 - q.v) * 4), 2, 2); }
+    vida.desenharVapor(g, this);
+    vida.desenharItens(g, this);
     // ícones de estado por cima de tudo
     for (const b of this.agentes.values()) if (b.topo != null) this.icone(g, Math.round(b.x), b.topo - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? 24 : 6), b.status, b.id);
+    // luz do dia pelo relógio real (manhã clara, tarde dourada, noite com luminárias acesas)
+    vida.desenharLuz(g, this, cam, vw, vh);
     g.restore();
-    // luz do dia: noite fica levemente azulada
-    const h = new Date().getHours();
-    if (h >= 19 || h < 6) { g.fillStyle = 'rgba(30,40,90,.16)'; g.fillRect(0, 0, vw, vh); }
+    vida.desenharBaloes(this, g, cam);
   }
+  // toque num item (ferramenta): mostra o cartão do que ele está fazendo
+  tocarItem(x, y) { return vida.tocarItem(this, x, y); }
 
   // Tela do PC (16x32; a tela fica em x 3..12, y 5..9) piscando em amarelo com um "?" escuro.
   telaSemSinal(g, px, py) {
