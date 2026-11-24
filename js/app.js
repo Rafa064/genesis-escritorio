@@ -16,7 +16,10 @@ import * as CP from './comando-progresso.js';
 import * as CDu from './comando-dupla.js';
 import * as CB from './comando-barra.js';
 import * as CA from './comando-aprovacao.js';
+import * as MC from './mapa-cel.js';
 import { ico } from './comando-icones.js';
+import * as CT from './comando-topo.js';
+import * as NP from './comando-pedido.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -324,14 +327,20 @@ async function toast({ titulo, texto, cor, agente, acao }) {
 
 // ======================= mundo: câmera, entrada, laço =======================
 const tela = $('#tela'), g = tela.getContext('2d');
-let zoom = Number(guardado('zoom', '0')) || 0, VW = 480, VH = 270;
+let zoom = innerWidth <= 760 ? 0 : Number(guardado('zoom', '0')) || 0, VW = 480, VH = 270; // no celular sempre abre na visão geral
 const cam = { x: 0, y: 0, alvo: null };
+// Celular em pé: a visão geral põe o andar inteiro na largura (zoom < 1; mapa-cel.js monta o resto).
+const zoomGeral = (w, h) => (w <= 760 && h > w ? Math.min(1, w / (MW * T)) : 1);
+// Mudar zoom e câmera de fora (chips de setor e ficha do mapa-cel.js). z = 0: visão geral.
+function vistaMapa(z, alvo) { zoom = z; dimensionar(); cam.alvo = alvo || null; }
 function dimensionar() {
   const p = $('#palco'), w = p.clientWidth, h = p.clientHeight;
   if (!w || !h) return;
   // no celular (em pé), o mapa preenche a altura da tela; dá para arrastar para os lados
-  if (!zoom) zoom = w >= 1500 ? 3 : w <= 760 ? Math.max(1, h / (MH * T)) : 2;
-  zoom = Math.max(1, Math.min(5, zoom));
+  const geral = zoomGeral(w, h);
+  if (!zoom) zoom = w >= 1500 ? 3 : w <= 760 ? geral : 2;
+  zoom = Math.max(geral, Math.min(5, zoom));
+  tela.classList.toggle('suave', zoom < 1);
   VW = Math.ceil(w / zoom); VH = Math.ceil(h / zoom);
   tela.width = VW; tela.height = VH;
   tela.style.width = `${VW * zoom}px`; tela.style.height = `${VH * zoom}px`;
@@ -350,7 +359,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) { teclas.add(k); cam.alvo = null; if (k.startsWith('arrow')) e.preventDefault(); }
   else if (k === 'e' || k === 'enter') interagir();
-  else if (k === '/') { e.preventDefault(); if (document.body.classList.contains('chat-aberto')) $('#entrada').focus(); else abrirBarraCel(true); }
+  else if (k === '/') { e.preventDefault(); if (document.body.classList.contains('chat-aberto')) $('#entrada').focus(); else NP.abrirNovoPedido({}); }
   else if (k === 'tab') { e.preventDefault(); if ($('#equipeVista').hidden) abrirEquipeVista(); else fecharEquipeVista(); }
   else if (k === 'c') { e.preventDefault(); abrirAba('chat'); setTimeout(() => $('#entrada').focus(), 0); }
   else if (k === 'h') alternarAba('missoes');
@@ -415,8 +424,9 @@ tela.addEventListener('pointerup', soltar);
 tela.addEventListener('pointercancel', soltar);
 function tocarMapa(ev) {
   const [x, y] = telaParaMundo(ev);
-  const b = boneconoPonto(x, y);
-  if (b) { abrirAgente(b); return; }
+  const b = boneconoPonto(x, y) || (innerWidth <= 760 ? MC.agenteNoToque(x, y) : null);
+  if (b) { if (innerWidth <= 760) MC.abrirFicha(b); else abrirAgente(b); return; }
+  if (innerWidth <= 760 && MC.tocarGeral(x, y)) return;
   if (mundo.tocarItem?.(x, y)) return; // ferramenta (item) no mapa: cartão do que está fazendo
   const ponto = PONTOS.find((p) => Math.hypot(p.x - x, p.y - y) < 18);
   if (ponto) { ponto.acao(); return; }
@@ -465,7 +475,9 @@ function laco(agora) {
     const [ax, ay] = cam.alvo || [mundo.eu.x, mundo.eu.y - 10];
     const meioX = (MW * T - VW) / 2, meioY = (MH * T - VH) / 2;
     const tx = Math.max(Math.min(0, meioX), Math.min(Math.max(MW * T - VW, meioX), ax - VW / 2));
-    const ty = Math.max(Math.min(0, meioY), Math.min(Math.max(MH * T - VH, meioY), ay - VH / 2));
+    // No celular a barra de setores (em cima) e o pedido (embaixo) cobrem o mapa: a câmera usa só a faixa útil.
+    const mg = MC.margens(), mT = mg.topo / zoom, mB = mg.baixo / zoom, minY = -mT, maxY = MH * T - VH + mB;
+    const ty = maxY < minY ? (zoom < 1 ? minY : (minY + maxY) / 2) : Math.max(minY, Math.min(maxY, ay - mT - (VH - mT - mB) / 2));
     cam.x += (tx - cam.x) * Math.min(1, dt * 8); cam.y += (ty - cam.y) * Math.min(1, dt * 8);
     const c = { x: Math.round(cam.x), y: Math.round(cam.y) };
     mundo.desenhar(g, c, VW, VH);
@@ -660,7 +672,13 @@ function abrirAba(nome, empilhar = false) {
   setTimeout(dimensionar, 0);
 }
 // No PC, com o painel do chat aberto, a caixa de pedido é a de baixo da conversa (a barra central some).
-const marcarChatAberto = () => document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada'));
+const marcarChatAberto = () => {
+  document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada'));
+  // Com a Atividade aberta, as decisões já estão na tela: o aviso do topo passa para o próximo assunto.
+  const emAtiv = emAtividade();
+  if (document.body.classList.contains('em-atividade') !== emAtiv) { document.body.classList.toggle('em-atividade', emAtiv); desenharPendencias(); }
+};
+const emAtividade = () => aba === 'atencao' && !$('#gaveta').classList.contains('fechada');
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
 function fecharGaveta() {
   if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); }
@@ -756,7 +774,7 @@ function montarInterface() {
     const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
   ligarComandoNoApp();
-  desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra(); ligarHoje();
+  desenharTopo(); desenharHud(); desenharHudMapa(); ligarBarra(); ligarHoje(); ligarMapaCel();
   montada = true;
   setInterval(() => { if (!document.hidden) guarda('visto', Date.now()); }, 30e3);
 }
@@ -803,12 +821,13 @@ async function desenharTopo() {
   $('#gente').innerHTML = html.join('');
   $('#gente').onclick = (e) => { const d = e.target.closest('[data-ir]'); if (d && d.dataset.ir !== EU.pessoa) irAtePessoa(d.dataset.ir); };
   const todos = todosAgentes();
-  const meusAlertas = todos.filter((a) => a.m.pessoa === EU.pessoa && (a.st.cls === 'alerta' || a.st.cls === 'erro')).length + aprovacoes.length;
+  const nDec = decisoesPendentes().n, erros = todos.filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'erro').length;
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
   for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = `${novosRecados} nova${novosRecados > 1 ? 's' : ''}`; }
-  desenharPendencias(meusAlertas, novosRecados);
+  ultPend.erros = erros;
+  desenharPendencias(nDec, novosRecados);
   await desenharPerfil();
-  document.title = meusAlertas ? `(${meusAlertas}) Estúdio Genesis` : 'Estúdio Genesis';
+  document.title = nDec ? `(${nDec}) Estúdio Genesis` : 'Estúdio Genesis';
 }
 // Linha 1 do topo: você (rosto, nome) + o projeto e se o seu PC está ligado. Toque abre perfil e ajustes.
 async function desenharPerfil() {
@@ -820,23 +839,30 @@ async function desenharPerfil() {
   el.title = `Você: ${EU.pessoa} · projeto ${projeto}${st.branch ? ' · branch ' + st.branch : ''} · PC ${ligada ? 'ligado (as IAs do seu PC estão conectadas)' : 'desligado'}. Toque para perfil e ajustes.`;
   el.classList.toggle('pc-off', !ligada);
 }
-// Linha 2 do topo: "N trabalhando" e "N precisam de você" (as respostas não vistas viram um ponto em Conversas).
-let ultPend = { alertas: 0, recados: 0 };
+// Linha 2 do topo: UM aviso, o mais importante agora (decisões › conflito › pedido do Kenny › travou).
+// Os outros ficam num "+N" ao lado. Sem nada esperando, a linha some e o mapa ganha o espaço.
+let ultPend = { alertas: 0, recados: 0, erros: 0 };
 function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ? 0 : ultPend.recados) {
   if (!EU) return;
-  ultPend = { alertas, recados: novos };
+  ultPend = { ...ultPend, alertas, recados: novos };
   const naoVistasN = naoVistas.size + novos;
-  const trab = quemTrabalha().length; // o mesmo número da faixa do mapa
-  $('#statusTopo').innerHTML = `<button type="button" class="pend-topo trab${trab ? '' : ' zero'}" data-pend="trab" title="Agentes trabalhando agora (seus e do ${esc(outraPessoa() || 'outro')})">${trab ? '<i class="pt-pulso"></i>' : ''}<b>${trab || 'Ninguém'}</b> trabalhando</button>`
-    + (alertas ? `<button type="button" class="pend-topo urgente" data-pend="atencao" title="Autorizações, alertas e erros esperando você">${ico('mao')}<b>${alertas}</b> decis${alertas > 1 ? 'ões pendentes' : 'ão pendente'}</button>`
-      : '<button type="button" class="pend-topo ok" data-pend="atencao" title="Nada esperando você">' + ico('check') + 'Nada esperando você</button>');
+  const outro = outraPessoa() || 'a dupla', itens = [];
+  if (alertas && !emAtividade()) itens.push({ k: 'atencao', nivel: 'urgente', ic: 'mao', txt: `${alertas} ${alertas > 1 ? 'decisões precisam' : 'decisão precisa'} de você`, sub: 'Autorizações dos seus pedidos', acao: 'Decidir' });
+  for (const c of CDu.conflitosAbertos()) itens.push({ k: 'conflito', nivel: 'aviso', ic: 'alerta', txt: c.arq ? `Conflito com o ${outro}` : 'Combine com ' + outro, sub: c.arq ? c.arqNome : c.curto, acao: 'Combinar' });
+  const bolas = CDu.bolasParaMim();
+  if (bolas) itens.push({ k: 'bola', nivel: 'aviso', ic: 'seta', txt: `${outro} mandou ${bolas > 1 ? `${bolas} pedidos` : 'um pedido'} para você`, sub: 'Assuma ou encaminhe à sua assistente', acao: 'Ver' });
+  if (ultPend.erros) itens.push({ k: 'atencao', nivel: 'aviso', ic: 'alerta', txt: `${ultPend.erros > 1 ? `${ultPend.erros} pedidos seus travaram` : 'Um pedido seu travou'}`, sub: 'Veja o que houve e tente de novo', acao: 'Ver' });
+  CT.desenharAviso($('#statusTopo'), itens);
+  document.body.classList.toggle('sem-aviso', !itens.length);
   const pc = $('#pontoConversas'); if (pc) { pc.hidden = !naoVistasN; pc.title = `${naoVistasN} resposta(s) que você ainda não viu`; }
   $('#statusTopo').onclick = (e) => {
-    const b = e.target.closest('[data-pend]'); if (!b) return;
+    const b = e.target.closest('[data-aviso]'); if (!b) return;
+    CT.fecharLista();
+    const k = b.dataset.aviso;
+    if (k === 'conflito' || k === 'bola') { fecharEquipeVista(); fecharQuadro(); abrirAba('dupla'); setTimeout(() => $(k === 'conflito' ? '#coordDupla .cd-conf' : '#coordDupla .cd-bolas')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); return; }
     const aberta = !$('#gaveta').classList.contains('fechada');
     if (aberta && aba === 'atencao') { fecharGaveta(); return; } // segundo toque fecha a folha
     abrirAba('atencao');
-    if (b.dataset.pend === 'trab') setTimeout(() => $('#listaAtencao .cx-rodando')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 350);
   };
 }
 function todosAgentes() {
@@ -927,14 +953,15 @@ async function desenharAtencao() {
   $('#listaAprovacoes').innerHTML = '';
   const meus = (a) => a.m.pessoa === EU.pessoa;
   const todos = todosAgentes();
-  const alerta = todos.filter((a) => a.st.cls === 'alerta' && meus(a));
+  const { n: nDec, alertas: alerta } = decisoesPendentes();
   const travou = todos.filter((a) => a.st.cls === 'erro').sort((a, b) => meus(b) - meus(a));
   const rodando = todos.filter((a) => a.st.cls === 'trab' || a.st.cls === 'semsinal').sort((a, b) => meus(b) - meus(a) || (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
   const doze = Date.now() - 12 * 3600e3;
   const prontos = D.missoes().filter((m) => m.fim && m.fim > doze && m.status === 'fim' && (m.resposta || m.miniaturas.length)).slice(0, 12);
   const sec = (ic, t, n, corpo, cls = '') => `<section class="cx ${cls}"><h3>${ic} ${t}${n != null ? ` <small>${n}</small>` : ''}</h3>${corpo}</section>`;
-  let html = await cartaoAvisos();
-  if (aprovacoes.length || alerta.length) html += sec('🔐', `Precisa de você ${glo('aprovação')}`, aprovacoes.length + alerta.length, aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
+  let html = ''; // decisões primeiro; o cartão do PC e dos avisos vem logo depois
+  if (aprovacoes.length || alerta.length) html += sec('🔐', `${nDec === 1 ? 'Uma decisão precisa' : `${nDec} decisões precisam`} de você ${glo('aprovação')}`, null, '<p class="ap3-intro">Cada cartão é uma decisão: leia o que acontece e escolha. Nada é feito sem o seu toque.</p>' + aprovacoes.map(cartaoAprovacao).join('') + (await Promise.all(alerta.map(linhaAgente))).join(''), 'urgente');
+  html += await cartaoAvisos();
   if (travou.length) html += sec('❌', 'Travou', travou.length, (await Promise.all(travou.map(linhaAgente))).join(''));
   html += sec('⚙️', 'Rodando agora', rodando.length, rodando.length ? (await Promise.all(rodando.slice(0, 8).map(linhaCompacta))).join('') + (rodando.length > 8 ? `<button class="link" data-ir-aba="equipe">ver os ${rodando.length}</button>` : '') : '<div class="vazio">Ninguém trabalhando agora.</div>', 'cx-rodando');
   html += sec('✅', 'Pronto nas últimas 12 h', prontos.length, prontos.length ? (await Promise.all(prontos.map(cartaoPronto))).join('') : '<div class="vazio">Nada entregue ainda.</div>');
@@ -942,7 +969,8 @@ async function desenharAtencao() {
   ligarAprovacoes(el);
   const antes = el.onclick;
   el.onclick = (e) => {
-    if (e.target.closest('[data-decide],[data-ap-sel],[data-ap-confirmar]')) return antes?.(e);
+    if (e.target.closest('[data-decide],[data-ap-sel],[data-ap-confirmar],[data-ap-dec],[data-ap-mudar]')) return antes?.(e);
+    if (e.target.closest('.ap3')) return;
     const ia = e.target.closest('[data-ir-aba]'); if (ia) return abrirAba(ia.dataset.irAba, true);
     const mi = e.target.closest('[data-missao]'); if (mi) return abrirMissao(mi.dataset.missao);
     const d = e.target.closest('[data-k]'); if (d) localizar(d.dataset.k);
@@ -980,9 +1008,27 @@ function infoAprovacao(a) {
   const quem = !agente || agente === 'Orquestrador' ? 'A assistente' : `O ${tituloDe(agente)}`;
   const mi = origem?.sessao ? D.missoes().find((m) => m.pessoa === EU.pessoa && m.sessao && origem.sessao.startsWith(m.sessao)) : null;
   const dentroHtml = cv ? `conversa <span class="pq-aba" style="--cor:${visualAba(cv).cor}">${esc(visualAba(cv).icone)} ${esc(visualAba(cv).nome || cv.titulo)}</span>` : origem?.terminal ? `terminal${mi ? ` · pedido “${esc(primeiraFrase(mi.titulo, 60))}”` : ''}` : '';
-  return { quem, projeto, dentroHtml, origemTxt: origem?.terminal ? 'Veio do terminal do PC' : 'Veio do chat do escritório', quando: D.ha(new Date(a.criado).getTime()), passoTxt: passo(a.ferramenta, null, campos) };
+  return { quem, projeto, dentroHtml, pedido: cv ? (visualAba(cv).nome || cv.titulo) : mi ? primeiraFrase(mi.titulo, 60) : '', origemTxt: origem?.terminal ? 'Veio do terminal do PC' : 'Veio do chat do escritório', quando: D.ha(new Date(a.criado).getTime()), passoTxt: passo(a.ferramenta, null, campos) };
 }
-function cartaoAprovacao(a) { return CA.html(a, infoAprovacao(a)); }
+// Decisões já tomadas aqui, por pedido de autorização ({ [ação]: 'sim' | 'nao' | 'listar' }); a resposta
+// vai para a ponte quando todas as ações do pedido tiverem decisão.
+const escolhasAprov = new Map();
+// Numeração por PEDIDO (não por comando): "decisão 2 de 3 deste pedido" soma as autorizações da mesma conversa.
+function ordemNoPedido(a) {
+  if (a.conversa_id == null) return null;
+  const mesmas = aprovacoes.filter((x) => x.conversa_id === a.conversa_id && !lerJson(x.detalhe).origem?.terminal);
+  let base = 0; for (const x of mesmas) { if (x.id === a.id) break; base += CA.nDecisoes(x); }
+  return { base, total: mesmas.reduce((s, x) => s + CA.nDecisoes(x), 0) };
+}
+function cartaoAprovacao(a) { return CA.html(a, { ...infoAprovacao(a), ordem: ordemNoPedido(a) }, escolhasAprov.get(a.id) || {}); }
+// Quantas decisões esperam você: uma por ação de cada autorização + alertas sem autorização correspondente.
+function decisoesPendentes() {
+  const meus = todosAgentes().filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'alerta');
+  const comAprov = new Set(aprovacoes.map((a) => { const j = lerJson(a.detalhe); return j.origem?.agente || j.pedidoDe?.agente; }).filter(Boolean));
+  const alertas = meus.filter((a) => !comAprov.has(a.m.nome));
+  const n = aprovacoes.reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0) + alertas.length;
+  return { n, alertas };
+}
 
 // ---------- notificações no aparelho (Web Push mandado pela ponte do PC) ----------
 let registroSw = null;
@@ -1066,8 +1112,31 @@ document.addEventListener('visibilitychange', () => {
   else if (escondidoDesde && Date.now() - escondidoDesde > 2e3) ressincronizar();
 });
 addEventListener('online', () => ressincronizar());
+// Redesenha onde houver cartões de autorização (Atividade, folha do pedido, topo).
+function redesenharAprovacoes() { agendarInterface(); desenharChat(); if (aba === 'atencao') desenharAtencao(); if (!$('#folhaAprov').hidden) abrirAutorizacoes(); }
 function ligarAprovacoes(el) {
   el.onclick = async (e) => {
+    // Uma decisão por cartão (comando-aprovacao.js): guarda aqui e responde à ponte quando o pedido estiver completo.
+    const dec = e.target.closest('[data-ap-dec],[data-ap-mudar]');
+    if (dec) {
+      const card = dec.closest('[data-ap]'), id = Number(card.dataset.ap), i = Number(card.dataset.apI), a = aprovacoes.find((x) => x.id === id); if (!a) return;
+      const esc0 = { ...(escolhasAprov.get(id) || {}) };
+      if (dec.dataset.apMudar != null) { delete esc0[i]; escolhasAprov.set(id, esc0); return redesenharAprovacoes(); }
+      esc0[i] = dec.dataset.apDec; escolhasAprov.set(id, esc0);
+      const total = CA.nDecisoes(a), feitas = Object.values(esc0);
+      if (feitas.length < total) { redesenharAprovacoes(); return toast({ titulo: dec.dataset.apDec === 'sim' ? 'Anotado: autorizado' : 'Anotado: recusado', texto: `Falta${total - feitas.length > 1 ? 'm' : ''} ${total - feitas.length} decis${total - feitas.length > 1 ? 'ões' : 'ão'} deste pedido. Ela só segue depois.`, cor: '#f4ecd8' }); }
+      const tudoSim = feitas.every((v) => v === 'sim'), tudoNao = feitas.every((v) => v === 'nao');
+      try {
+        if (!DEMO) await R.decidir(id, tudoSim ? 'permitido' : 'negado');
+        aprovacoes = aprovacoes.filter((x) => x.id !== id); escolhasAprov.delete(id);
+        if (!tudoSim && !tudoNao || feitas.includes('listar')) await mandarNaConversa(CA.recadoDecisoes(a, esc0), a.conversa_id);
+        redesenharAprovacoes();
+        toast(tudoSim ? { titulo: 'Autorizado', texto: 'Ela segue o pedido. Você acompanha no cartão do pedido.', cor: '#4fbf82' }
+          : tudoNao ? { titulo: 'Recusado', texto: 'Ela não faz isso. Se quiser, diga na conversa o que pode.', cor: '#f0973d' }
+          : { titulo: 'Decisões enviadas', texto: 'Ela recebe o que pode e o que não pode fazer, e segue o pedido.', cor: '#4fbf82' });
+      } catch (err) { escolhasAprov.set(id, esc0); toast({ titulo: 'Não deu', texto: err.message, cor: '#ef6a55' }); }
+      return;
+    }
     // Várias ações num pedido só: cada uma tem o seu botão; o "Autorizar…" de baixo confirma o que foi marcado.
     const sel = e.target.closest('[data-ap-sel]');
     if (sel) {
@@ -1424,7 +1493,7 @@ async function desenharHud() {
   }));
   // Faixa de cima = um contador ("11 trabalhando · 1 precisa de você"); tocar abre a lista por cima do mapa.
   const alertas = ativos.filter((a) => a.cls === 'alerta').length;
-  const cont = `<button type="button" class="agora-tit" aria-expanded="${agoraAberto}" title="${agoraAberto ? 'Fechar a lista' : 'Ver quem está trabalhando em quê'}"><span class="ag-n">${ativos.length || 'ninguém'}</span> ${ativos.length ? 'trabalhando' : 'trabalhando agora'}${alertas ? ` <span class="ag-alerta">${alertas} precisa${alertas > 1 ? 'm' : ''} de você</span>` : ''}<span class="ag-seta" aria-hidden="true">${agoraAberto ? '▴' : '▾'}</span></button>`;
+  const cont = `<button type="button" class="agora-tit" aria-expanded="${agoraAberto}" title="${agoraAberto ? 'Fechar a lista' : 'Ver quem está trabalhando em quê'}"><span class="ag-n">${ativos.length || 'ninguém'}</span> ${ativos.length ? (ativos.length > 1 ? 'IAs trabalhando no estúdio' : 'IA trabalhando no estúdio') : 'trabalhando agora'}<span class="ag-seta" aria-hidden="true">${agoraAberto ? '▴' : '▾'}</span></button>`;
   $('#frentes').innerHTML = htmlFiltros() + `<div class="agora contador ${agoraAberto ? 'aberto' : ''}">${cont}${agoraAberto ? `<div class="agora-lista">${cartoes.join('')}${ativos.length > 12 ? `<span class="agora-mais">+${ativos.length - 12} na Equipe</span>` : ''}</div>` : ''}</div>`;
 }
 function ligarHud() {
@@ -1948,7 +2017,7 @@ function desenharChat() {
   else if (noFim) msgs.scrollTop = msgs.scrollHeight;
   $('#estadoPonte').hidden = !$('#estadoPonte').innerHTML.trim();
   // Compositor: "Sobre: X · Alterar" + caixa + Enviar pedido (ou Enviar para a fila, quando ela está ocupada).
-  $('#btnEnviar').textContent = ocupada ? 'Enviar para a fila' : 'Enviar pedido';
+  $('#btnEnviar').textContent = ocupada ? 'Enviar para a fila' : 'Enviar';
   marcarTexto();
   const v = visualAba(conv);
   $('#formChat').style.setProperty('--cor-aba', conv ? v.cor : 'var(--borda-clara)');
@@ -2075,17 +2144,20 @@ function desenharBarra() {
   $('#bcNova').classList.toggle('on', novaNaBarra || !conv);
 }
 const ultimaDoAlvo = (alvo) => [...conversas].filter((c) => c.alvo === alvo).sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado))[0] || null;
+let convForcada = null; // "Continuar" escolhido no Novo pedido
 function conversaDaBarra() {
+  if (convForcada != null) return conversas.find((c) => c.id === convForcada) || null;
   if (novaNaBarra) return null;
   const aberta = conversas.find((c) => c.id === conversaAtual);
   return aberta && aberta.alvo === alvoBarra ? aberta : ultimaDoAlvo(alvoBarra);
 }
 let enviandoBarra = false;
-async function enviarBarra() {
+// abrir: false = quem chamou mostra o resultado (o painel Novo pedido); o chat não abre por cima.
+async function enviarBarra({ abrir = true } = {}) {
   const caixa = $('#bcTexto'), texto = caixa.value.trim();
-  if (!texto || enviandoBarra) return;          // um envio por vez (Enter duplo não cria duas conversas)
+  if (!texto || enviandoBarra) return null;     // um envio por vez (Enter duplo não cria duas conversas)
   enviandoBarra = true; $('#bcEnviar').disabled = true;
-  let enviado = false;
+  let enviado = false, res = null;
   try {
     let conv = null;
     if (temSql2) {
@@ -2093,27 +2165,51 @@ async function enviarBarra() {
       if (!conv && !DEMO) {
         conv = await R.novaConversa({ titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: projetoBarra || CB.projetoNovo() || null });
         conversas = [conv, ...conversas];
-      } else if (!conv && DEMO) { conv = { id: Date.now(), titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: CB.projetoNovo(), atualizado: new Date().toISOString() }; conversas = [conv, ...conversas]; cacheMsgs.set(conv.id, []); }
+      } else if (!conv && DEMO) { conv = { id: Date.now(), titulo: primeiraFrase(texto, 60), alvo: alvoBarra, projeto: projetoBarra || CB.projetoNovo(), atualizado: new Date().toISOString() }; conversas = [conv, ...conversas]; cacheMsgs.set(conv.id, []); }
     }
     const destino = conv?.id ?? null;           // capturado AGORA: trocar de conversa no meio não muda o destino
     const naFila = convOcupada(destino);
-    novaNaBarra = false; projetoBarra = null; mostrarOpcoesBarra(false);
+    novaNaBarra = false; projetoBarra = null; convForcada = null; mostrarOpcoesBarra(false);
     caixa.value = ''; caixa.style.height = '';
-    fecharEquipeVista(); fecharQuadro();
-    if (destino !== conversaAtual) await abrirConversa(destino);
-    abrirAba('chat'); abrirBarraCel(false);      // abre o painel mesmo se ele estava fechado (celular)
+    if (abrir) {
+      fecharEquipeVista(); fecharQuadro();
+      if (destino !== conversaAtual) await abrirConversa(destino);
+      abrirAba('chat'); abrirBarraCel(false);    // abre o painel mesmo se ele estava fechado (celular)
+    }
     if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
+    else (cacheMsgs.get(destino))?.push({ de: 'eu', texto, conversa_id: destino });
     const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null);
     enviado = true;
     if (DEMO) comandosAbertos.set(-Date.now(), destino);
     pedidoEnviado(cmd, destino);
-    avisarRecebido(naFila);
+    if (abrir) avisarRecebido(naFila);
     if (conv) { conv.atualizado = new Date().toISOString(); conversas = [conv, ...conversas.filter((c) => c.id !== conv.id)]; desenharSeletorConversas(); }
+    const st = estados.get(EU.pessoa) || {};
+    res = { conv, naFila, ligado: pcLigado(EU.pessoa), pausada: !!st.pausado };
   } catch (e) {
     if (!enviado) { caixa.value = texto; const i = mensagens.findIndex((m) => m.de === 'eu' && m.texto === texto && !m.id); if (i >= 0) mensagens.splice(i, 1); desenharChat(); }
+    if (!abrir) { enviandoBarra = false; $('#bcEnviar').disabled = false; caixa.value = ''; throw e; }
     toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' });
   } finally { enviandoBarra = false; $('#bcEnviar').disabled = false; }
   desenharChat(); desenharBarra();
+  return res;
+}
+// Novo pedido (comando-pedido.js): manda pela mesma máquina da barra, sem abrir o chat por cima.
+async function criarPedido({ texto, alvo = 'claude', convId = null, projeto = null }) {
+  alvoBarra = alvo === 'codex' ? 'codex' : 'claude'; guarda('alvoBarra', alvoBarra);
+  convForcada = convId; novaNaBarra = convId == null; projetoBarra = projeto || null;
+  $('#bcTexto').value = texto;
+  const r = await enviarBarra({ abrir: false });
+  if (!r) throw new Error('O pedido não saiu. Tente de novo.');
+  return r;
+}
+// "Acompanhar pedido": abre a conversa onde ele está (com o cartão do pedido no alto).
+async function acompanharPedido(convId) { fecharEquipeVista(); fecharQuadro(); if (convId != null && convId !== conversaAtual) await abrirConversa(convId); abrirAba('chat'); }
+// Estado que importa antes de mandar (PC desligado, pausa, login, fila), em uma frase; '' quando está tudo normal.
+function estadoPedido({ alvo = 'claude', convId = null }) {
+  const st = estados.get(EU.pessoa) || {}, ocupada = convId != null && convOcupada(convId);
+  const [cor, txt] = CE.estadoBarra({ st, ligado: pcLigado(EU.pessoa), ocupada, alvo });
+  return cor === '#4fbf82' ? '' : txt === 'pausada' ? 'Sua assistente está pausada: o pedido espera você tirar a pausa.' : txt === 'PC desligado: espera a ponte' ? 'Seu PC está desligado: o pedido fica guardado e começa quando ele ligar.' : txt;
 }
 function abrirBarraCel(abrir) {
   document.body.classList.toggle('bc-aberta', !!abrir);
@@ -2158,7 +2254,9 @@ function ligarBarra() {
   new MutationObserver(() => { document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada')); marcarChatAberto(); }).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   document.body.classList.toggle('gaveta-aberta', !$('#gaveta').classList.contains('fechada'));
   // Celular: a barra fica recolhida no botão "Pedir algo" e abre por cima do mapa só quando a pessoa quer pedir.
-  $('#bcAbrir').onclick = () => abrirBarraCel(true);
+  $('#bcAbrir').onclick = () => NP.abrirNovoPedido({});
+  // "＋ Novo pedido" em qualquer tela (Conversas, Dupla…): o mesmo painel.
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-novo-pedido]'); if (b) NP.abrirNovoPedido({ para: b.dataset.novoPedido || 'eu' }); });
   $('#bcFechar').onclick = () => abrirBarraCel(false);
   $('#tela').addEventListener('pointerdown', () => { if (!$('#bcTexto').value.trim()) abrirBarraCel(false); });
   CB.ligarProjeto(f);
@@ -2172,7 +2270,10 @@ function ligarComandoNoApp() {
     conversaDaBarra, toast, abrirAba, abrirMissao, abrirMarco,
     ultimoPedido: () => mensagens.filter((m) => m.de === 'eu').at(-1)?.texto || '',
     enviarNoChat: (t) => { $('#entrada').value = t; return enviarChat(); },
-    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'), cx = chat ? $('#entrada') : $('#bcTexto'); if (!chat) document.body.classList.add('bc-aberta'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
+    // Fora da conversa aberta, "preencher" abre o mesmo painel Novo pedido já com o texto.
+    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'); if (!chat) return NP.abrirNovoPedido({ texto: t }); const cx = $('#entrada'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
+    novoPedido: (o) => NP.abrirNovoPedido(o), criarPedido, acompanharPedido, estadoPedido, conversas: () => conversas,
+    projetoPadrao: () => CB.projetoNovo(), redesenharTopo: () => desenharTopo(),
     // Pede pela barra: alvo (claude/codex), conversa nova (com projeto) ou a do alvo.
     pedirNaBarra: (t, alvo, { nova = false } = {}) => { alvoBarra = alvo === 'codex' ? 'codex' : 'claude'; guarda('alvoBarra', alvoBarra); novaNaBarra = !!nova; $('#bcTexto').value = t; return enviarBarra(); },
     setNova: (v) => { novaNaBarra = !!v; }, desenharBarra,
@@ -2236,7 +2337,7 @@ async function desenharHudChat() {
   const el = $('#hudChat'); if (!el || !EU) return;
   const conv = conversas.find((c) => c.id === conversaAtual), m = missaoDaConversa(conv), ocupada = convOcupada(conversaAtual);
   // Pendências desta conversa entram no mesmo cartão (com um resumo humano do que ela quer fazer).
-  const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id).map((a) => ({ id: a.id, titulo: CA.explicar(a, infoAprovacao(a)).titulo }));
+  const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id).flatMap((a) => { const ja = escolhasAprov.get(a.id) || {}; return CA.explicar(a, infoAprovacao(a)).acoes.map((y, i) => ({ id: a.id, titulo: y.t, i })).filter((x) => ja[x.i] == null); });
   const fila = Math.max(0, [...comandosAbertos.values()].filter((id) => id === conversaAtual).length - 1);
   const pedido = mensagens.filter((x) => x.de === 'eu').at(-1)?.texto || '';
   const html = CP.htmlAgora({ m, conv, ocupada, pend, fila, pedido, titulo: conv ? visualAba(conv).nome : '', escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
@@ -2260,7 +2361,7 @@ async function desenharHudMapa() {
   // Recolhido e é seu: vira o chip do pedido (etapa + pendência); tocar leva ao cartão na conversa.
   if (hudFechado && m.pessoa === EU.pessoa) {
     const conv = conversas.find((x) => x.alvo !== 'codex' && x.sessao && m.sessao && String(x.sessao).startsWith(m.sessao));
-    const pend = aprovacoes.filter((a) => conv && a.conversa_id === conv.id).length;
+    const pend = aprovacoes.filter((a) => conv && a.conversa_id === conv.id).reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0);
     el.classList.add('pedido');
     el.innerHTML = CP.htmlChipMapa({ m, pend, titulo: conv ? visualAba(conv).nome : '' });
     return;
@@ -2434,7 +2535,7 @@ async function desenharItem() {
       ${x.falta.size ? `<span><b>Falta instalar</b>${esc([...x.falta].join(', '))}</span>` : ''}
       <span><b>Uso</b>${ms.length ? `${(usoEquipe().get(x.k) || []).length} missão(ões) no mês` : 'nenhuma missão no mês'}</span></div>
     <p class="it-oque">${esc(info.explica)}</p>
-    <div class="linha">${x.tipo !== 'assistente' ? '<button class="btn forte" id="pedirComItem">✦ Pedir à assistente usando isto</button>' : '<button class="btn forte" id="pedirComItem">✦ Falar com a assistente</button>'}${['agente', 'programa', 'ia'].includes(x.tipo) && est?.p ? '<button class="btn" id="verNoMapa">Ver no mapa</button>' : ''}</div>
+    <div class="linha">${x.tipo !== 'assistente' ? '<button class="btn forte" id="pedirComItem">＋ Novo pedido usando isto</button>' : '<button class="btn forte" id="pedirComItem">✦ Falar com a assistente</button>'}${['agente', 'programa', 'ia'].includes(x.tipo) && est?.p ? '<button class="btn" id="verNoMapa">Ver no mapa</button>' : ''}</div>
     ${linhasM.length ? `<div class="bloco"><h4>Últimas missões</h4>${linhasM.join('')}</div>` : ''}`;
   $('#pedirComItem').onclick = () => pedirCom(x);
   $('#verNoMapa')?.addEventListener('click', () => { fecharEquipeVista(); fecharQuadro(); localizar(`${est.p}|${x.nome}`); });
@@ -2443,9 +2544,8 @@ async function desenharItem() {
 async function pedirCom(x) {
   const nome = nomeBonito(x.tipo, x.nome);
   const texto = { agente: `Use o agente ${x.nome} para: `, skill: `Use a skill ${x.nome} para: `, conector: `Use o conector ${nome} para: `, programa: `Use o ${nome} para: `, plugin: `Use o plugin ${x.nome} para: `, ia: '', assistente: '' }[x.tipo] || '';
-  fecharEquipeVista();
-  await abrirChatCom(x.tipo === 'ia' ? 'codex' : 'claude');
-  setTimeout(() => { const e = $('#entrada'); if (e && texto && !e.value.trim()) e.value = texto; e?.focus(); }, 120);
+  if (x.tipo === 'assistente') { fecharEquipeVista(); await abrirChatCom('claude'); setTimeout(() => $('#entrada')?.focus(), 120); return; }
+  NP.abrirNovoPedido({ texto, alvo: x.tipo === 'ia' ? 'codex' : 'claude' });
 }
 
 // ---------- "Mais" (⋯): Diário, Galeria, Ajustes e Ajuda ----------
@@ -2466,15 +2566,24 @@ function desenharMais() {
 TITULO_ABA.hoje = 'Hoje'; NAV_DA_ABA.hoje = 'mais';
 // "Mandar" de uma sugestão: vai pela barra de comando, numa conversa nova do alvo e projeto dela.
 async function mandarPronto(texto, { alvo, projeto } = {}) {
-  if (alvo === 'claude' || alvo === 'codex') { alvoBarra = alvo; guarda('alvoBarra', alvo); }
-  novaNaBarra = true; projetoBarra = projeto || null;
-  $('#bcTexto').value = texto;
-  await enviarBarra();
+  const ia = alvo === 'codex' ? 'codex' : alvo === 'claude' ? 'claude' : alvoBarra;
+  try {
+    const r = await criarPedido({ texto, alvo: ia, projeto });
+    NP.mostrarCriado({ titulo: texto, alvo: ia, projeto: r.conv?.projeto || projeto || CB.projetoNovo(), convId: r.conv?.id ?? null, naFila: r.naFila, ligado: r.ligado, pausada: r.pausada });
+  } catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); }
 }
 function ligarHoje() {
-  Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto,
+  Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto, resumoIr: (q) => MC.irResumo(q),
+    contagens: () => ({ fazendo: quemTrabalha().length, esperando: ultPend.alertas }),
     eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
     abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
+}
+
+// Escritório no celular (mapa-cel.js): visão geral, setores, indicadores e ficha de quem você toca.
+function ligarMapaCel() {
+  MC.ligar({ mundo: () => mundo, cam: () => cam, zoom: () => zoom, vista: vistaMapa, eu: () => EU, pessoas, retratoDe, nome: nomeBase,
+    nomeAgente: (m) => CURTO[m.nome] || tituloAgente(m), quemTrabalha, localizar, abrirAgente, abrirAba,
+    abrirChat: (alvo) => abrirChatCom(alvo), pedir: () => abrirBarraCel(true) });
 }
 
 // ---------- jornal ----------
@@ -2688,7 +2797,7 @@ async function iniciarDemo() {
     { id: 11, pessoa: 'Rafael', texto: `🔥 Kenny|s3|${ag - 15 * 60e3}`, cor: 'reacao', criado: quando(7) },
   );
   recados.push({ id: 8, pessoa: 'Rafael', texto: JSON.stringify({ para: 'Kenny', alvo: 'pessoa', texto: 'Dá uma olhada no Short antes de eu subir?', ctx: 'marco Short "Raio + Fogo = ?" · branch gen-186-trailer-v2' }), cor: 'bola', criado: quando(120) });
-  aprovacoes = [{ id: 8, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'git push origin gen-186-trailer-v2 && rm -rf _video/tmp', description: 'Sobe a branch e limpa os temporários', pedidoDe: { agente: 'editor-de-video', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }, { id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly', pedidoDe: { agente: 'artista-3d', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
+  aprovacoes = [{ id: 8, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'git push origin gen-186-trailer-v2 && rm -rf _video/tmp', description: 'Sobe a branch e limpa os temporários', arquivos: ['_video/tmp/corte1_raio.mp4', '_video/tmp/corte2_fogo.mp4', '_video/tmp/trilha_129bpm.wav', '_video/tmp/frames/ (412 imagens do render)'], pedidoDe: { agente: 'editor-de-video', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }, { id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly', pedidoDe: { agente: 'artista-3d', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
     { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];
   mundo = await criarMundo();

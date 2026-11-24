@@ -1,0 +1,288 @@
+/* =====================================================================
+   Estúdio Genesis · rodada 3 — telas (mapa no celular, números do dia,
+   legibilidade e pesos visuais). Carregada depois de estilo-telas.css.
+   Pesos:  MADEIRA = só estrutura (barras, alças) · PAPEL = conteúdo
+           LARANJA = só a ação principal de cada contexto
+           SELEÇÃO = papel claro + contorno escuro (igual em todo lugar)
+   Estados no mapa e nos números: laranja "…" fazendo · amarelo "!" esperando
+   você · verde "xícara" livre · azul "relógio" na fila.
+   ===================================================================== */
+:root {
+  --st-fazendo: #f0973d; --st-esperando: #ffd23f; --st-livre: #6fcf8e; --st-fila: #8fb3e0; --st-custo: #e6cf9c;
+  --linha-fina: rgba(90, 58, 34, .18);
+  --sel-fundo: var(--papel-claro);
+  --sel-sombra: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra);
+  --ind-fazendo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23fffaf0' d='M1 3h1v1H1zM3 3h1v1H3zM5 3h1v1H5z'/%3E%3C/svg%3E");
+  --ind-esperando: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%232a1a10' d='M3 1h1v3H3zM3 5h1v1H3z'/%3E%3C/svg%3E");
+  --ind-livre: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23fffaf0' d='M1 2h4v3H1zM5 3h1v1H5z'/%3E%3Cpath fill='%232a1a10' d='M2 1h1v1H2z' opacity='.5'/%3E%3C/svg%3E");
+  --ind-fila: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23fffaf0' d='M2 1h3v1H2zM1 2h1v3H1zM5 2h1v3H5zM2 5h3v1H2z'/%3E%3Cpath fill='%23fffaf0' d='M3 2h1v2H3zM4 3h1v1H4z'/%3E%3C/svg%3E");
+  --ind-custo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%232a1a10' d='M2 1h3v1H2zM1 2h1v3H1zM5 2h1v3H5zM2 5h3v1H2zM3 2h1v3H3z'/%3E%3C/svg%3E");
+}
+
+/* ============================== indicador pixel (mapa, números, ficha) ============================== */
+.ind, .rd-ind {
+  display: inline-block; flex: none; width: 14px; height: 14px; background-color: var(--st-livre);
+  background-image: var(--ind-livre); background-size: 100% 100%; image-rendering: pixelated;
+  box-shadow: 0 0 0 2px var(--contorno);
+}
+.ind.fazendo, .fazendo > .rd-ind { background-color: var(--st-fazendo); background-image: var(--ind-fazendo); }
+.ind.esperando, .esperando > .rd-ind { background-color: var(--st-esperando); background-image: var(--ind-esperando); }
+.fila > .rd-ind { background-color: var(--st-fila); background-image: var(--ind-fila); }
+.custo > .rd-ind { background-color: var(--st-custo); background-image: var(--ind-custo); }
+.ind-mapa { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.ind-mapa .ind { position: absolute; left: -7px; top: -14px; will-change: transform; }
+.ind-mapa .ind.esperando { animation: r3-pula 1s steps(2) infinite; }
+.ind-mapa .ind.sel { width: 16px; height: 16px; left: -8px; top: -16px; box-shadow: 0 0 0 2px var(--contorno), 0 0 0 4px #fffaf0, 0 0 0 6px var(--contorno); z-index: 2; }
+@keyframes r3-pula { 50% { margin-top: -3px; } }
+@media (prefers-reduced-motion: reduce) { .ind-mapa .ind.esperando { animation: none; } }
+
+/* ============================== os números do dia (Escritório, Atividade, Hoje) ============================== */
+.rd-linha { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rd-linha.com-custo { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rd-n {
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 6px;
+  min-height: 60px; padding: 8px 8px 7px; border: 0; cursor: pointer; text-align: left;
+  background: var(--cartao-papel, #fbf0d6); color: var(--tinta); box-shadow: inset 0 0 0 1px var(--linha-fina), 0 2px 0 rgba(90, 58, 34, .18);
+}
+.rd-n .rd-ind { grid-row: 1; width: 12px; height: 12px; }
+.rd-n b { grid-row: 1; font: 26px/1 var(--titulo); color: var(--tinta); white-space: nowrap; }
+.rd-n b small { font: 600 12px var(--ui); margin-right: 2px; color: var(--meta, #4e3520); }
+.rd-n span { grid-column: 1 / -1; font: 600 13px/1.2 var(--ui); color: var(--meta, #4e3520); }
+.rd-n.esperando { background: #fff1c2; box-shadow: inset 0 0 0 2px #d8a521, 0 2px 0 rgba(90, 58, 34, .18); }
+.rd-n:hover { background: var(--papel-claro); }
+.rd-n:active { transform: translateY(2px); box-shadow: inset 0 0 0 1px var(--linha-fina); }
+.rd-n:focus-visible { outline: 3px solid var(--contorno); outline-offset: 1px; }
+
+/* ============================== ESCRITÓRIO NO PC: os números do dia no canto do mapa ============================== */
+.resumo-pc { display: none; }
+@media (min-width: 761px) {
+  body[data-vista=mapa] .resumo-pc { display: block; position: absolute; left: 12px; top: 12px; z-index: 4; padding: 6px; background: var(--papel); box-shadow: 0 0 0 2px var(--contorno), 3px 4px 0 rgba(30, 18, 8, .3); }
+  .resumo-pc .rd-linha { grid-template-columns: repeat(4, auto); gap: 4px; }
+  .resumo-pc .rd-n { min-height: 44px; padding: 5px 10px; grid-template-columns: auto auto; grid-template-rows: auto; column-gap: 7px; box-shadow: none; background: transparent; }
+  .resumo-pc .rd-n b { font-size: 24px; }
+  .resumo-pc .rd-n span { grid-column: auto; grid-row: 1; font-size: 14px; white-space: nowrap; }
+  .resumo-pc .rd-n.esperando { background: #fff1c2; box-shadow: inset 0 0 0 2px #d8a521; }
+  .resumo-pc .rd-n:hover { background: var(--papel-claro); }
+  #frentes .agora.contador { display: none !important; }
+}
+
+/* ============================== ESCRITÓRIO NO CELULAR ============================== */
+.setores-mapa, .painel-geral { display: none; }
+#tela.suave { image-rendering: auto; }
+@media (max-width: 760px) {
+  /* barra de setores: madeira (estrutura), chips com a seleção padrão */
+  .setores-mapa {
+    display: flex; align-items: center; position: absolute; left: 0; right: 0; top: 0; z-index: 5; height: 52px;
+    padding: 4px 92px 4px 6px; background: var(--madeira-escura); box-shadow: inset 0 -2px 0 var(--contorno);
+  }
+  .sm-chips { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .sm-chips::-webkit-scrollbar { display: none; }
+  .sm-chips button {
+    flex: none; min-height: 44px; padding: 0 8px; border: 0; background: transparent; cursor: pointer;
+    color: var(--papel); font: 600 14px var(--ui); white-space: nowrap;
+  }
+  .sm-chips button.on { background: var(--sel-fundo); color: var(--tinta); box-shadow: var(--sel-sombra); }
+  .sm-chips button:active { transform: translateY(2px); }
+  /* som e ajuda moram na ponta da barra (sem caixa: madeira é estrutura); o selo do Hoje vira o número "IA hoje" */
+  #palco .som-ambiente { display: none !important; } /* no celular o som ambiente fica de fora (a barra é dos setores) */
+  .setores-mapa { padding-right: 50px; }
+  #palco #boasVindas { top: 4px !important; right: 2px !important; z-index: 7; }
+  #palco #boasVindas:not(.aberto) { background: transparent !important; box-shadow: none !important; }
+  #palco #boasVindas:not(.aberto) .bv-chip { background: transparent !important; color: var(--papel) !important; box-shadow: inset 0 0 0 2px rgba(244, 228, 191, .45) !important; width: 40px !important; height: 40px !important; min-height: 40px !important; margin: 2px; }
+  #palco #boasVindas.aberto { top: 56px !important; left: 8px !important; right: 8px !important; }
+  #palco .selo-hoje { display: none !important; }
+  /* avisos sobre o cenário: uma linha fina, sem moldura grossa */
+  #palco #toasts { top: 58px; left: 8px; right: 8px; }
+  #palco .toast { padding: 6px 10px 6px 14px !important; min-height: 0; box-shadow: 0 0 0 2px var(--contorno), inset 4px 0 0 var(--cor, var(--madeira-clara)) !important; }
+  #palco .toast b { font: 600 14px var(--ui) !important; }
+  #palco .toast img { width: 22px; height: 22px; }
+  body.mapa-geral .hud-mapa { z-index: 3; }
+
+  /* visão geral: o andar inteiro na largura e, embaixo, os números e quem está fazendo o quê */
+  .painel-geral {
+    position: absolute; left: 0; right: 0; bottom: 0; top: calc(52px + 70vw); z-index: 2;
+    display: none; flex-direction: column; gap: 10px; padding: 10px 10px 132px; overflow: hidden;
+    background: var(--papel); box-shadow: 0 -2px 0 var(--contorno), 0 -6px 0 var(--madeira-escura);
+  }
+  body.mapa-geral[data-vista=mapa] .painel-geral { display: flex; }
+  .dica-geral { display: none; }
+  body.mapa-geral[data-vista=mapa] .dica-geral {
+    display: block; position: absolute; left: 50%; translate: -50% 0; top: calc(52px + 70vw - 24px); z-index: 2; pointer-events: none;
+    padding: 3px 10px; background: rgba(42, 26, 16, .82); color: var(--papel-claro); font: 600 13px var(--ui); white-space: nowrap;
+  }
+  .pg-legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 2px; font: 600 13px var(--ui); color: var(--meta); }
+  .pg-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+  .pg-legenda .ind { width: 11px; height: 11px; }
+  /* indicadores: quem espera você é o maior (e pula); livre é o menor */
+  .ind-mapa .ind.livre { width: 11px; height: 11px; left: -5px; top: -11px; }
+  .ind-mapa .ind.esperando { width: 18px; height: 18px; left: -9px; top: -18px; box-shadow: 0 0 0 2px var(--contorno), 0 0 0 4px rgba(255, 210, 63, .45); }
+  /* com uma tela aberta por cima (Atividade, Mais…), o que é do mapa sai da frente */
+  body.gaveta-aberta .setores-mapa, body.gaveta-aberta .painel-geral, body.gaveta-aberta .dica-geral, body.gaveta-aberta .ind-mapa { display: none !important; }
+  .pg-lista { display: grid; gap: 4px; min-height: 0; overflow: hidden; }
+  .pg-lista h3 { margin: 2px 2px 0; font: 600 13px var(--ui); color: var(--meta); letter-spacing: .02em; text-transform: uppercase; }
+  .pg-agora {
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) 14px; align-items: center; gap: 10px; min-height: 48px; padding: 4px 10px 4px 4px;
+    border: 0; background: transparent; color: var(--tinta); text-align: left; cursor: pointer; box-shadow: inset 0 -1px 0 var(--linha-fina);
+  }
+  .pg-agora:active { background: var(--papel-claro); }
+  .pg-agora img { width: 36px; height: 36px; background: var(--papel-escuro); }
+  .pg-agora span { display: grid; min-width: 0; }
+  .pg-agora b { font: 600 16px/1.2 var(--ui); }
+  .pg-agora small { font: 14px/1.3 var(--ui); color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pg-vazio { margin: 4px; font: 15px var(--ui); color: var(--meta); }
+  body.mapa-geral #camada .placa { font-size: 11px !important; padding: 1px 5px !important; opacity: .95; }
+  body.mapa-geral #camada .nome.gente { font-size: 11px; }
+  /* na visão geral só ficam as placas e os indicadores: nada de balões e crachás por cima */
+  body.mapa-geral #camada .fala, body.mapa-geral #camada .nome:not(.gente), body.mapa-geral #camada .porque-mapa, body.mapa-geral .balao-vida, body.mapa-geral #dica { display: none !important; }
+  /* a vista não é o mapa: some tudo que é do mapa */
+  body:not([data-vista=mapa]) .setores-mapa, body:not([data-vista=mapa]) .ind-mapa { display: none; }
+}
+
+/* ============================== ficha inferior (quem você tocou no mapa) ============================== */
+.ficha-mapa[hidden] { display: none !important; }
+.ficha-mapa {
+  position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 60;
+  display: grid; gap: 10px; padding: 14px 16px 16px; background: var(--papel); color: var(--tinta);
+  box-shadow: 0 -2px 0 var(--contorno), 0 -6px 0 var(--madeira-escura), 0 -10px 24px rgba(20, 10, 4, .35);
+  animation: r3-sobe .16s ease-out;
+}
+@keyframes r3-sobe { from { transform: translateY(24px); opacity: 0; } }
+.fm-cab { display: grid; grid-template-columns: 48px minmax(0, 1fr) 44px; align-items: center; gap: 12px; }
+.fm-cab img { width: 48px; height: 48px; background: var(--papel-escuro); box-shadow: 0 0 0 2px var(--contorno); }
+.fm-nome { display: grid; gap: 4px; min-width: 0; }
+.fm-nome b { font: 24px/1 var(--titulo); letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-est { display: inline-flex; align-items: center; gap: 8px; font: 600 14px var(--ui); color: var(--meta); }
+.fm-est .ind { width: 12px; height: 12px; }
+.fm-x { width: 44px; height: 44px; border: 0; background: transparent; color: var(--tinta); font: 28px/1 var(--ui); cursor: pointer; }
+.fm-corpo { margin: 0; display: grid; gap: 8px; }
+.fm-corpo div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; }
+.fm-corpo dt { font: 600 13px/1.5 var(--ui); color: var(--meta); text-transform: uppercase; letter-spacing: .03em; }
+.fm-corpo dd { margin: 0; font: 16px/1.45 var(--ui); color: var(--tinta); }
+.fm-corpo dd small { display: block; margin-top: 2px; font: 14px/1.35 var(--ui); color: var(--meta); }
+.fm-acoes { display: flex; gap: 10px; }
+.fm-acoes .btn { flex: 1; min-height: 48px; }
+.ficha-mapa.esperando { box-shadow: 0 -2px 0 var(--contorno), 0 -6px 0 #d8a521, 0 -10px 24px rgba(20, 10, 4, .35); }
+body.ficha-aberta .hud-mapa, body.ficha-aberta .bc-abrir { display: none !important; }
+@media (min-width: 761px) { .ficha-mapa { left: auto; right: 16px; bottom: 16px; width: 380px; } }
+@media (prefers-reduced-motion: reduce) { .ficha-mapa { animation: none; } }
+
+/* ============================== Atividade › Resumo: números no topo ============================== */
+.resumo-dia-ativ { margin: 0 0 14px; }
+
+/* ============================== Hoje: cabeça do dia (gasto, comparação, estimativa) ============================== */
+.hj-dia { display: grid; gap: 10px; padding: 12px; background: var(--cartao-papel, #fbf0d6); box-shadow: inset 0 0 0 1px var(--linha-fina); }
+.hj-dia-custo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 12px; align-items: start; }
+.hj-dia-total { display: grid; gap: 2px; }
+.hj-dia-total small { font: 600 13px var(--ui); color: var(--meta); }
+.hj-dia-total b { font: 34px/1 var(--titulo); color: var(--tinta); }
+.hj-dia-total span { font: 600 14px/1.3 var(--ui); color: var(--tinta); }
+.hj-dia-custo ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.hj-dia-custo li { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 4px; box-shadow: inset 0 -1px 0 var(--linha-fina); font: 14px var(--ui); color: var(--meta); }
+.hj-dia-custo li b { color: var(--tinta); font-weight: 600; white-space: nowrap; }
+.hj-dia-nota { margin: 0; font: 13px/1.4 var(--ui); color: var(--meta); }
+.hj-dia .rd-n { background: var(--papel); }
+
+/* ============================== LEGIBILIDADE (Atividade, Hoje, Equipe, Quadro, Mais) ============================== */
+/* corpo ~16px, metadados ≥ 13px em marrom escuro, toques ≥ 44px */
+#gaveta .painel, #equipeVista, #quadro { font-size: 16px; line-height: 1.45; }
+#gaveta small, #gaveta .fraco, #gaveta .meta, #equipeVista small, #quadro small { font-size: max(13px, .82em); }
+.hoje { color: var(--tinta); }
+.hj-intro, .hj-nota { font-size: 14px !important; line-height: 1.45; color: var(--meta) !important; }
+.hj-abas button { min-height: 44px; font-size: 15px !important; color: var(--meta) !important; }
+.hj-abas button.on { background: var(--sel-fundo) !important; color: var(--tinta) !important; box-shadow: var(--sel-sombra) !important; }
+.hj-tile small, .hj-tile span { font-size: 13px !important; color: var(--meta) !important; }
+.hj-ag-nome b { font-size: 16px; }
+.hj-agora li, .hj-depois li { font-size: 15px; line-height: 1.4; }
+.hj-rotulo { font-size: 13px !important; color: var(--meta) !important; }
+
+/* Mais: título forte, descrição de uma linha, sem molduras grossas */
+#listaMais { display: grid; gap: 8px; }
+#listaMais > button { box-shadow: inset 0 0 0 1px var(--linha-fina), 0 2px 0 rgba(90, 58, 34, .16) !important; }
+#listaMais b, #listaMais strong { font-size: 17px; }
+#listaMais small, #listaMais span:not(.ic) { font-size: 14px; color: var(--meta); line-height: 1.35; }
+
+/* Atividade: cartões = título + estado + próximo; o resto fica nos detalhes (abrir o pedido) */
+#listaMissoes .missao, #listaMissoes [data-abrir-missao], #listaHistorico > * { box-shadow: inset 0 0 0 1px var(--linha-fina), 0 2px 0 rgba(90, 58, 34, .16); }
+#gaveta .filtros button, #gaveta .seg-atividade button, .seg-conversas button { min-height: 44px; font-size: 15px; }
+#gaveta .seg-atividade button.on, .seg-conversas button.on, #gaveta .filtros button.on { background: var(--sel-fundo) !important; color: var(--tinta) !important; box-shadow: var(--sel-sombra) !important; }
+
+/* ============================== PESOS VISUAIS ============================== */
+/* bordas internas finas: cartões dentro de painéis usam linha de 1px, não contorno de 2px */
+#gaveta .painel .cartao, #gaveta .painel .card, .eqa-card, .q-card, .marco-card { box-shadow: inset 0 0 0 1px var(--linha-fina), 0 2px 0 rgba(90, 58, 34, .16); }
+/* botões secundários dentro de cartões: papel com contorno fino (o laranja fica só para a ação principal) */
+#gaveta .painel .btn:not(.forte), #equipeVista .btn:not(.forte), #quadro .btn:not(.forte) {
+  box-shadow: 0 0 0 1px var(--contorno), inset 0 -2px 0 var(--papel-sombra); min-height: 44px; font-size: 15px;
+}
+
+/* Atividade › Resumo: primeiro o que precisa de você; os ajustes de aviso vão para o fim, sem laranja */
+#listaAtencao { display: flex; flex-direction: column; gap: 12px; }
+#listaAtencao > .cartao-av { order: 9; box-shadow: inset 0 0 0 1px var(--linha-fina) !important; background: transparent !important; }
+#listaAtencao #ativarPush { background: var(--papel-claro) !important; color: var(--tinta) !important; font: 600 15px var(--ui) !important; box-shadow: 0 0 0 1px var(--contorno), inset 0 -2px 0 var(--papel-sombra) !important; min-height: 44px; }
+#listaAtencao .cx > h3 { font-size: 18px; }
+#listaAtencao .ag-c span, #listaAtencao .pronto .p-txt { font-size: 15px; line-height: 1.4; color: var(--tinta); }
+#listaAtencao .ag-c small, #listaAtencao .pronto .p-top { font-size: 13px; color: var(--meta); }
+
+/* Missões: título + estado + o último passo (o caminho todo fica no pedido aberto) */
+#listaMissoes .missao { padding: 12px 14px; display: grid; gap: 6px; }
+#listaMissoes .missao .cab { font-size: 13px; color: var(--meta); }
+#listaMissoes .missao .ped { font: 600 16px/1.35 var(--ui); color: var(--tinta); }
+#listaMissoes .missao .resumo-linhas { font-size: 14px; color: var(--meta); }
+#listaMissoes .missao .resumo-linhas > div:not(:last-child), #listaMissoes .missao .rostos { display: none; }
+#listaMissoes .missao .res { font-size: 15px; line-height: 1.4; color: var(--tinta); }
+/* Quadro: botões do topo e "+" das colunas com contorno fino; só o "+ Marco" é laranja */
+#quadro .quadro-topo .btn:not(.forte), #quadro .col-novo, #quadro .glo { box-shadow: 0 0 0 1px var(--contorno), inset 0 -2px 0 var(--papel-sombra) !important; }
+#quadro .col-novo { background: transparent !important; box-shadow: inset 0 0 0 1px var(--linha-fina) !important; min-width: 44px; min-height: 44px; }
+#gaveta .filtros button:not(.on) { box-shadow: inset 0 0 0 1px var(--linha-fina) !important; background: transparent !important; }
+
+/* ============================== ajustes da retomada ============================== */
+/* Hoje: abas fixas cobrem o que rola por baixo (sem fresta) e números do custo em destaque */
+.hoje .hj-abas { top: -2px; box-shadow: 0 -16px 0 6px var(--papel) !important; }
+.hoje .hj-tile b { font: 26px/1.15 var(--titulo) !important; color: var(--tinta); }
+.hoje .hj-tile b .un { font: 600 13px var(--ui) !important; color: var(--meta) !important; }
+.hoje .hj-tile small { font: 600 13px/1.3 var(--ui) !important; }
+/* Missões: título + estado + próximo passo; entregue mostra só o resultado (2 linhas). O resto fica no pedido aberto. */
+#listaMissoes .missao { position: relative; padding-right: 34px; cursor: pointer; }
+#listaMissoes .missao::after { content: "›"; position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 26px/1 var(--ui); color: var(--meta); }
+#listaMissoes .missao:has(.res) .resumo-linhas { display: none; }
+#listaMissoes .missao .res { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#listaMissoes .missao .resumo-linhas > div:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#listaMissoes .missao .cab .dono, #listaMissoes .missao .cab .st { font-size: 13px; }
+#listaMissoes .missao:active { background: var(--papel-claro); }
+#listaHistorico small, #listaHistorico .meta { font-size: 13px; color: var(--meta); }
+
+/* Escritório no celular, aproximado: faixa fina com os números do dia logo abaixo dos setores (papel, sem moldura) */
+.resumo-setor { display: none; }
+@media (max-width: 760px) {
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta) .resumo-setor {
+    display: block; position: absolute; left: 0; right: 0; top: 52px; z-index: 5; height: 46px;
+    background: var(--papel); box-shadow: inset 0 -1px 0 var(--papel-sombra), 0 2px 0 rgba(42, 26, 16, .25);
+  }
+  .rd-fino { display: flex; height: 100%; gap: 0; justify-content: space-between; padding: 0 4px; }
+  .rd-fino .rd-n {
+    display: flex; align-items: center; gap: 4px; min-height: 44px; height: 46px; padding: 0 4px; flex: 0 1 auto; min-width: 0;
+    background: transparent; box-shadow: none;
+  }
+  .rd-fino .rd-n b { font-size: 18px; }
+  .rd-fino .rd-n b small { font-size: 11px; margin-right: 1px; }
+  .rd-fino .rd-n span { font: 600 13px/1 var(--ui); color: var(--meta); white-space: nowrap; }
+  .rd-fino .rd-n .rd-ind { width: 12px; height: 12px; }
+  .rd-fino .rd-n.esperando { background: transparent; box-shadow: inset 0 -3px 0 #d8a521; }
+  body[data-vista=mapa]:not(.mapa-geral) #palco #toasts { top: 104px; }
+}
+/* nome de quem está na ficha, em cima do indicador */
+.ind-nome[hidden] { display: none; }
+.ind-nome {
+  position: absolute; left: 0; top: -44px; translate: -50% 0; z-index: 3; white-space: nowrap; pointer-events: none;
+  padding: 3px 8px; background: var(--papel-claro); color: var(--tinta); font: 600 14px var(--ui);
+  box-shadow: 0 0 0 2px var(--contorno), 2px 3px 0 rgba(30, 18, 8, .35);
+}
+/* celular: os números em 2 × 2, cada um numa linha só (nada cortado) */
+@media (max-width: 760px) {
+  .rd-linha:not(.rd-fino), .rd-linha.com-custo:not(.rd-fino) { grid-template-columns: 1fr 1fr; }
+  .rd-linha:not(.rd-fino) .rd-n { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; }
+  .rd-linha:not(.rd-fino) .rd-n b { font-size: 22px; }
+  .rd-linha:not(.rd-fino) .rd-n span { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .painel-geral { gap: 8px; }
+}
+/* o amarelo é sinal: no cartão "Esperando você" só a borda, sem fundo chapado */
+.rd-n.esperando { background: var(--cartao-papel, #fbf0d6); }

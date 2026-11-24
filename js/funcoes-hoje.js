@@ -54,13 +54,61 @@ export async function desenhar(forcar = false) {
   let corpo = '';
   try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : htmlSugestoes(); }
   catch (e) { console.warn('hoje:', e); corpo = `<p class="hj-vazio">Não consegui montar esta parte agora (${ctx.esc(e.message)}).</p>`; }
-  el.innerHTML = topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>`;
+  let cab = '';
+  try { cab = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
+  el.innerHTML = cab + topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>`;
   el.onclick = clique;
   atualizarSelo();
 }
 
+// ======================= resumo do dia: fila, andamento, o que espera você e o custo =======================
+// Uma conta só, usada no Escritório (painel de baixo do mapa), na Atividade e no topo do Hoje.
+export function abrirEm(s) { if (s) { sub = s; guarda('hojeSub', sub); } editando = confirmar = null; ctx?.abrir(); return desenhar(true); }
+export async function resumoDoDia() {
+  if (!ctx?.eu()) return null;
+  const por = await filaDoDia();
+  let fila = 0;
+  for (const m of por.values()) for (const l of m.values()) fila += l.depois.filter((x) => x.de !== 'quadro').length;
+  const { dias, porPessoa } = await dadosCusto(), pessoas = ctx.pessoas();
+  const soma = (i, k) => pessoas.reduce((s, p) => s + (porPessoa[p]?.dias[i]?.[k] || 0), 0);
+  const H = dias.length - 1, ant = dias.slice(0, H).map((_, i) => soma(i, 'custo')).filter((v) => v > 0);
+  const hoje = soma(H, 'custo'), ontem = soma(H - 1, 'custo'), media = ant.length ? ant.reduce((a, b) => a + b, 0) / ant.length : 0;
+  const pedSemana = dias.reduce((s, _, i) => s + soma(i, 'pedidos'), 0), custoSemana = dias.reduce((s, _, i) => s + soma(i, 'custo'), 0);
+  const porPedido = pedSemana ? custoSemana / pedSemana : 0;
+  const c = ctx.contagens?.() || {};
+  return { fila, fazendo: c.fazendo ?? 0, esperando: c.esperando ?? 0, livres: c.livres ?? 0, hoje, ontem, media, diasMedia: ant.length, porPedido, estimativaFila: fila * porPedido, temCusto: pessoas.some((p) => porPessoa[p]?.fonte) };
+}
+export const dinheiroCurto = dinheiro;
+export function comparacao(r) {
+  if (!r.temCusto) return 'sem dados de custo ainda';
+  if (!r.media) return r.ontem ? `ontem ${dinheiro(r.ontem)}` : 'primeiro dia com dados';
+  const pct = Math.round(((r.hoje - r.media) / r.media) * 100);
+  return pct > 5 ? `${pct}% acima da média` : pct < -5 ? `${-pct}% abaixo da média` : 'na média dos últimos dias';
+}
+// Os três números do dia (mesma cor e ícone dos indicadores do mapa). Toque abre a lista.
+export function htmlNumerosDia(r, { custo = false, curto = false } = {}) {
+  if (curto) { // faixa fina de uma linha (mapa aproximado no celular)
+    const c = (v, rot, cls, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
+    return `<div class="rd-linha rd-fino">${c(r.fila, 'na fila', 'fila', 'Ver a fila do dia')}${c(r.fazendo, 'fazendo', 'fazendo', 'Quem está trabalhando agora')}${c(r.esperando, 'decisões', 'esperando', 'Decisões que só você pode dar')}${c('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA', 'custo', 'Gasto estimado de IA hoje (US$)')}</div>`;
+  }
+  const n = (v, rot, cls, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
+  return `<div class="rd-linha${custo ? ' com-custo' : ''}">${n(r.fila, 'Na fila', 'fila', 'Pedidos esperando a vez: ver a fila do dia')}${n(r.fazendo, 'Fazendo', 'fazendo', 'Quem está trabalhando agora')}${n(r.esperando, r.esperando === 1 ? 'Decisão sua' : 'Decisões suas', 'esperando', 'Decisões e autorizações que só você pode dar')}${custo ? n('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA hoje', 'custo', 'Gasto estimado de IA hoje: ver o custo') : ''}</div>`;
+}
+// Topo do Hoje: quanto já foi hoje, comparado com a média, e quanto a fila deve custar.
+function htmlCabecaDia(r) {
+  if (!r) return '';
+  const { esc } = ctx;
+  return `<section class="hj-dia" aria-label="Resumo de hoje">
+    <div class="hj-dia-custo"><div class="hj-dia-total"><small>Gasto de IA hoje</small><b>${dinheiro(r.hoje)}</b><span>${esc(comparacao(r))}</span></div>
+      <ul><li><span>Média (${r.diasMedia || 0} ${r.diasMedia === 1 ? 'dia' : 'dias'})</span><b>${dinheiro(r.media)}</b></li><li><span>Ontem</span><b>${dinheiro(r.ontem)}</b></li><li><span>Fila (${r.fila})</span><b>≈ ${dinheiro(r.estimativaFila)}</b></li></ul></div>
+    ${htmlNumerosDia(r)}
+    <p class="hj-dia-nota">Consumo estimado pelo uso (não é cobrança: a assinatura já cobre). A fila usa o custo médio por pedido da semana.</p>
+  </section>`;
+}
+
 async function clique(e) {
   const mo = e.target.closest('[data-motivo]'); if (mo) { const ab = mo.classList.toggle('todo'); mo.setAttribute('aria-expanded', ab); return; }
+  const rd = e.target.closest('[data-rd]'); if (rd) { ctx.resumoIr?.(rd.dataset.rd); return; }
   const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo]');
   if (!t) return;
   if (t.dataset.hsub) { sub = t.dataset.hsub; guarda('hojeSub', sub); editando = confirmar = null; return desenhar(true); }

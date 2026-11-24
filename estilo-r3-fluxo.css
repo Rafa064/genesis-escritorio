@@ -1,0 +1,306 @@
+/* =====================================================================
+   Estúdio Genesis · RODADA 3 · FLUXO (carregado depois do estilo-telas.css)
+   (1) topo enxuto: barra compacta (estúdio + Kenny + você) e UM aviso prioritário embaixo
+   (2) "Novo pedido": um painel só, em todo lugar, e "Pedido criado" depois do envio
+   (5) conflito com o Kenny vira coordenação (arquivo, quem e quando, ações)
+   (7) autorizações: um cartão por decisão, com consequência e Recusar
+   Madeira = estrutura · papel = conteúdo · laranja só na ação principal.
+   ===================================================================== */
+
+/* ======================= (1) TOPO ======================= */
+#topo .logo { gap: 8px; white-space: nowrap; }
+#statusTopo { min-width: 0; }
+.aviso-topo { display: flex; align-items: stretch; gap: 6px; min-width: 0; width: 100%; }
+.av-item {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px 0 10px; cursor: pointer; border: 0; text-align: left;
+  background: var(--papel-claro); color: var(--tinta); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra);
+}
+.av-item.urgente { background: #ffd863; box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 #d89b1e, inset 0 2px 0 #fff0a8; }
+.av-item.aviso { background: #fff1b8; box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 #e4c46a; }
+.av-item:active { transform: translateY(2px); }
+.av-ic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; background: var(--contorno); color: #ffd863; }
+.av-ic .pxi { width: 16px; height: 16px; }
+.av-txt { flex: 1; min-width: 0; display: grid; line-height: 1.15; }
+.av-txt b { font: 600 16px var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-txt small { font: 500 13px var(--ui); color: var(--meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-acao { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; min-height: 32px; font: 600 18px var(--titulo); background: var(--contorno); color: var(--papel-claro); }
+.av-acao i { font-style: normal; }
+.av-mais {
+  flex: none; min-width: 48px; min-height: 44px; border: 0; cursor: pointer; font: 600 20px var(--titulo); color: var(--papel-claro);
+  background: rgba(42, 26, 16, .45); box-shadow: inset 0 0 0 2px rgba(255, 230, 190, .45);
+}
+.av-mais[aria-expanded=true] { background: var(--papel-claro); color: var(--tinta); box-shadow: 0 0 0 2px var(--contorno); }
+.av-lista { position: fixed; z-index: 90; display: grid; gap: 8px; padding: 10px; background: var(--papel); box-shadow: var(--moldura); }
+.av-lista[hidden] { display: none; }
+.av-lista-tit { margin: 0 0 2px; font: 600 18px var(--titulo); color: var(--tinta); }
+.av-lista .av-item { flex: none; }
+
+/* Kenny: plaquinha compacta, o número é de pedidos dele esperando você */
+.chip-dupla .cd-n { position: absolute; left: 26px; top: -4px; min-width: 20px; height: 20px; display: grid; place-items: center; padding: 0 4px; font: 600 13px/1 var(--ui); background: var(--acao); color: var(--contorno); box-shadow: 0 0 0 2px var(--contorno); }
+.chip-dupla .cd-trab, .chip-dupla .cd-aviso { display: none !important; }
+
+@media (min-width: 761px) {
+  #statusTopo { flex: 0 1 440px; }
+  .av-txt small { display: block; }
+}
+@media (max-width: 760px) {
+  /* linha 1: estúdio · Kenny · você (só o rosto) — linha 2: o aviso único */
+  #topo { grid-template-columns: minmax(0, 1fr) auto 44px; grid-template-rows: 44px 44px; }
+  #topo .logo { display: flex !important; grid-column: 1; grid-row: 1; align-items: center; font-size: 24px; min-width: 0; overflow: hidden; }
+  #topo .logo .nome-logo { display: inline !important; font-size: 25px; overflow: hidden; text-overflow: ellipsis; }
+  #chipDupla { grid-column: 2; grid-row: 1; }
+  #perfilTopo { grid-column: 3; grid-row: 1; width: 44px; padding: 3px; justify-content: center; }
+  #perfilTopo .pf-txt, #perfilTopo .pf-seta { display: none; }
+  #statusTopo { grid-column: 1 / -1; grid-row: 2; display: flex !important; }
+  .av-txt small { display: none; }
+  .av-acao { font-size: 0; padding: 0 6px; background: none; color: var(--tinta); min-height: 0; }
+  .av-acao i { font: 600 26px/1 var(--titulo); }
+  .av-item { gap: 8px; padding-left: 8px; }
+  body.sem-aviso #topo { grid-template-rows: 44px; }
+  body.sem-aviso #statusTopo { display: none !important; }
+  body.sem-aviso #area { inset: calc(56px + env(safe-area-inset-top)) 0 calc(64px + env(safe-area-inset-bottom)) 0; }
+}
+
+/* ======================= (2) NOVO PEDIDO ======================= */
+.np-fundo { position: fixed; inset: 0; z-index: 85; display: grid; place-items: end center; background: rgba(30, 18, 8, .5); }
+.np-fundo[hidden] { display: none; }
+.np {
+  width: min(520px, 100%); max-height: 92vh; overflow: auto; margin: 0; display: grid; gap: 14px;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); font: 16px/1.45 var(--ui); color: var(--tinta);
+  animation: px-folha .18s ease-out;
+}
+@media (min-width: 761px) { .np-fundo { place-items: center; } .np { margin: 16px; } }
+.np-cab { display: flex; align-items: center; gap: 10px; }
+.np-cab h2 { flex: 1; display: flex; align-items: center; gap: 10px; margin: 0; font: 600 28px var(--titulo); color: var(--tinta); }
+.np-cab h2 .pxi { width: 22px; height: 22px; color: var(--acao-escuro); }
+.np-ok .np-cab h2 .pxi { color: var(--ok); }
+.np-x { width: 44px; height: 44px; border: 0; cursor: pointer; font: 600 28px var(--titulo); color: var(--tinta); background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra); }
+.np-bloco { display: grid; gap: 6px; }
+.np-rot { font: 600 14px var(--ui); color: var(--meta); }
+.np textarea, .np select {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border: 0; font: 16px/1.4 var(--ui); color: var(--tinta);
+  background: #fffbef; box-shadow: inset 0 0 0 2px var(--contorno), inset 0 3px 0 rgba(90, 58, 34, .12);
+}
+.np textarea { resize: vertical; }
+.np textarea[name=texto] { min-height: 96px; }
+.np select { min-height: 44px; cursor: pointer; }
+.np textarea:focus, .np select:focus { outline: 3px solid var(--acao); outline-offset: 1px; }
+.np-linha { grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
+.np-seg { display: flex; gap: 0; box-shadow: 0 0 0 2px var(--contorno); }
+.np-seg button { flex: 1; min-height: 44px; padding: 4px 10px; border: 0; cursor: pointer; font: 600 15px var(--ui); color: var(--tinta); background: var(--papel-claro); }
+.np-seg button + button { box-shadow: inset 2px 0 0 var(--contorno); }
+.np-seg button.on { background: var(--madeira); color: var(--papel-claro); }
+.np-seg button small { font-weight: 500; opacity: .8; }
+.np details { box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .25); padding: 0 12px; }
+.np details[open] { padding-bottom: 12px; display: grid; gap: 10px; }
+.np summary { min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer; font: 600 15px var(--ui); color: var(--tinta); list-style: none; }
+.np summary::-webkit-details-marker { display: none; }
+.np summary::before { content: '+'; width: 20px; height: 20px; display: grid; place-items: center; font: 600 16px/1 var(--ui); background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno); }
+.np details[open] > summary::before { content: '−'; }
+.np summary small { font-weight: 500; color: var(--meta); }
+.np-ajuda { margin: 0; font: 14px/1.45 var(--ui); color: var(--meta); }
+.np-estado { margin: 0; padding: 10px 12px; font: 15px/1.4 var(--ui); background: #fff1b8; box-shadow: inset 0 0 0 2px var(--aviso-borda); }
+.np-origem { margin: 0; padding: 10px 12px; font: 15px/1.45 var(--ui); background: var(--papel-claro); box-shadow: inset 4px 0 0 #4f8fd8, inset 0 0 0 2px rgba(90, 58, 34, .25); }
+.np-chk { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.np-chk input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--madeira); flex: none; }
+.np-chk span { display: grid; gap: 2px; font: 15px/1.35 var(--ui); }
+.np-chk small { color: var(--meta); font-size: 14px; }
+.np-rodape { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+.np-rodape .btn { min-height: 50px; }
+.np-rodape .btn:not(.forte) { font: 600 15px var(--ui); padding: 0 16px; }
+.np-rodape .btn.forte { font-size: 24px; }
+/* depois do envio */
+.np-ok-tit { margin: 0; font: 600 18px/1.35 var(--ui); }
+.np-fatos { margin: 0; display: grid; gap: 10px; }
+.np-fatos > div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: center; padding-bottom: 10px; border-bottom: 2px dashed rgba(90, 58, 34, .22); }
+.np-fatos dt { font: 600 14px var(--ui); color: var(--meta); }
+.np-fatos dd { margin: 0; }
+.np-resp { display: flex; align-items: center; gap: 10px; }
+.np-resp img { width: 40px; height: 40px; flex: none; background: var(--papel-escuro); box-shadow: 0 0 0 2px var(--contorno); }
+.np-resp span { display: grid; line-height: 1.25; }
+.np-resp b { font: 600 16px var(--ui); }
+.np-resp small { font: 14px var(--ui); color: var(--meta); }
+.np-est { display: inline-flex; align-items: center; gap: 8px; font: 600 15px/1.35 var(--ui); }
+.np-est i { width: 12px; height: 12px; flex: none; background: var(--ok); box-shadow: 0 0 0 2px var(--contorno); }
+.np-est.fila i { background: var(--acao); }
+.np-est.espera i { background: #a89a8a; }
+.np-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; counter-reset: np; }
+.np-passos li { counter-increment: np; display: grid; gap: 6px; font: 600 14px var(--ui); color: var(--meta); }
+.np-passos li::before { content: ''; height: 8px; background: var(--papel-escuro); box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .35); }
+.np-passos li.ok { color: var(--ok); } .np-passos li.ok::before { background: #4fa865; }
+.np-passos li.atual { color: var(--tinta); } .np-passos li.atual::before { background: var(--acao); }
+body.np-aberto .bc-abrir { visibility: hidden; }
+
+/* botão do mapa: mesmo nome em todo lugar */
+.bc-abrir { white-space: nowrap; }
+/* Conversas: "＋ Novo pedido" ao lado de Dupla / Assistente */
+.seg-conversas.com-novo { display: grid; grid-template-columns: 1fr 1fr auto; }
+.seg-conversas.com-novo .seg-novo {
+  flex: none; min-height: 44px; padding: 0 12px; border: 0; cursor: pointer; white-space: nowrap;
+  font: 600 18px var(--titulo); color: var(--contorno); background: var(--acao);
+  box-shadow: inset 0 -3px 0 var(--acao-escuro), inset 0 2px 0 var(--acao-claro), inset 2px 0 0 var(--contorno);
+}
+#formChat #btnEnviar { min-width: 96px; }
+
+/* ======================= (5) CONFLITO = COORDENAÇÃO ======================= */
+.cd-conf.aberto, .cd-conf.combinado { display: grid; gap: 10px; padding: 12px; font: 15px/1.45 var(--ui); color: var(--tinta); background: #fff1b8; box-shadow: inset 0 0 0 2px var(--aviso-borda); }
+.cd-conf.combinado { background: var(--ok-fundo); box-shadow: inset 0 0 0 2px #6cb37f; }
+.cdc-cab { display: flex; align-items: flex-start; gap: 10px; }
+.cdc-cab > .pxi { width: 22px; height: 22px; padding: 4px; box-sizing: content-box; background: var(--contorno); color: #ffd863; flex: none; }
+.cd-conf.combinado .cdc-cab > .pxi { color: #9be3ad; }
+.cdc-cab > div { flex: 1; display: grid; gap: 2px; }
+.cdc-cab b { font: 600 20px/1.1 var(--titulo); }
+.cdc-cab small { font: 14px/1.35 var(--ui); color: var(--meta); }
+.cdc-arq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; padding: 8px 10px; background: #fffbef; box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .3); }
+.cdc-arq code { font: 600 14px/1.3 ui-monospace, monospace; word-break: break-all; }
+.cdc-arq small { font: 13px var(--ui); color: var(--meta); }
+.cdc-quem { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cdc-quem li { display: flex; gap: 10px; align-items: center; }
+.cdc-quem img { width: 34px; height: 34px; flex: none; background: var(--papel-escuro); box-shadow: 0 0 0 2px var(--cor, var(--contorno)); }
+.cdc-quem span { display: grid; font: 15px/1.35 var(--ui); }
+.cdc-quem small { font: 13px/1.35 var(--ui); color: var(--meta); }
+.cdc-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cdc-acoes .btn { min-height: 44px; font: 600 15px var(--ui); }
+.cdc-acoes .btn.forte { grid-column: 1 / -1; font: 600 21px var(--titulo); order: -1; }
+.cdc-acoes .btn:only-child, .cdc-acoes .btn:last-child:nth-child(2) { grid-column: 1 / -1; }
+.cdc-alt { padding: 8px 10px; background: #fffbef; box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .25); }
+.cdc-alt p { margin: 0 0 6px; font: 600 14px var(--ui); color: var(--meta); }
+.cdc-alt ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cdc-alt li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font: 14px/1.35 var(--ui); }
+.cdc-h { font: 600 13px ui-monospace, monospace; color: var(--meta); }
+.cdc-link { min-height: 44px; padding: 0 6px; border: 0; background: none; cursor: pointer; font: 600 14px var(--ui); color: var(--acao-escuro); text-decoration: underline; text-underline-offset: 3px; }
+.cdc-combinar { display: grid; gap: 8px; }
+.cdc-combinar p { margin: 0; font: 600 16px var(--ui); }
+.cdc-combinar .btn { display: grid; justify-items: start; gap: 2px; text-align: left; min-height: 52px; padding: 8px 12px; }
+.cdc-combinar .btn b { font: 600 16px var(--ui); }
+.cdc-combinar .btn small { font: 14px var(--ui); color: var(--meta); }
+.cdc-combinar .cdc-link { justify-self: start; }
+
+/* pedido do Kenny: Assumir / Encaminhar */
+.cd-bola { display: grid; gap: 8px; padding: 12px; font: 15px/1.45 var(--ui); }
+.cd-b-cab { font: 14px var(--ui); color: var(--meta); }
+.cd-b-txt { margin: 0; font: 600 16px/1.4 var(--ui); color: var(--tinta); }
+.cd-b-ctx { margin: 0; font: 14px/1.4 var(--ui); color: var(--meta); }
+.cd-b-duas { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.cd-b-duas .btn { min-height: 48px; font: 600 15px var(--ui); }
+.cd-b-duas .btn.forte { font: 600 21px var(--titulo); order: -1; }
+.cd-b-sec { min-height: 44px; font: 600 14px var(--ui); color: var(--meta); }
+@media (min-width: 420px) { .cd-b-duas { grid-template-columns: 1fr 1fr; } .cd-b-duas .btn.forte { order: 0; } }
+
+/* ---- herança das versões antigas dos cartões ---- */
+.cd-conf.aberto > div, .cd-conf.combinado > div { flex: none; }
+.cd-conf > .cdc-cab { display: flex; gap: 10px; }
+.cdc-quem li > span { display: block; }
+.cdc-quem li > span small { display: block; }
+.cd-topo .cd-bola-btn { display: none; }
+
+/* ======================= (7) AUTORIZAÇÕES: uma decisão por cartão ======================= */
+.aprovacao.ap3::before { display: none; }
+.aprovacao.ap3 b { color: inherit; font: inherit; font-weight: 600; }
+.aprovacao.ap3 .ap3-tit b { font: 600 22px/1.1 var(--titulo); color: var(--tinta); }
+.aprovacao.ap3 pre.det { margin: 0; padding: 8px; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; font: 13px/1.4 ui-monospace, monospace; background: #fffbef; color: var(--tinta); box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .3); }
+.ap3-intro { margin: 0 0 10px; font: 15px/1.45 var(--ui); color: var(--meta); }
+.aprovacao.ap3 { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; font: 15px/1.45 var(--ui); color: var(--tinta); background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), 3px 3px 0 1px rgba(30, 18, 8, .25); }
+.aprovacao.ap3.perigo { box-shadow: 0 0 0 2px var(--contorno), inset 6px 0 0 #c8452f, 3px 3px 0 1px rgba(30, 18, 8, .25); padding-left: 16px; }
+.aprovacao.ap3.decidida { background: var(--papel); box-shadow: 0 0 0 2px rgba(90, 58, 34, .45); }
+.ap3-cab { display: flex; align-items: flex-start; gap: 10px; }
+.ap3-cab .ap-ic { width: 32px; height: 32px; flex: none; display: grid; place-items: center; background: var(--papel-escuro); box-shadow: 0 0 0 2px var(--contorno); }
+.ap3.perigo .ap3-cab .ap-ic { background: #ffd6ca; color: #8a2a1c; }
+.ap3-cab .ap-ic .pxi { width: 18px; height: 18px; }
+.ap3-tit { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.ap3-tit b { font: 600 22px/1.1 var(--titulo); }
+.ap3-tit small { font: 14px/1.35 var(--ui); color: var(--meta); }
+.ap3-n { flex: none; font: 600 13px var(--ui); font-style: normal; padding: 3px 7px; background: var(--madeira); color: var(--papel-claro); }
+.ap3-conseq { margin: 0; display: grid; gap: 8px; }
+.ap3-conseq > div { display: grid; gap: 2px; padding: 8px 10px; box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .2); }
+.ap3-conseq dt { font: 600 13px var(--ui); text-transform: uppercase; letter-spacing: .04em; color: var(--meta); }
+.ap3-conseq .sim dt { color: var(--ok); }
+.ap3.perigo .ap3-conseq .sim dt { color: var(--perigo); }
+.ap3-conseq dd { margin: 0; }
+.ap3-conseq code, .ap3-arqs code { font: 13.5px ui-monospace, monospace; background: #fffbef; padding: 0 3px; box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .3); word-break: break-all; }
+.ap3-arqs { padding: 8px 10px; background: var(--perigo-fundo); box-shadow: inset 0 0 0 2px #e8a690; }
+.ap3-arqs p { margin: 0 0 6px; font: 15px/1.35 var(--ui); }
+.ap3-arqs ul { margin: 0; padding: 0 0 0 18px; display: grid; gap: 4px; }
+.ap3-arqs li { font: 14px/1.35 var(--ui); }
+.ap3-mais { color: var(--meta); }
+.ap3-listar { display: block; margin-top: 8px; min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; font: 600 15px var(--ui); color: var(--perigo); text-decoration: underline; text-underline-offset: 3px; }
+.ap3-listar small { font-weight: 500; text-decoration: none; color: var(--meta); }
+.ap3-extras { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ap3-extras li { display: flex; gap: 8px; font: 14px/1.4 var(--ui); color: var(--perigo); }
+.ap3-botoes { display: grid; grid-template-columns: 1fr auto; gap: 10px; max-width: none; }
+.ap3-botoes .btn { min-height: 48px; }
+.ap3-botoes .btn.forte, .ap3-botoes .btn.perigo-forte { font: 600 21px var(--titulo); }
+.ap3-recusar { font: 600 15px var(--ui) !important; padding: 0 18px; }
+.ap3-feito { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 6px 10px; font: 15px var(--ui); }
+.ap3-feito span { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ap3-feito.sim { background: var(--ok-fundo); color: var(--ok); }
+.ap3-feito.nao, .ap3-feito.listar { background: #f1e3cf; color: var(--tinta); }
+.ap3-mudar { min-height: 44px; border: 0; background: none; cursor: pointer; font: 600 14px var(--ui); color: var(--tinta); text-decoration: underline; }
+.ap3 .ap-det summary { min-height: 40px; display: flex; align-items: center; font: 600 14px var(--ui); color: var(--meta); cursor: pointer; }
+.ap3 .ap-det p { margin: 0 0 6px; font: 13px var(--ui); color: var(--meta); }
+@media (max-width: 420px) { .ap3-botoes { grid-template-columns: 1fr; } }
+.av-lista .av-txt b { white-space: normal; }
+
+/* ---- rodada 3b: conflito compacto, "+N avisos", decisões mais curtas ---- */
+.av-mais { display: grid; place-content: center; line-height: 1; gap: 2px; }
+.av-mais b { font: 600 20px/1 var(--titulo); }
+.av-mais small { font: 600 11px/1 var(--ui); letter-spacing: .02em; }
+.cdc-arq { align-items: flex-start; }
+.cdc-arq > span { display: grid; gap: 2px; min-width: 0; }
+.cdc-arq code { font-size: 15px; }
+.cdc-quando { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font: 14px var(--ui); color: var(--meta); }
+.cdc-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; font: 14px var(--ui); color: var(--tinta); background: #fffbef; box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .3); }
+.cdc-chip img { width: 26px; height: 26px; background: var(--papel-escuro); box-shadow: 0 0 0 2px var(--cor, var(--contorno)); }
+.cdc-chip b { font-weight: 600; }
+.cdc-alt li > span { display: grid; }
+.cdc-alt li small { font: 13px var(--ui); color: var(--meta); }
+.cdc-combinar p { font: 600 15px var(--ui); }
+.cdc-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cdc-duas .btn { min-height: 56px; }
+.cdc-links { display: flex; flex-wrap: wrap; gap: 0 14px; margin: -4px 0 -8px; }
+.ap3-pedido { margin: 0; font: 14px/1.35 var(--ui); color: var(--meta); }
+.ap3-pedido b { color: var(--tinta); }
+.ap3-conseq { gap: 4px; }
+.ap3-conseq > div { display: block; padding: 0; box-shadow: none; }
+.ap3-conseq dt { display: inline; margin-right: 6px; font-size: 13px; }
+.ap3-conseq dd { display: inline; }
+.ap3-conseq .nao dd { color: var(--meta); }
+.ap3-falta { flex-basis: 100%; font: 14px/1.35 var(--ui); color: var(--tinta); opacity: .85; }
+/* Exclusão: título "Exclusão permanente de X", resumo (arquivos + pastas) e lista com ícone por item. */
+.ap3-arqs .ap3-arqs-tit { display: grid; gap: 2px; margin: 0 0 8px; }
+.ap3-arqs .ap3-arqs-tit b { font: 600 16px/1.3 var(--ui); color: var(--perigo); }
+.ap3-arqs .ap3-arqs-tit span { font: 15px/1.35 var(--ui); color: var(--tinta); }
+.ap3-arqs ul { list-style: none; padding: 0; }
+.ap3-arqs li { display: flex; align-items: flex-start; gap: 6px; font: 15px/1.35 var(--ui); }
+.ap3-arqs li svg { width: 14px; height: 14px; flex: none; margin-top: 3px; color: var(--meta); }
+.ap3-arqs li.pasta code { font-weight: 700; }
+/* Leitura: o texto que explica a decisão fica em 16 px; os metadados, em 15 px. */
+.ap3-conseq dd { font: 16px/1.45 var(--ui); }
+.ap3-tit small, .ap3-pedido, .cdc-cab small, .cdc-alt li small { font-size: 15px; }
+.cdc-duas .btn b { font-size: 16px; }
+.cdc-duas .btn small { font-size: 14px; line-height: 1.3; }
+.cdc-feito { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font: 15px/1.4 var(--ui); }
+.cdc-feito li { display: flex; gap: 6px; align-items: center; }
+.cdc-feito svg { width: 14px; height: 14px; color: var(--ok); flex: none; }
+/* Caminhos: quebram só nas barras; a observação "(412 imagens)" fica embaixo, sem código. */
+.ap3-cam { display: grid; min-width: 0; }
+.ap3-arqs .ap3-cam code { word-break: normal; overflow-wrap: normal; }
+.ap3-cam small { font: 14px/1.3 var(--ui); color: var(--meta); }
+/* Autorizar/Recusar ficam à vista enquanto se lê um cartão longo (rodapé que gruda no fim do painel). */
+.ap3-botoes { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px -12px; padding: 10px 12px 12px; background: inherit; background-color: #fff7e4; box-shadow: 0 -2px 0 rgba(90, 58, 34, .18); }
+.ap3.perigo .ap3-botoes { margin-left: -10px; padding-left: 10px; }
+/* Toque confortável (44 px) nos links de ação do conflito e no "Mudar". */
+.cdc-links .cdc-link, .cdc-cab .cdc-link, .ap3-mudar { min-height: 44px; padding: 0 6px; display: inline-flex; align-items: center; }
+.cdc-links { margin: 0; gap: 0 8px; }
+.ap3-botoes { background-color: var(--papel-claro); }
+/* Cartão do pedido recolhido: "Agora" e "Próximo" em duas linhas curtas. */
+.cp-agora.cp-agora-curta { margin: 8px 0 0; font: 15px/1.4 var(--ui); }
+.cp-depois { margin: 2px 0 0; font: 15px/1.4 var(--ui); color: var(--meta); }
+.cp-agora-curta b, .cp-depois b { display: inline; margin: 0; color: var(--tinta); }
+/* Com o "＋ Novo pedido" na barra, o selo de mensagens novas da Dupla vira um número pequeno ao lado do nome. */
+.seg-conversas.com-novo .badge { position: static; display: inline-block; margin-left: 6px; padding: 0 5px; font: 700 12px/18px var(--ui); vertical-align: middle; }
+.seg-conversas.com-novo .badge[hidden] { display: none; }
+/* Conflito resolvido: uma linha (quem continua + Mudar); o que foi combinado fica recolhido. */
+.cd-conf.combinado { gap: 2px; padding: 8px 12px; }
+.cdc-det summary { min-height: 36px; display: flex; align-items: center; font: 600 15px var(--ui); color: var(--meta); cursor: pointer; }
+.cdc-det[open] summary { margin-bottom: 4px; }

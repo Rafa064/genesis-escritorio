@@ -54,9 +54,11 @@ const nomePedido = (m, pedido) => primeiraFrase(m?.titulo || pedido || 'Seu pedi
 export function htmlChipMapa({ m, pend = 0, titulo = '' }) {
   const n = etapaDe(m);
   return `<button type="button" class="cp-chip-mapa${pend ? ' alerta' : ''}" data-pedido-abrir="${esc(m?.id || '')}" title="Abrir o seu pedido">
-    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? `Precisa de você · ${pend} decis${pend > 1 ? 'ões' : 'ão'}` : `Etapa ${n} de 4 · ${nomeEtapa(n)}`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
+    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? `Precisa de você · ${pend} decis${pend > 1 ? 'ões' : 'ão'} neste pedido` : `Etapa ${n} de 4 · ${nomeEtapa(n)}`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
 }
 
+// O que vem depois de cada etapa, em uma frase (o cartão recolhido mostra "Agora" e "Próximo").
+const PROXIMO = { 1: 'ela monta um plano e diz quem da equipe vai fazer cada parte.', 2: 'a equipe começa a fazer; você vê cada passo aqui.', 3: 'ela confere o resultado e entrega nesta conversa.', 4: 'nada: está pronto. Você recebe um aviso.' };
 let menuAberto = false, escAberta = false;
 // Cartão do pedido da conversa aberta (fica fixo no alto da conversa). Devolve '' quando não há nada.
 // pend: [{ id, titulo }] autorizações desta conversa · fila: pedidos seus esperando a vez · pedido: o último texto que você mandou.
@@ -79,7 +81,7 @@ function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo) {
   // Recolhido (padrão): uma faixa com o pedido, a etapa e a próxima ação (Decidir). Aberto: etapas, o que está fazendo e o menu.
   const aberto = menuAberto;
   const sub = alerta ? `Etapa ${n} de 4 · ${pend.length > 1 ? `${pend.length} decisões suas` : 'decisão sua'}` : `Etapa ${n} de 4 · ${nomeEtapa(n)}${m ? ` · há ${tempoDe(Date.now() - m.inicio)}` : ''}`;
-  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${pend.length > 1 ? `${pend.length} autorizações esperando você` : 'Precisa da sua autorização'}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
+  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${pend.length > 1 ? `${pend.length} decisões esperando você` : 'Uma decisão esperando você'}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
   return `<div class="cp cp-rodando${alerta ? ' cp-alerta' : ''}${aberto ? ' aberto' : ''}">
     <div class="cp-cab"><span class="cp-pulso"></span>
       <button type="button" class="cp-tit" data-cp="menu" aria-expanded="${aberto}" title="${aberto ? 'Recolher' : 'Ver etapas e opções'}"><b>${esc(titulo || nomePedido(m, pedido))}</b><small>${sub}</small></button>
@@ -88,6 +90,7 @@ function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo) {
     ${aberto ? trilha(n, alerta) : `<div class="cp-mini" aria-hidden="true">${[1, 2, 3, 4].map((i) => `<i class="${i < n ? 'ok' : i === n ? (alerta ? 'atual alerta' : 'atual') : ''}"></i>`).join('')}</div>`}
     ${aberto && (titulo && (m?.titulo || pedido)) ? `<p class="cp-orig"><b>Pedido:</b> ${esc(primeiraFrase(m?.titulo || pedido, 140))}</p>` : ''}
     ${aberto ? (pendHtml || `<p class="cp-agora">${esc(agora)}${ultT ? `<small class="cp-ult"> · ${D.ha(ultT)}</small>` : ''}</p>`) : ''}
+    ${!aberto && !pend.length ? `<p class="cp-agora cp-agora-curta"><b>Agora:</b> ${esc(agora)}${ultT ? `<small class="cp-ult"> · ${D.ha(ultT)}</small>` : ''}</p><p class="cp-depois"><b>Próximo:</b> ${esc(PROXIMO[n] || '')}</p>` : ''}
     ${fila ? `<p class="cp-fila">+${fila} pedido${fila > 1 ? 's' : ''} seu${fila > 1 ? 's' : ''} na fila: começa${fila > 1 ? 'm' : ''} quando este terminar.</p>` : ''}
     ${aberto ? `<div class="cp-menu">
       ${escalacaoHtml ? `<button type="button" data-cp="escalacao">${ico('equipe')} Quem está fazendo o quê</button>` : ''}

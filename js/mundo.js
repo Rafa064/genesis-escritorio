@@ -282,7 +282,8 @@ class Mundo {
     vida.desenharVapor(g, this);
     vida.desenharItens(g, this);
     // ícones de estado por cima de tudo
-    for (const b of this.agentes.values()) if (b.topo != null) this.icone(g, Math.round(b.x), b.topo - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? 24 : 6), b.status, b.id);
+    // (no celular os indicadores são DOM, em tamanho fixo: mapa-cel.js liga semIcones)
+    if (!this.semIcones) for (const b of this.agentes.values()) if (b.topo != null) this.icone(g, Math.round(b.x), b.topo - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? 24 : 6), b.status, b.id);
     // luz do dia pelo relógio real (manhã clara, tarde dourada, noite com luminárias acesas)
     vida.desenharLuz(g, this, cam, vw, vh);
     g.restore();
@@ -306,6 +307,7 @@ class Mundo {
     else if (cls === 'fim') { base('#4fbf82'); r(-3, -4, 1, 2, '#fff'); r(-2, -3, 1, 2, '#fff'); r(-1, -2, 1, 1, '#fff'); r(0, -4, 1, 2, '#fff'); r(1, -5, 1, 2, '#fff'); r(2, -6, 1, 2, '#fff'); }
     else if (cls === 'erro') { base('#ef6a55'); r(-3, -6, 2, 2, '#fff'); r(1, -6, 2, 2, '#fff'); r(-1, -4, 2, 2, '#fff'); r(-3, -2, 2, 1, '#fff'); r(1, -2, 2, 1, '#fff'); }
     else if (cls === 'semsinal') { base('#8fa3c7'); r(-2, -7, 4, 1, '#fff'); r(1, -6, 1, 2, '#fff'); r(-1, -4, 2, 1, '#fff'); r(-1, -2, 2, 1, '#fff'); }
+    else if (cls === 'livre') { r(-5, -8, 10, 8, '#1b1a26'); r(-4, -7, 8, 6, '#6fcf8e'); r(-2, -5, 4, 3, '#fffaf0'); r(2, -4, 1, 1, '#fffaf0'); r(-1, -1, 2, 2, '#1b1a26'); }
     else if (cls === 'alerta') { const pulo = Math.abs(Math.sin(this.t * 6)) * 3; g.fillStyle = '#1b1a26'; g.fillRect(x - 3, y - 13 - pulo, 6, 12); g.fillStyle = '#ffd23f'; g.fillRect(x - 2, y - 12 - pulo, 4, 7); g.fillRect(x - 2, y - 4 - pulo, 4, 2); }
   }
 

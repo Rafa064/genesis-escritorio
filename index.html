@@ -21,8 +21,7 @@
 <link rel="modulepreload" href="js/config.js"><link rel="modulepreload" href="js/mapa.js"><link rel="modulepreload" href="js/mundo.js"><link rel="modulepreload" href="js/arte.js">
 <link rel="modulepreload" href="js/personagens.js"><link rel="modulepreload" href="js/humano.js"><link rel="modulepreload" href="js/frentes.js"><link rel="modulepreload" href="js/tipos.js">
 <link rel="modulepreload" href="js/dados.js"><link rel="modulepreload" href="js/rede.js"><link rel="modulepreload" href="js/funcoes-hoje.js"><link rel="modulepreload" href="js/comando-ctx.js">
-<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js">
-<link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js">
+<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js"><link rel="modulepreload" href="js/comando-topo.js"><link rel="modulepreload" href="js/comando-pedido.js"><link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js"><link rel="modulepreload" href="js/mapa-cel.js">
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm" crossorigin>
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
@@ -33,6 +32,7 @@
 <link rel="stylesheet" href="estilo-pixel.css">
 <link rel="stylesheet" href="estilo-fluxo.css">
 <link rel="stylesheet" href="estilo-telas.css">
+<link rel="stylesheet" href="estilo-r3-fluxo.css"><link rel="stylesheet" href="estilo-r3-telas.css">
 </head>
 <body>
 <header id="topo">
@@ -76,7 +76,7 @@
       </div>
     </form>
     <!-- No celular a barra começa recolhida neste botão (o mapa fica livre). -->
-    <button type="button" id="bcAbrir" class="bc-abrir"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 1h2v1h1v1h1v2h-1v1h-1v1h-1v1h-1v1H9v1H8v1H7v1H6v1H2v-4h1v-1h1V9h1V8h1V7h1V6h1V5h1V4h1V3h1V2h1z"/></svg>Pedir à assistente</button>
+    <button type="button" id="bcAbrir" class="bc-abrir"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 1h2v1h1v1h1v2h-1v1h-1v1h-1v1h-1v1H9v1H8v1H7v1H6v1H2v-4h1v-1h1V9h1V8h1V7h1V6h1V5h1V4h1V3h1V2h1z"/></svg>Novo pedido</button>
     <div id="quadro" hidden><div class="quadro-topo"><h2>▥ Quadro de marcos <button type="button" class="glo" data-glo="marco" aria-label="O que é marco?">?</button></h2><div id="quadroFiltros" class="quadro-filtros"></div><span class="espaco"></span><button class="btn so-cel" id="filtrosQuadroCel">Filtros ▾</button><button class="btn so-cel" id="pedidosCel">◆ Pedidos</button><button class="btn forte" id="novoMarco">+ Marco</button></div><div id="quadroCorpo"></div></div>
     <div id="dica" hidden></div>
     <div id="mini" class="painel-px"><canvas id="miniTela" width="160" height="112"></canvas><div class="zoom"><button id="zoomMenos" title="Afastar (-)">−</button><button id="zoomMais" title="Aproximar (+)">+</button></div></div>
@@ -118,7 +118,7 @@
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
-      <div class="seg-conversas"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button></div>
+      <div class="seg-conversas com-novo"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
       <div class="conversa-topo">
         <div id="abasConversa" class="abas-conversa" role="tablist" aria-label="Conversas abertas"></div>
         <button class="btn mini" id="btnNovaConversa" title="Aba nova (conversa nova)">＋</button>
@@ -137,13 +137,13 @@
       <div id="msgs"></div>
       <form id="formChat" class="compositor">
         <div class="cmp-sobre" id="cmpSobre"></div>
-        <textarea id="entrada" rows="3" placeholder="O que você quer fazer?" aria-label="O que você quer fazer?"></textarea>
+        <textarea id="entrada" rows="3" placeholder="Responder ou continuar esta conversa…" aria-label="Responder ou continuar esta conversa"></textarea>
         <p id="cmpFila" class="bc-estado" hidden></p>
-        <div class="linha"><span id="alvoAtual" class="alvo claude" hidden>Claude</span><button class="btn forte" id="btnEnviar">Enviar pedido</button></div>
+        <div class="linha"><span id="alvoAtual" class="alvo claude" hidden>Claude</span><button class="btn forte" id="btnEnviar">Enviar</button></div>
       </form>
     </section>
     <section data-painel="dupla" class="painel painel-chat" hidden>
-      <div class="seg-conversas"><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="">✦ Assistente</button></div>
+      <div class="seg-conversas com-novo"><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="outro" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
       <div id="coordDupla"></div>
       <div id="fixados"></div>
       <div id="msgsDupla"></div>

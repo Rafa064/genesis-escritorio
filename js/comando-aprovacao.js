@@ -12,16 +12,16 @@ const args = (p) => p.split(/\s+/).slice(1).filter((x) => x && !x.startsWith('-'
 function acaoDoComando(p, descricao) {
   const s = p.trim();
   let m;
-  if (/^git\s+push\b.*(\s--force\b|\s-f\b)/i.test(s)) return { ic: 'subir', t: 'Publicar no GitHub por cima (forçado)', d: 'Troca o que está no GitHub pela versão do seu PC. Pode apagar trabalho que o Kenny já subiu.', perigo: true, sim: 'Autorizar envio forçado' };
-  if ((m = /^git\s+push\b(?:\s+(\S+))?(?:\s+(\S+))?/i.exec(s))) return { ic: 'subir', t: 'Publicar alterações no GitHub', d: `Envia ${m[2] ? `a branch ${code(m[2])}` : 'as versões salvas'} para o GitHub. Quem tem acesso ao projeto (o Kenny) passa a ver.`, sim: 'Autorizar publicação' };
-  if (/^git\s+commit\b/i.test(s)) return { ic: 'disco', t: 'Salvar uma versão (commit)', d: 'Guarda as mudanças no histórico do projeto. Fica só no seu PC até alguém publicar.', sim: 'Autorizar commit' };
-  if (/^git\s+(reset\s+--hard|clean\s|checkout\s+--\s|restore\s|branch\s+-D|stash\s+drop)/i.test(s)) return { ic: 'alerta', t: 'Desfazer mudanças no projeto', d: 'Joga fora mudanças que ainda não foram salvas. Não dá para recuperar depois.', perigo: true, sim: 'Autorizar e desfazer' };
+  if (/^git\s+push\b.*(\s--force\b|\s-f\b)/i.test(s)) return { ic: 'subir', t: 'Publicar no GitHub por cima (forçado)', d: 'Troca o que está no GitHub pela versão do seu PC. Pode apagar trabalho que o Kenny já subiu.', perigo: true, sim: 'Autorizar envio forçado', nao: 'O GitHub continua como está.' };
+  if ((m = /^git\s+push\b(?:\s+(\S+))?(?:\s+(\S+))?/i.exec(s))) return { ic: 'subir', t: 'Publicar alterações no GitHub', d: `Envia ${m[2] ? `a versão ${code(m[2])}` : 'as versões salvas'} para o GitHub. Quem tem acesso ao projeto (o Kenny) passa a ver.`, sim: 'Autorizar publicação', nao: 'Nada sai do seu PC. As mudanças continuam salvas aqui.' };
+  if (/^git\s+commit\b/i.test(s)) return { ic: 'disco', t: 'Salvar uma versão (commit)', d: 'Guarda as mudanças no histórico do projeto. Fica só no seu PC até alguém publicar.', sim: 'Autorizar commit', nao: 'As mudanças continuam no PC, sem uma versão salva.' };
+  if (/^git\s+(reset\s+--hard|clean\s|checkout\s+--\s|restore\s|branch\s+-D|stash\s+drop)/i.test(s)) return { ic: 'alerta', t: 'Desfazer mudanças no projeto', d: 'Joga fora mudanças que ainda não foram salvas. Não dá para recuperar depois.', perigo: true, sim: 'Autorizar e desfazer', nao: 'Nada é jogado fora.' };
   if (/^git\s+(pull|fetch|merge|rebase|checkout|switch)\b/i.test(s)) return { ic: 'terminal', t: 'Atualizar o projeto com o GitHub', d: 'Traz ou junta versões do projeto. Se houver conflito, ela avisa.', sim: 'Autorizar' };
   if (/^(rm|del|erase|rmdir|rd|unlink|Remove-Item|ri)\s/i.test(s)) {
     const alvos = args(s), pasta = /\s-\w*r|\s-Recurse|rmdir|\brd\b/i.test(s), tmp = alvos.length && alvos.every((a) => /te?mp|cache|\.tmp|out\b|build/i.test(a));
-    return { ic: 'lixo', t: tmp ? 'Apagar arquivos temporários' : 'Apagar arquivos', d: `Apaga de vez ${alvos.length ? alvos.slice(0, 3).map(code).join(', ') + (alvos.length > 3 ? ` e mais ${alvos.length - 3}` : '') : 'arquivos'}${pasta ? ' (a pasta inteira, com tudo dentro)' : ''}. Não vai para a lixeira.`, perigo: true, sim: 'Autorizar exclusão' };
+    return { ic: 'lixo', t: tmp ? 'Apagar arquivos temporários' : 'Apagar arquivos', d: `Apaga de vez ${alvos.length ? alvos.slice(0, 3).map(code).join(', ') + (alvos.length > 3 ? ` e mais ${alvos.length - 3}` : '') : 'arquivos'}${pasta ? ' (a pasta inteira, com tudo dentro)' : ''}. Não vai para a lixeira.`, perigo: true, sim: 'Excluir permanentemente', nao: 'Os arquivos ficam onde estão.', alvos, pasta };
   }
-  if ((m = /remotion\s+render\s+(\S+)(?:\s+(\S+))?/i.exec(s))) return { ic: 'filme', t: `Renderizar o vídeo ${m[1]}`, d: `Gera ${m[2] ? `o arquivo ${code(nomeArq(m[2]))}` : 'o vídeo final'}. Leva alguns minutos e deixa o PC mais lento enquanto isso.`, sim: 'Autorizar render' };
+  if ((m = /remotion\s+render\s+(\S+)(?:\s+(\S+))?/i.exec(s))) return { ic: 'filme', t: `Renderizar o vídeo ${m[1]}`, d: `Gera ${m[2] ? `o arquivo ${code(nomeArq(m[2]))}` : 'o vídeo final'}. Leva alguns minutos e deixa o PC mais lento enquanto isso.`, sim: 'Autorizar render', nao: 'O vídeo não é gerado agora.' };
   if (/ffmpeg\b/i.test(s)) return { ic: 'filme', t: 'Converter ou cortar um vídeo', d: 'Usa o ffmpeg para gerar um arquivo novo de vídeo ou imagem.', sim: 'Autorizar' };
   if (/godot\b.*--headless/i.test(s)) return { ic: 'terminal', t: 'Rodar o jogo sem janela (teste)', d: 'Abre o jogo escondido para testar. Não muda nada no projeto.', sim: 'Autorizar teste' };
   if (/publicar\.mjs|npm\s+publish|gh\s+(pr\s+merge|release)|butler\s+push/i.test(s)) return { ic: 'globo', t: 'Publicar na internet', d: 'Coloca uma versão nova no ar, à vista de quem acessa.', perigo: true, sim: 'Autorizar publicação' };
@@ -43,8 +43,8 @@ function acaoDaFerramenta(ferr, campos, passoTxt) {
   if (mcp) {
     const [, srv0, acao] = mcp, srv = ({ blender: 'Blender', pixellab: 'PixelLab', hf: 'Hugging Face', notion: 'Notion' })[srv0] || srv0, prompt = campos.prompt || campos.description || campos.text || '';
     const gera = /generate|create|render|animate/i.test(acao);
-    if (/3d/i.test(acao)) return { ic: 'cubo', t: 'Gerar um modelo 3D com IA', d: `Pede ao ${esc(srv)} um modelo${prompt ? `: “${esc(curto(prompt, 70))}”` : ''}. Pode gastar créditos do serviço.`, sim: 'Autorizar geração' };
-    if (gera) return { ic: 'imagem', t: `Criar com IA (${esc(srv)})`, d: `${prompt ? `“${esc(curto(prompt, 70))}”. ` : ''}Pode gastar créditos do serviço.`, sim: 'Autorizar geração' };
+    if (/3d/i.test(acao)) return { ic: 'cubo', t: 'Gerar um modelo 3D com IA', d: `Pede ao ${esc(srv)} um modelo${prompt ? `: “${esc(curto(prompt, 70))}”` : ''}. Pode gastar créditos do serviço.`, sim: 'Autorizar geração', nao: 'Nenhum crédito é gasto.' };
+    if (gera) return { ic: 'imagem', t: `Criar com IA (${esc(srv)})`, d: `${prompt ? `“${esc(curto(prompt, 70))}”. ` : ''}Pode gastar créditos do serviço.`, sim: 'Autorizar geração', nao: 'Nenhum crédito é gasto.' };
     return { ic: 'terminal', t: `Usar ${esc(srv)}`, d: esc(passoTxt || acao), sim: 'Autorizar' };
   }
   return { ic: 'terminal', t: `Usar ${esc(ferr)}`, d: esc(passoTxt || ''), sim: 'Autorizar' };
@@ -95,9 +95,73 @@ export function rotuloConfirmar(a, escolhidas) {
   return { txt: n === 1 ? `Recusar e pedir só: ${nomeAcao(x.acoes[escolhidas[0]])}` : `Recusar e pedir só ${n} ações`, cls: perigo ? 'btn perigo-forte' : 'btn forte' };
 }
 
-// Cartão completo. info: { quem, projeto, dentroHtml, origemTxt, quando }.
-// Uma ação: "Autorizar X" / "Não autorizar". Várias: cada uma com o seu botão (as perigosas em vermelho) e um "Confirmar".
-export function html(a, info) {
+// Caminho de arquivo legível: quebra só nas barras e a observação "(412 imagens)" vai numa linha própria.
+function caminho(f) {
+  const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(f), nome = m ? m[1] : f, obs = m ? m[2] : '';
+  return `<span class="ap3-cam"><code>${esc(nome).replace(/\//g, '/<wbr>')}</code>${obs ? `<small>${esc(obs)}</small>` : ''}</span>`;
+}
+// "Pedido “X” · decisão 2 de 3 deste pedido": info.ordem ({ base, total }) soma as autorizações do mesmo pedido.
+function numero(info, n, i) {
+  const o = info.ordem, tot = o ? o.total : n, k = (o ? o.base : 0) + i + 1, num = tot > 1 ? `decisão ${k} de ${tot} deste pedido` : '';
+  if (info.pedido) return `<p class="ap3-pedido">Pedido <b>“${esc(info.pedido)}”</b>${num ? ` · ${num}` : ''}</p>`;
+  return num ? `<p class="ap3-pedido">${num.charAt(0).toUpperCase()}${num.slice(1)}</p>` : '';
+}
+// Quantas decisões este pedido de autorização pede (uma por ação).
+export const nDecisoes = (a) => explicar(a).acoes.length;
+
+// Uma decisão por cartão: o que acontece se autorizar, o que acontece se recusar, Autorizar / Recusar.
+// Um comando com várias ações vira vários cartões ("1 de 2"); a resposta vai à ponte quando todos forem decididos.
+// info: { quem, projeto, dentroHtml, origemTxt, quando }. escolhas: { [i]: 'sim' | 'nao' } já marcadas aqui.
+export function html(a, info, escolhas = {}) {
+  const x = explicar(a, info), n = x.acoes.length;
+  const lista = Array.isArray(x.campos.arquivos) ? x.campos.arquivos.map(String) : null;
+  const decididas = Object.keys(escolhas).length;
+  return x.acoes.map((y, i) => {
+    const dec = escolhas[i], perigo = y.perigo || (i === 0 && x.extras.length > 0);
+    const nao = (y.nao || 'Ela não faz isto e pergunta como seguir.') + (n > 1 ? ' O resto do pedido segue.' : '');
+    // Exclusão: os arquivos aparecem ANTES de decidir (lista da ponte, ou o que o comando aponta).
+    let arqs = '';
+    if (y.ic === 'lixo') {
+      const itens = lista?.length ? lista : (y.alvos || []);
+      // Separa arquivos de pastas ("frames/ (412 imagens)") para a contagem não subestimar o que some.
+      const ehPasta = (f) => /\/\s*(\(|$)/.test(f), pastas = itens.filter(ehPasta), arqsN = itens.length - pastas.length;
+      const resumo = lista?.length ? [arqsN ? `${arqsN} arquivo${arqsN > 1 ? 's' : ''}` : '', ...pastas.map((p) => { const m = /\(([^)]+)\)/.exec(p); return `1 pasta${m ? ` (${m[1]})` : ''}`; })].filter(Boolean).join(' + ') : '';
+      const raiz = (y.alvos || [])[0];
+      arqs = `<div class="ap3-arqs"><p class="ap3-arqs-tit"><b>Exclusão permanente${raiz ? ` de <code>${esc(raiz)}</code>` : ''}</b><span>${resumo ? `${esc(resumo)} · ` : ''}${y.pasta ? 'a pasta inteira, com tudo dentro · ' : ''}não vai para a lixeira</span></p>
+        <ul>${itens.slice(0, 8).map((f) => `<li class="${ehPasta(f) ? 'pasta' : ''}">${ico(ehPasta(f) ? 'pasta' : 'lapis')}${caminho(f)}</li>`).join('')}${itens.length > 8 ? `<li class="ap3-mais">e mais ${itens.length - 8}</li>` : ''}</ul>
+        ${a.conversa_id != null && !dec ? '<button type="button" class="ap3-listar" data-ap-dec="listar">Ver a lista completa antes <small>(ela não apaga e pergunta de novo)</small></button>' : ''}</div>`;
+    }
+    const extras = i === 0 && x.extras.length ? `<ul class="ap3-extras">${x.extras.map((e) => `<li>${ico(e.ic)}<span><b>${esc(e.t)}.</b> ${e.d}</span></li>`).join('')}</ul>` : '';
+    const falta = n - decididas;
+    const estado = dec ? `<div class="ap3-feito ${dec}"><span>${ico(dec === 'sim' ? 'check' : 'pare')}<b>${dec === 'sim' ? 'Você autorizou' : dec === 'listar' ? 'Você pediu a lista antes' : 'Você recusou'}</b>${falta > 0 ? `<small class="ap3-falta">Ela segue depois de mais ${falta} decis${falta > 1 ? 'ões' : 'ão'} logo abaixo.</small>` : ''}</span><button type="button" class="ap3-mudar" data-ap-mudar>Mudar</button></div>`
+      : `<div class="ap-botoes ap3-botoes"><button type="button" class="btn ${perigo ? 'perigo-forte' : 'forte'}" data-ap-dec="sim">${esc(y.sim)}</button><button type="button" class="btn ap3-recusar" data-ap-dec="nao">Recusar</button></div>`;
+    return `<div class="aprovacao ap3${perigo ? ' perigo' : ''}${dec ? ' decidida' : ''}" data-ap="${a.id}" data-ap-i="${i}">
+      ${numero(info, n, i)}
+      <div class="ap3-cab"><span class="ap-ic">${ico(y.ic)}</span><div class="ap3-tit"><b>${esc(y.t)}</b><small>${esc(info.quem)} quer fazer${info.projeto ? ` · ${esc(info.projeto)}` : ''}${info.quando ? ` · ${esc(info.quando)}` : ''}</small></div></div>
+      ${arqs}
+      <dl class="ap3-conseq"><div class="sim"><dt>Ao autorizar</dt><dd>${arqs ? 'Tudo o que está na lista acima é apagado de vez.' : y.d}</dd></div><div class="nao"><dt>Ao recusar</dt><dd>${esc(nao)}</dd></div></dl>
+      ${extras}
+      ${x.cortado && i === 0 ? '<p class="ap-nota ap-cortado">O pedido veio cortado (grande demais). Confira no PC antes de autorizar.</p>' : ''}
+      ${estado}
+      <details class="ap-det"><summary>Detalhes técnicos</summary><p>${esc(info.origemTxt || '')}${info.dentroHtml ? ` · ${info.dentroHtml}` : ''}</p><pre class="det">${esc(y.cmd || Object.entries(x.campos).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n') || a.ferramenta)}</pre></details>
+    </div>`;
+  }).join('');
+}
+// Recado mandado depois das decisões de um pedido com recusa (ou "ver a lista antes"): a ponte só
+// aceita ou recusa o comando inteiro, então ela recebe a recusa e, logo depois, o que pode fazer.
+export function recadoDecisoes(a, escolhas) {
+  const x = explicar(a), sim = [], nao = [], listar = [];
+  x.acoes.forEach((y, i) => (escolhas[i] === 'sim' ? sim : escolhas[i] === 'listar' ? listar : nao).push(y));
+  const partes = ['Sobre a autorização que acabei de responder:'];
+  if (sim.length) partes.push(`pode fazer ${sim.map((y) => `“${y.t}” (${y.cmd || a.ferramenta})`).join(' e ')}.`);
+  if (nao.length) partes.push(`Não faça ${nao.map((y) => `“${y.t}”`).join(' nem ')}.`);
+  if (listar.length) partes.push(`Antes de apagar ${listar.map((y) => (y.alvos || []).join(', ') || 'os arquivos').join(', ')}, me mostre a lista completa do que seria apagado (só listar, sem apagar nada) e peça de novo.`);
+  partes.push('Depois continue o pedido normalmente.');
+  return partes.join(' ');
+}
+
+// (Versão anterior: um cartão por pedido, com seleção de ações. Mantida para quem ainda a chamar.)
+export function htmlAgrupado(a, info) {
   const x = explicar(a, info), varias = x.acoes.length > 1;
   const linha = (y, i) => `<li class="ap-acao${y.perigo ? ' perigo' : ''}"><span class="ap-ic">${ico(y.ic)}</span><div><b>${esc(y.t)}</b>${y.perigo ? '<em class="ap-tag-perigo">ação perigosa</em>' : ''}<span>${y.d}</span>
       ${varias && i != null ? `<button type="button" class="ap-sel${y.perigo ? ' perigo' : ''}" data-ap-sel="${i}" aria-pressed="false"><i aria-hidden="true"></i>Selecionar ${esc(nomeAcao(y))}</button>` : ''}</div></li>`;
