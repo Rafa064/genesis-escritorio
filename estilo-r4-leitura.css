@@ -1,0 +1,287 @@
+/* =====================================================================
+   Estúdio Genesis · rodada 4 — LEITURA (telas que não são o mapa:
+   Atividade, Hoje, Equipe, Quadro, Mais, fichas e detalhes).
+   Regras:  corpo 16 px · metadados 14 px ou mais, em marrom escuro
+            cartão = título + estado + próxima ação; o resto recolhido
+            toques de 44 px ou mais · madeira só estrutura, papel conteúdo
+            laranja só na ação principal · ícones pixel (sem emoji misturado)
+   Carregada por último. Não toca no topo nem no mapa.
+   ===================================================================== */
+#gaveta, #quadro, #equipeVista, .folha-aprov {
+  --fraco: #5b3f27; --muito-fraco: #6f5136; --meta: #4e3520;
+  --r4-laranja-txt: #9a4a10;   /* laranja para TEXTO (lê no papel) */
+  --r4-verde-txt: #2f7a45;
+  --r4-respiro: 14px;
+}
+
+/* ---------- base: corpo 16 px ---------- */
+#gaveta .painel:not(.painel-chat), #quadro, #equipeVista, .folha-aprov .caixa-modal { font-size: 16px; line-height: 1.5; }
+#gaveta .painel:not(.painel-chat) small, #quadro small, #equipeVista small { font-size: 14px; }
+
+/* ícones pixel dentro do texto */
+#gaveta .pxi, #quadro .pxi, #equipeVista .pxi { width: 16px; height: 16px; fill: currentColor; vertical-align: -3px; flex: none; image-rendering: pixelated; shape-rendering: crispEdges; }
+.pxi.ic-lista { margin-right: 4px; color: var(--meta); }
+
+/* "?" do glossário: o desenho fica pequeno, o toque tem 44 px */
+#gaveta .glo, #quadro .glo { width: 22px; height: 22px; font-size: 13px; }
+#gaveta .glo::after, #quadro .glo::after { inset: -11px; }
+
+/* detalhes recolhidos: um jeito só, com toque de 44 px */
+#gaveta details > summary, #quadro details > summary, #equipeVista details > summary {
+  min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 600 15px/1.3 var(--ui); color: var(--meta); list-style: none;
+}
+#gaveta details > summary::-webkit-details-marker { display: none; }
+#gaveta details:not(.arv-no) > summary::before, #quadro details > summary::before {
+  content: ""; flex: none; width: 8px; height: 8px; margin: 0 2px;
+  background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+#gaveta details[open]:not(.arv-no) > summary::before, #quadro details[open] > summary::before { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+
+/* campos de busca e filtros: 44 px */
+#buscaMissoes, #buscaEquipe { min-height: 44px; font-size: 16px; }
+#gaveta .filtros button, #quadro .quadro-filtros button { min-height: 44px; font-size: 15px; }
+#segAtividade button { min-height: 48px; font: 600 16px var(--ui) !important; }
+
+/* ======================= ATIVIDADE › Resumo ======================= */
+/* números do dia: uma faixa baixa (o detalhe mora no Hoje) */
+#resumoDiaAtiv { margin-bottom: 6px; }
+#resumoDiaAtiv .rd-linha, #resumoDiaAtiv .rd-linha.com-custo { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px; }
+#resumoDiaAtiv .rd-n { display: grid !important; grid-template-columns: auto auto 1fr; column-gap: 7px; min-height: 46px; padding: 4px 10px; align-items: center; }
+#resumoDiaAtiv .rd-n b { font-size: 22px; }
+#resumoDiaAtiv .rd-n span { grid-column: auto; grid-row: 1; white-space: nowrap !important; overflow: visible; font: 600 15px/1.15 var(--ui); color: var(--meta); }
+#resumoDiaAtiv .rd-n b small { font-size: 13px; }
+
+/* seções */
+#listaAtencao .cx { margin-bottom: 18px; }
+#listaAtencao .cx > h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 22px; line-height: 1.15; margin: 4px 0 10px; }
+#listaAtencao .cx > h3 .pxi { width: 18px; height: 18px; vertical-align: 0; color: var(--tinta); }
+#listaAtencao .cx > h3 small { font: 600 15px var(--ui); color: var(--meta); }
+.ap3-intro { font-size: 15px !important; margin-bottom: 12px !important; }
+@media (max-width: 760px) { .ap3-intro { display: none; } }
+
+/* cartão de decisão: o QUE → ONDE → o que ACONTECE → botões (nada cobre o texto) */
+.aprovacao.ap3 { gap: 12px; padding: 14px; font-size: 16px; line-height: 1.5; }
+.aprovacao.ap3.perigo { padding-left: 18px; }
+.ap3-pedido { margin: 0; font: 15px/1.4 var(--ui); color: var(--meta); }
+.ap3-tit small { font-size: 15px !important; line-height: 1.4 !important; }
+.ap3-conseq { gap: 6px; }
+.ap3 .ap3-nao { margin: 0 0 6px; font-size: 15px !important; color: var(--tinta) !important; }
+.ap3-conseq dt { font: 700 14px var(--ui) !important; letter-spacing: .02em; }
+.ap3-conseq dd { font-size: 16px; }
+.ap3-conseq code, .ap3-arqs code { font-size: 14px !important; }
+.ap3-arqs li { font-size: 15px; }
+.ap3-botoes { position: static !important; margin: 4px 0 0 !important; padding: 0 !important; background: none !important; box-shadow: none !important; }
+.ap3-botoes .btn { min-height: 52px; }
+.ap3-recusar { font-size: 16px !important; }
+.ap3 .ap-det { margin-top: -4px; }
+.ap3 .ap-det p { font-size: 14px; color: var(--meta); }
+
+/* "Rodando agora" e "Pronto" */
+#listaAtencao .ag-c { min-height: 56px; padding: 8px 10px; gap: 10px; }
+#listaAtencao .ag-c b { font-size: 16px; }
+#listaAtencao .ag-c small, #listaAtencao .ag-c i { font-size: 14px; color: var(--meta); font-style: normal; }
+#listaAtencao .ag-c span { font-size: 15px; }
+#listaAtencao .pronto { padding: 12px; gap: 4px; }
+#listaAtencao .pronto .p-top { font: 14px var(--ui); color: var(--meta); }
+#listaAtencao .pronto b { font-size: 17px; }
+#listaAtencao .pronto .p-txt { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ======================= ATIVIDADE › Pedidos (missões) ======================= */
+.cab-frente { min-height: 52px; padding: 8px 12px; }
+.cab-frente b { font: 600 16px var(--ui) !important; }
+.cab-frente .cont { font-size: 14px !important; color: var(--meta) !important; }
+.cab-frente .cont i { color: var(--r4-laranja-txt) !important; font-weight: 600; }
+#listaMissoes .missao { padding: 14px; margin-bottom: 10px; }
+#listaMissoes .missao .cab { font: 14px var(--ui) !important; color: var(--meta); flex-wrap: wrap; row-gap: 4px; }
+#listaMissoes .missao .cab .dono { font: 600 14px var(--ui); padding: 1px 8px; }
+#listaMissoes .missao .st { font: 600 14px var(--ui) !important; color: var(--tinta) !important; }
+#listaMissoes .missao .modelo { font-size: 12px; }
+#listaMissoes .missao .ped { font: 600 17px/1.35 var(--ui); margin: 6px 0 4px; }
+/* cartão curto: o resultado (ou o que está fazendo agora); o resto aparece ao tocar */
+#listaMissoes .missao .resumo-linhas { font-size: 15px; color: var(--meta); }
+#listaMissoes .missao .res { font-size: 15px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#listaMissoes .missao .rostos { display: none; }
+#listaMissoes .ver-mais { min-height: 48px; width: 100%; font-size: 15px; }
+
+/* ======================= ATIVIDADE › Histórico ======================= */
+#listaHistorico .placar-item { min-height: 72px; padding: 10px; }
+#listaHistorico .placar-item small { font-size: 14px !important; color: var(--meta); line-height: 1.35; }
+#listaHistorico .cab-dia { padding: 10px 2px 6px; }
+#listaHistorico .cab-dia b { font-size: 18px; }
+#listaHistorico .cab-dia span { font-size: 14px; color: var(--meta); }
+#listaHistorico .hf-nome { font: 600 15px var(--ui) !important; color: var(--tinta) !important; padding: 6px 0 4px; }
+#listaHistorico .hist-item { grid-template-columns: 48px 20px 1fr; gap: 8px; padding: 10px 2px; min-height: 48px; font-size: 16px; }
+#listaHistorico .hist-item .h { font: 14px var(--ui) !important; color: var(--meta) !important; padding-top: 2px; }
+#listaHistorico .hist-item .g { width: 18px; height: 18px; font-size: 12px; margin-top: 2px; }
+#listaHistorico .hist-item .tx { font-size: 16px; line-height: 1.4; }
+#listaHistorico .hist-item .tx b { color: var(--tinta) !important; font-weight: 700; }
+#listaHistorico .hist-item small { font-size: 14px !important; color: var(--meta) !important; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ======================= MAIS ======================= */
+#listaMais button { min-height: 64px; padding: 12px 14px; }
+#listaMais b { font-size: 17px; }
+#listaMais small { font-size: 15px !important; color: var(--meta); line-height: 1.35; }
+#listaMais .mais-dica { font-size: 15px; color: var(--meta); }
+
+/* ======================= HOJE ======================= */
+.hj-dia.r4 { display: grid; gap: 4px; padding: 12px 14px; margin-bottom: 12px; background: var(--papel-claro); box-shadow: 0 0 0 2px rgba(90, 58, 34, .28); }
+.hj-dia-linha { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.hj-dia-rot { font: 600 15px var(--ui); color: var(--meta); }
+.hj-dia-linha b { font: 30px/1 var(--titulo); color: var(--tinta); }
+.hj-dia-comp { flex-basis: 100%; font: 15px var(--ui); color: var(--meta); }
+.hj-dia-mais[open] { padding-bottom: 6px; }
+.hj-dia-mais .rd-linha { margin: 6px 0 8px; }
+.hj-dia-ul { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 2px; }
+.hj-dia-ul li { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; padding: 4px 0; border-bottom: 1px solid var(--linha-fina, rgba(90, 58, 34, .18)); }
+.hj-dia-ul b { font-weight: 700; }
+.hoje .hj-dia-nota { font-size: 14px !important; color: var(--meta) !important; margin: 4px 0 0; }
+
+.hoje .hj-abas button { min-height: 48px; font: 600 15px var(--ui) !important; }
+.hoje .hj-abas .ic .pxi { width: 16px; height: 16px; vertical-align: -3px; }
+.hoje .hj-cab { gap: 10px; align-items: center; }
+.hoje .hj-cab b { font: 600 22px var(--titulo) !important; }
+.hoje .hj-cab small { font-size: 14px !important; color: var(--meta) !important; }
+.hoje .hj-cab .btn.mini { min-height: 44px; padding: 0 14px; font-size: 15px; flex: none; }
+.hoje .hj-sug { padding: 14px !important; gap: 8px !important; }
+.hoje .hj-sug header b { font-size: 17px !important; }
+.hoje .hj-motivo { min-height: 44px !important; font-size: 15px !important; align-items: center !important; }
+.hoje .hj-motivo span { white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hoje .hj-motivo.todo span { -webkit-line-clamp: unset; display: block; }
+.hoje .hj-rodape { justify-content: space-between; }
+.hoje .hj-rodape .hj-meta { flex: 1 1 140px; min-width: 0; }
+.hoje .hj-motivo::after { font-size: 14px !important; color: var(--r4-laranja-txt) !important; }
+.hoje .hj-meta { font-size: 14px !important; color: var(--meta) !important; display: inline-flex; align-items: center; gap: 6px; }
+.hoje .hj-meta .pxi { width: 14px; height: 14px; }
+.hoje .hj-revisar { min-height: 44px; font-size: 15px !important; }
+.hoje .hj-sec { display: flex; align-items: center; gap: 8px; font-size: 20px; margin: 20px 0 10px; }
+.hoje .hj-melhoria { padding: 14px; gap: 10px; }
+.hoje .hj-melhoria p { font-size: 15px; color: var(--meta); }
+.hoje .hj-melhoria .btn { min-height: 44px; }
+.hoje .hj-nota-det { margin-top: 14px; }
+.hoje .hj-nota { font-size: 14px !important; color: var(--meta) !important; }
+.hoje .hj-ficha dt { font-size: 14px; color: var(--meta); }
+.hoje .hj-texto { font-size: 15px; }
+.hoje .hj-pessoa h3 small { font-size: 14px; color: var(--meta); }
+.hoje .hj-ag-nome b { font-size: 16px; }
+.hoje .hj-est, .hoje .hj-feitos { font-size: 14px; }
+.hoje .hj-rotulo { font-size: 13px; letter-spacing: .03em; color: var(--meta); }
+.hoje .hj-agora li, .hoje .hj-depois li { font-size: 15px; }
+
+/* ======================= EQUIPE ======================= */
+#equipeVista .eq-dono, #equipeVista .eqa-est { font-size: 14px !important; }
+#equipeVista .eqa-acao { font-size: 16px !important; }
+#equipeVista .eqa-meta { font-size: 14px !important; color: var(--meta) !important; }
+#equipeVista .eq-topo button, #equipeVista .eq-filtros button { min-height: 44px; }
+
+/* ======================= QUADRO ======================= */
+#quadro .ct-pri, #quadro .nav-colunas b { font-size: 14px !important; }
+#quadro .ct-prox { font-size: 15px; }
+#quadro .ct-prox.sem-passo { color: var(--r4-laranja-txt) !important; }
+#quadro .quadro-topo .btn { min-height: 44px; }
+
+/* ======================= FICHAS (agente, pedido, marco, item) ======================= */
+#detalheAgente, #detalheMissao, #detalheMarco, #detalheItem { font-size: 16px; line-height: 1.5; }
+#detalheAgente h4, #detalheMissao h4, #detalheMarco h4 { font-size: 14px; letter-spacing: .03em; color: var(--meta); margin: 14px 0 6px; }
+#detalheAgente .bloco, #detalheMissao .bloco { margin-bottom: 12px; }
+#detalheMissao .lt-resumo, #detalheMissao .arv-nome small { font-size: 14px; color: var(--meta); }
+#detalheMissao .arv-ferr li { font-size: 14px; }
+
+/* ---------- PC: a lateral é estreita; mesmo tamanho de letra, menos respiro ---------- */
+@media (min-width: 761px) {
+  #listaMissoes .missao { padding: 12px; }
+}
+
+/* ---------- ajustes da 1ª olhada ---------- */
+/* Histórico: o placar vira uma lista baixa (projeto · quantos · tempo), sem números coloridos fracos */
+#listaHistorico .placar { grid-template-columns: minmax(0, 1fr) !important; gap: 4px; }
+#listaHistorico .placar-item { display: grid !important; grid-template-columns: 26px 36px 1fr; grid-template-rows: auto; align-items: center; min-height: 48px; padding: 6px 12px; }
+#listaHistorico .placar-item span { grid-row: auto; font-size: 18px; }
+#listaHistorico .placar-item b { font: 26px/1 var(--titulo) !important; color: var(--tinta) !important; }
+#listaHistorico .placar-item small { font-size: 15px !important; }
+/* Hoje: duração e quem faz cabem inteiros (quebram linha em vez de cortar) */
+.hoje .hj-meta { display: block !important; white-space: normal !important; overflow: visible !important; line-height: 1.35; }
+.hoje .hj-meta .pxi { margin-right: 4px; vertical-align: -2px; }
+/* Quadro: as seções já dizem Fazendo / Revisar / A fazer; a fila de atalhos repetida sai no celular */
+@media (max-width: 760px) { #quadro .nav-colunas { display: none !important; } }
+#quadro .col-cab .pxi { width: 16px; height: 16px; margin-right: 4px; color: var(--tinta); vertical-align: -3px; }
+#quadro .col-cab > span { font-size: 22px; }
+
+/* Fichas: etiquetas, estado e rótulos de formulário legíveis; campos com 44 px */
+#detalheMissao .etqs, #detalheAgente .etqs { gap: 6px; row-gap: 6px; }
+#detalheMissao .chip-frente, #detalheAgente .chip-frente, #detalheMissao .dono, #detalheAgente .tipo, #detalheMissao .tipo { font-size: 13px !important; padding: 2px 7px; }
+#detalheMissao .etqs .sub { font-size: 14px; color: var(--meta); }
+#detalheMissao .titulo-missao { font-size: 22px; line-height: 1.25; }
+#detalheMissao .estado, #detalheAgente .estado { font: 600 15px var(--ui) !important; color: var(--tinta) !important; }
+#detalheMissao .vistas-missao button { min-height: 44px; font: 600 15px var(--ui) !important; }
+#detalheMissao .linha-marco { font-size: 15px; gap: 8px; }
+#detalheMissao .linha-marco select { min-height: 44px; font-size: 16px; }
+#detalheMissao #verMarco { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; color: var(--r4-laranja-txt); }
+#detalheMissao .linha-marco .sub { font-size: 14px; color: var(--meta); }
+#detalheMissao .resumo-linhas.grande { font-size: 15px; gap: 6px; }
+#detalheMissao .bloco h4 .pxi { color: var(--r4-verde-txt); }
+#detalheMissao .esc-placar em, #detalheMissao em.t { font-size: 13px !important; }
+#detalheMissao .esc-agente b, #detalheMissao .arv-nome b { font-size: 15px; }
+#detalheMissao .esc-agente span, #detalheMissao .esc-agente i { font-size: 14px !important; }
+#detalheAgente .bloco.explica { font-size: 15px !important; color: var(--meta) !important; }
+#detalheMarco label { font: 600 14px var(--ui) !important; color: var(--meta) !important; letter-spacing: .02em; }
+#detalheMarco input, #detalheMarco select, #detalheMarco textarea { min-height: 44px; font-size: 16px !important; }
+/* Escalação dentro do pedido (só na gaveta; o balão do mapa é de outra frente) */
+#gaveta .esc-tit b { font-size: 16px !important; }
+#gaveta .esc-tit small, #gaveta .esc-txt small { font-size: 14px !important; color: var(--meta) !important; white-space: normal !important; }
+#gaveta .esc-txt b { font-size: 15px !important; }
+#gaveta .esc-it { min-height: 48px; }
+#gaveta .esc-it > i, #gaveta .esc-it > i span { font-size: 14px !important; color: var(--r4-laranja-txt) !important; }
+#gaveta .esc-placar em { font-size: 13px !important; }
+/* PC: os números do dia já estão no canto do mapa; na Atividade não se repetem */
+@media (min-width: 761px) { #resumoDiaAtiv { display: none; } }
+
+/* rodada 2 */
+#equipeVista .eqa-meta { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+.hoje .hj-motivo span { -webkit-line-clamp: 3 !important; }
+.chip-frente .pxi { width: 13px !important; height: 13px !important; vertical-align: -2px !important; margin-right: 2px !important; color: inherit !important; }
+.cab-frente .ic .pxi, .placar-item > span .pxi, .hf-nome .pxi { width: 18px !important; height: 18px !important; color: var(--tinta) !important; margin: 0 !important; }
+.hf-nome .pxi { width: 15px !important; height: 15px !important; margin-right: 4px !important; }
+#gaveta .esc-rei .pxi { width: 18px; height: 18px; color: var(--tinta); }
+#detalheMissao .vistas-missao button { font-size: 16px !important; }
+#listaMissoes .missao .cab > span:last-child { font-size: 14px; }
+#gaveta .esc:not(.compacta) .esc-tit b { font: 600 17px var(--ui) !important; }
+#detalheMissao .lm-rot { font: 600 14px var(--ui); color: var(--meta); }
+
+/* rodada 3: um selo de estado só (lista e ficha) e "agora" com quem + o quê */
+.st-selo { display: inline-block; padding: 1px 8px; font: 700 13px/1.5 var(--ui); letter-spacing: .01em; color: var(--tinta); background: var(--papel-escuro); box-shadow: inset 0 0 0 2px rgba(42, 26, 16, .35); white-space: nowrap; }
+.st-selo.andamento { background: #ffd9a8; color: #6e3407; }
+.st-selo.voce { background: #ffe680; color: #4a3500; box-shadow: inset 0 0 0 2px #c9a21d; }
+.st-selo.entregue { background: #d6efd8; color: #1f5a31; }
+.st-selo.erro { background: #ffd6ca; color: #8a2a1c; }
+.st-selo.fila { background: #dfe8f6; color: #23466f; }
+#detalheMissao .estado .st-selo { font-size: 14px; margin-right: 6px; }
+#detalheMissao .estado[data-r4] > i { display: none; }
+#listaMissoes .mi-agora { margin-top: 2px; font-size: 15px; line-height: 1.4; color: var(--tinta); }
+#listaMissoes .mi-agora b { font-weight: 700; }
+#detalheMissao .agora-missao { background: #fff4dc; box-shadow: inset 4px 0 0 #f0973d, inset 0 0 0 1px rgba(90, 58, 34, .2); padding: 10px 12px; }
+#detalheMissao .agora-missao h4 { margin: 0 0 2px; }
+#detalheMissao .agora-missao p { margin: 0; font-size: 16px; }
+#listaHistorico .placar-item small strong { color: var(--tinta); font-weight: 700; }
+.ap3 .ap3-nao { margin: -4px 0 0 !important; font-size: 15px !important; color: var(--meta) !important; }
+.ap3 .ap3-nao b { color: var(--tinta); }
+
+/* rodada 3b: consequências lado a lado do mesmo jeito; etiquetas >= 14 px; laranja só na ação */
+.ap3 .ap3-nao { margin: -6px 0 0 !important; font-size: 16px !important; color: var(--tinta) !important; }
+.ap3 .ap3-nao b { font: 700 14px var(--ui); text-transform: uppercase; letter-spacing: .02em; margin-right: 6px; color: var(--meta); }
+.ap3-pedido b { color: var(--tinta) !important; }
+#gaveta .glo, #quadro .glo { width: 28px !important; height: 28px !important; font-size: 15px !important; }
+#gaveta .glo::after, #quadro .glo::after { inset: -8px !important; }
+#detalheMissao .chip-frente, #detalheAgente .chip-frente, #detalheMissao .dono, #detalheAgente .tipo, #detalheMissao .tipo, #listaMissoes .missao .cab .dono, .st-selo { font-size: 14px !important; }
+#gaveta .esc-placar em { font-size: 14px !important; }
+#quadro .ct-resp { background: var(--papel-escuro) !important; color: var(--tinta) !important; box-shadow: inset 4px 0 0 var(--pessoa, #8a5a32); padding: 1px 8px 1px 10px; font-size: 14px !important; }
+#quadro .ct-vivo2 { color: var(--meta) !important; font-weight: 600; }
+#quadro .ct-pri { background: var(--papel-escuro) !important; color: var(--tinta) !important; }
+#quadro .ct-prox.sem-passo { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; margin: 4px 0; color: var(--tinta) !important; font-weight: 600; background: var(--papel-claro); box-shadow: inset 0 0 0 2px rgba(42, 26, 16, .55), 0 2px 0 rgba(90, 58, 34, .25); cursor: pointer; }
+/* Com decisão esperando, ela é o assunto do Resumo: os números do dia saem da frente (continuam no Hoje e no mapa) */
+[data-painel="atencao"]:has(.ap3:not(.decidida)) #resumoDiaAtiv { display: none; }
+.hoje .hj-pessoa h3 > span { font-size: 20px; color: var(--tinta) !important; }
+.hoje .hj-intro { font-size: 15px !important; color: var(--meta) !important; }
+/* voltar e fechar da gaveta: alvo de 44 px */
+#gaveta .gaveta-topo #voltarGaveta, #gaveta .gaveta-topo #fecharGaveta { min-width: 44px; min-height: 44px; }
+.hoje .hj-motivo::after { padding: 12px 0; }

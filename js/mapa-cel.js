@@ -8,6 +8,7 @@ import { T, MW, MH, SALAS } from './mapa.js';
 import { frase, primeiraFrase } from './humano.js';
 import * as D from './dados.js';
 import * as Hoje from './funcoes-hoje.js';
+import { etapaDe, ETAPAS } from './comando-progresso.js';
 
 let ctx = null;
 const $ = (s) => document.querySelector(s);
@@ -19,22 +20,46 @@ const GRUPO = { alerta: 'esperando', erro: 'esperando', trab: 'fazendo', semsina
 export const grupoDe = (b) => GRUPO[b?.status] || 'livre';
 const ROT_GRUPO = { fazendo: 'Fazendo', esperando: 'Esperando você', livre: 'Livre' };
 
-// Setores: centro (em tiles) e quantos tiles de largura devem caber na tela.
+// Setores (salas): centro (em tiles), quantos tiles de largura cabem na tela e os limites da sala.
+// Rodada 4: a câmera chega perto (≈ 12 tiles na largura = bonecos com uns 60 px, fáceis de tocar)
+// e centraliza onde há gente na sala (quem espera você pesa mais). Arrastar mostra o resto.
 function setores() {
   const eu = ctx.eu()?.pessoa, s = SALAS[Math.max(0, ctx.pessoas().indexOf(eu))] || SALAS[0];
   return {
-    criacao: { nome: 'Criação', cx: 10.5, cy: 16.5, larg: 20 },
-    marketing: { nome: 'Marketing', cx: 30, cy: 16.5, larg: 20 },
-    copa: { nome: 'Copa', cx: 20, cy: 24.8, larg: 18 },
-    sala: { nome: 'Sala', cx: (s.x0 + s.x1 + 1) / 2, cy: 6.2, larg: 12 },
+    sala: { nome: 'Sala', cx: (s.x0 + s.x1 + 1) / 2, cy: 6.4, larg: 12, x0: s.x0 - 1, x1: s.x1 + 2, y0: 1, y1: 12, foco: s === SALAS[0] ? [1, 0, 12.8, 11.9] : [27.2, 0, 39, 11.9] },
+    reuniao: { nome: 'Reunião', cx: 20, cy: 6.6, larg: 12.5, fixo: true, x0: 13, x1: 27, y0: 1, y1: 12, foco: [12.8, 0, 27.2, 11.9] },
+    criacao: { nome: 'Criação', cx: 10.5, cy: 17.6, larg: 12, x0: 1, x1: 20, y0: 12, y1: 23, foco: [1, 13.4, 19, 22.2] },
+    marketing: { nome: 'Marketing', cx: 30, cy: 17.6, larg: 12, x0: 20, x1: 39, y0: 12, y1: 23, foco: [21, 13.4, 39, 22.2] },
+    copa: { nome: 'Copa', cx: 20, cy: 24.8, larg: 12, x0: 1, x1: 39, y0: 22, y1: 27, foco: [1, 22.6, 39, 27] },
   };
+}
+// Centro da câmera numa sala: a média de onde estão os bonecos (esperando você = peso 4, fazendo = 2,
+// livre = 1), presa nos limites da sala para não mostrar parede à toa.
+function centroDoSetor(s, larg) {
+  const pts = [];
+  for (const b of ctx.mundo()?.agentes.values() || []) {
+    const tx = b.x / T, ty = b.y / T;
+    if (tx < s.x0 || tx > s.x1 || ty < s.y0 || ty > s.y1) continue;
+    const g = grupoDe(b);
+    pts.push([tx, g === 'esperando' ? 4 : g === 'fazendo' ? 2 : 1]);
+  }
+  // janela da largura da tela que pega mais "peso" (assim a copa mostra a roda de conversa, não a mesa vazia do meio)
+  let cx = s.cx, melhor = 0;
+  if (s.fixo) return [cx * T, s.cy * T]; // sala pequena: enquadra o centro dela, não as pessoas
+  for (const [x0] of pts) {
+    const dentro = pts.filter(([x]) => x >= x0 - 0.5 && x <= x0 + larg - 1.5), p = dentro.reduce((a, [, w]) => a + w, 0);
+    if (p > melhor) { melhor = p; const xs = dentro.map(([x]) => x); cx = (Math.min(...xs) + Math.max(...xs)) / 2; }
+  }
+  const meio = larg / 2;
+  cx = s.x1 - s.x0 <= larg ? (s.x0 + s.x1) / 2 : Math.max(s.x0 + meio, Math.min(s.x1 - meio, cx));
+  return [cx * T, s.cy * T];
 }
 const BARRA = 52, FAIXA = 46; // alturas da barra de setores e da faixa de números (px)
 let setorAtual = 'geral', zoomDoSetor = 0;
 
 export function ligar(c) {
   ctx = c;
-  montarBarra(); montarPainel(); montarFicha();
+  montarBarra(); montarPainel(); montarFicha(); montarZoom();
   const ind = document.createElement('div'); ind.id = 'indMapa'; ind.className = 'ind-mapa'; ind.setAttribute('aria-hidden', 'true');
   $('#camada')?.after(ind);
   // tocar no mapa (ou arrastar) fecha a ficha; o toque num boneco reabre logo depois (pointerup)
@@ -62,7 +87,7 @@ function desenharBarra() {
   const el = $('#setoresMapa'); if (!el || !ctx.eu()) return;
   const S = setores();
   const chip = (id, nome) => `<button type="button" data-setor="${id}" class="${setorAtual === id ? 'on' : ''}" aria-pressed="${setorAtual === id}">${esc(nome)}</button>`;
-  const html = `<div class="sm-chips">${chip('geral', 'Tudo')}${Object.entries(S).map(([id, s]) => chip(id, s.nome)).join('')}</div>`;
+  const html = `<div class="sm-chips">${Object.entries(S).map(([id, s]) => chip(id, s.nome)).join('')}</div>`;
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
 }
 export function irSetor(id) {
@@ -70,14 +95,41 @@ export function irSetor(id) {
   const w = $('#palco').clientWidth;
   if (id === 'geral' || !setores()[id]) { setorAtual = 'geral'; ctx.vista(0, null); }
   else {
-    const s = setores()[id], z = Math.max(1, Math.min(3, w / (s.larg * T)));
+    // zoom: a sala enche a faixa útil (entre os números e o pedido) — pela largura ou pela altura, o que der bonecos maiores
+    const s = setores()[id], h = $('#palco').clientHeight - BARRA - FAIXA - (margens().baixo || 0);
+    const z = Math.max(1.5, Math.min(2.05, Math.max(w / (s.larg * T), h / ((s.foco[3] - s.foco[1] + 0.6) * T))));
     setorAtual = id; zoomDoSetor = z;
-    ctx.vista(z, [s.cx * T, s.cy * T]);
+    ctx.vista(z, centroDoSetor(s, w / z / T));
   }
   desenharBarra(); desenharPainel();
 }
+// ======================= zoom (botões) e "Ver tudo" =======================
+// Pinça e arraste já funcionam no mapa (app.js); estes botões são a mesma coisa para quem não usa gesto.
+const NIVEIS = [1, 1.5, 2, 2.5, 3];
+function montarZoom() {
+  if ($('#zoomCel')) return;
+  const el = document.createElement('div');
+  el.id = 'zoomCel'; el.className = 'zoom-cel'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Zoom do mapa');
+  el.innerHTML = `<button type="button" data-zc="mais" aria-label="Aproximar"><i class="zc-mais" aria-hidden="true"></i></button>
+    <button type="button" data-zc="menos" aria-label="Afastar"><i class="zc-menos" aria-hidden="true"></i></button>
+    <button type="button" data-zc="tudo" class="zc-tudo"><i class="zc-grade" aria-hidden="true"></i><span>Ver tudo</span></button>`;
+  $('#palco').appendChild(el);
+  el.onclick = (e) => { const b = e.target.closest('[data-zc]'); if (b) mudarZoomCel(b.dataset.zc); };
+}
+function mudarZoomCel(q) {
+  fecharFicha();
+  if (q === 'tudo') { irSetor('geral'); return; }
+  const z = ctx.zoom(), w = $('#palco').clientWidth, h = $('#palco').clientHeight, c = ctx.cam(), mg = margens();
+  // centro da faixa útil (o mesmo ponto que a câmera usa para centralizar)
+  const centro = [c.x + w / (2 * z), c.y + (mg.topo + (h - mg.topo - mg.baixo) / 2) / z];
+  let nz;
+  if (q === 'mais') nz = z < 1 ? 1.5 : NIVEIS.find((n) => n > z + 0.01) ?? z;
+  else { const abaixo = [...NIVEIS].reverse().find((n) => n < z - 0.01); if (!abaixo) { irSetor('geral'); return; } nz = abaixo; }
+  if (nz === z) return;
+  setorAtual = ''; ctx.vista(nz, centro); desenharBarra();
+}
 // Na visão geral, tocar num pedaço do chão aproxima o setor dele.
-const setorDoPonto = (x, y) => { const tx = x / T, ty = y / T; return ty >= 22 ? 'copa' : ty >= 11 ? (tx < 20.5 ? 'criacao' : 'marketing') : (Math.abs(tx - setores().sala.cx) < 7 ? 'sala' : null); };
+const setorDoPonto = (x, y) => { const tx = x / T, ty = y / T; return ty >= 22 ? 'copa' : ty >= 11.5 ? (tx < 20.5 ? 'criacao' : 'marketing') : tx >= 13 && tx < 27 ? 'reuniao' : (Math.abs(tx - setores().sala.cx) < 7 ? 'sala' : null); };
 export function tocarGeral(x, y) {
   if (ctx.zoom() >= 1) return false;
   const id = setorDoPonto(x, y);
@@ -91,7 +143,7 @@ function setorInicial() {
   const eu = ctx.eu()?.pessoa, conta = {};
   let espera = null;
   for (const b of ctx.mundo().agentes.values()) {
-    const s = setorDoPonto(b.x, b.y); if (!s || s === 'copa') continue;
+    const s = setorDoPonto(b.x, b.y); if (!s || s === 'copa' || s === 'reuniao') continue;
     if (b.status === 'alerta' && b.pessoa === eu && !espera) espera = s;
     if (grupoDe(b) === 'fazendo') conta[s] = (conta[s] || 0) + (b.pessoa === eu ? 2 : 1);
   }
@@ -107,7 +159,7 @@ function talvezComecar() {
 // Vale do indicador (acima da cabeça) até os pés: tocar no quadradinho também abre a ficha.
 export function agenteNoToque(x, y) {
   const z = ctx.zoom();
-  const raio = 22 / z; let melhor = null, dmin = raio;
+  const raio = 26 / z; let melhor = null, dmin = raio;
   for (const b of ctx.mundo().agentes.values()) {
     const cima = (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? 22 : 4) - 16, baixo = b.y;
     const dy = y < cima ? cima - y : y > baixo ? y - baixo : 0, d = Math.hypot((b.x - x) * 1.4, dy);
@@ -164,7 +216,7 @@ export async function desenharPainel() {
     const g = cls === 'alerta' || cls === 'erro' ? 'esperando' : 'fazendo';
     return `<button type="button" class="pg-agora ${g}" data-agora="${esc(m.k)}"><img src="${await ctx.retratoDe(m.nome)}" alt=""><span><b>${esc(ctx.nomeAgente(m))}</b><small>${esc(acao)}</small></span><i class="ind ${g}" aria-hidden="true"></i></button>`;
   }));
-  const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você decidir</span><span><i class="ind livre"></i>livre</span></p>
+  const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você decidir</span><span>sem marcador = livre</span></p>
     ${Hoje.htmlNumerosDia(r, { custo: true })}
     <div class="pg-lista">${linhas.join('') || '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>'}</div>`;
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
@@ -191,7 +243,10 @@ function montarFicha() {
     const ac = e.target.closest('[data-ficha]'); if (!ac) return;
     const q = ac.dataset.ficha;
     fecharFicha();
-    if (q === 'detalhes') ctx.abrirAgente(b);
+    if (q === 'pedido') { // o chip do pedido (no mapa) já sabe abrir o cartão; sem chip, os detalhes do agente mostram a missão
+      const chip = [...document.querySelectorAll('[data-pedido-abrir]')].find((x) => x.dataset.pedidoAbrir === ac.dataset.mid);
+      if (chip) chip.click(); else ctx.abrirAgente(b);
+    } else if (q === 'detalhes') ctx.abrirAgente(b);
     else if (q === 'decidir') ctx.abrirAba('atencao');
     else if (q === 'conversar') ctx.abrirChat(b.lugar?.codex ? 'codex' : 'claude');
     else if (q === 'pedir') ctx.pedir();
@@ -203,12 +258,25 @@ function proximaAcao(b) {
   const g = grupoDe(b), meu = b.pessoa === ctx.eu()?.pessoa, m = b.m || {};
   const assist = b.lugar?.assistente || b.lugar?.codex;
   if (g === 'esperando') return meu
-    ? { texto: b.status === 'erro' ? 'Deu erro e parou. Veja o que aconteceu e diga como seguir.' : 'Parado até você autorizar ou recusar.', botao: ['decidir', b.status === 'erro' ? 'Ver o erro' : 'Revisar autorização'] }
+    ? { texto: b.status === 'erro' ? 'Deu erro e parou. Veja o que aconteceu e diga como seguir.' : 'Aprove para ele continuar. Se recusar, ele para e espera outra instrução.', botao: ['decidir', b.status === 'erro' ? 'Ver o erro' : 'Revisar autorização'] }
     : { texto: `Está esperando o ${b.pessoa} decidir. Nada para você aqui.`, botao: ['dupla', `Falar com o ${b.pessoa}`] };
   if (g === 'fazendo') return { texto: b.status === 'semsinal' ? 'Continua rodando, mas sem dar notícia há alguns minutos. Se demorar, confira os detalhes.' : 'Segue sozinho. Você só precisa agir se ele pedir.', botao: null };
   if (assist && meu) return { texto: 'Livre agora. Converse para pedir algo novo.', botao: ['conversar', 'Conversar'] };
   if (!meu) return { texto: `Livre. Faz parte da equipe do ${b.pessoa}.`, botao: null };
   return { texto: m.ult?.tipo === 'fim' ? 'Entregou e está livre para o próximo pedido.' : 'Livre, na copa. Faça um pedido e a assistente chama quem precisar.', botao: ['pedir', 'Novo pedido'] };
+}
+// "Editando beatgrid.mjs" → "Mexendo no código (beatgrid.mjs)": o que é o arquivo, em palavras de gente.
+const TIPO_ARQ = [[/\.(m?js|ts|tsx|jsx|gd|py|cs|sh|ps1)$/i, 'código'], [/\.(tscn|tres|scn)$/i, 'uma cena do jogo'], [/\.(md|txt)$/i, 'um texto'],
+  [/\.(json|ya?ml|toml|cfg|ini)$/i, 'uma configuração'], [/\.(png|jpe?g|gif|webp|svg|aseprite)$/i, 'uma imagem'], [/\.(mp4|mov|webm)$/i, 'um vídeo'],
+  [/\.(wav|mp3|ogg)$/i, 'um áudio'], [/\.(html|css)$/i, 'uma página']];
+function simples(t) {
+  return String(t || '').replace(/^(Editando|Escrevendo|Alterando|Criando|Lendo|Abrindo)\s+(?:o arquivo\s+)?([\w.\-\/\\]+\.\w{1,9})\b/i, (x, v, arq) => {
+    const nome = arq.split(/[\\/]/).pop(), tipo = TIPO_ARQ.find(([re]) => re.test(nome))?.[1];
+    if (!tipo) return x;
+    const verbo = /^lendo|^abrindo/i.test(v) ? 'Lendo' : /^criando|^escrevendo/i.test(v) ? 'Escrevendo' : 'Mexendo em';
+    const obj = tipo === 'código' ? (verbo === 'Mexendo em' ? 'no código' : 'código') : tipo;
+    return `${verbo === 'Mexendo em' && tipo === 'código' ? 'Mexendo' : verbo} ${obj} (${nome})`;
+  });
 }
 export async function abrirFicha(b, centrar = false) {
   if (!b) return false;
@@ -217,22 +285,67 @@ export async function abrirFicha(b, centrar = false) {
   let tarefa = g === 'livre' ? (m.ult?.tipo === 'fim' ? `Última entrega: ${primeiraFrase(m.ult.resposta || frase(m.ult), 90)}` : 'Nenhuma tarefa agora.') : D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano.' : m.ult ? primeiraFrase(frase(m.ult), 110) : 'Pensando…';
   // "Quer permissão para: gerando um modelo 3D" → "Autorizar: gerar um modelo 3D" (o que você vai decidir)
   if (b.status === 'alerta') tarefa = autorizar(tarefa);
+  tarefa = simples(tarefa);
   const missao = m.ult?._m?.titulo && g !== 'livre' ? primeiraFrase(m.ult._m.titulo, 140) : '';
   const estado = b.status === 'alerta' ? 'Aguardando sua autorização' : b.status === 'erro' ? 'Parou com erro' : ROT_GRUPO[g];
   const quando = m.ult?.t ? D.ha(m.ult.t) : '';
   const el = $('#fichaMapa');
-  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x))}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${b.pessoa === ctx.eu()?.pessoa || g !== 'esperando' ? estado : 'Esperando o ' + esc(b.pessoa)}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}</span></div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
-    <dl class="fm-corpo"><div><dt>Tarefa</dt><dd>${esc(tarefa)}${missao ? `<small>Pedido: ${esc(missao)}${quando ? ` · ${quando === 'agora' ? 'agora' : 'há ' + quando}` : ''}</small>` : ''}</dd></div><div><dt>Próximo</dt><dd>${esc(px.texto)}</dd></div></dl>
-    <div class="fm-acoes">${px.botao ? `<button type="button" class="btn forte" data-ficha="${px.botao[0]}">${esc(px.botao[1])}</button>` : ''}<button type="button" class="btn" data-ficha="detalhes">Ver detalhes</button></div>`;
+  // Rodada 4: o cartão responde às 3 perguntas de quem acompanha: qual pedido, em que etapa, o que fez por último.
+  const mis = g !== 'livre' ? m.ult?._m || null : null;
+  let etapaHtml = '';
+  if (mis) {
+    let n = 1; try { n = etapaDe(mis); } catch {}
+    const alerta = b.status === 'alerta' || b.status === 'erro';
+    etapaHtml = `<ol class="fm-trilha" aria-label="Etapa ${n} de 4">${ETAPAS.map((t, i) => `<li class="${i + 1 < n || n === 4 ? 'ok' : i + 1 === n ? (alerta ? 'atual alerta' : 'atual') : ''}"><i></i><span>${t}</span></li>`).join('')}</ol>`;
+  }
+  const quandoTxt = quando ? (quando === 'agora' ? 'agora' : 'há ' + quando) : '';
+  const precisa = g === 'esperando' && b.pessoa === ctx.eu()?.pessoa; // a decisão pendente vem logo depois do nome
+  const quem = b.pessoa === ctx.eu()?.pessoa || g !== 'esperando' ? estado : 'Esperando o ' + esc(b.pessoa);
+  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x))}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${quem}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}</span></div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
+    <dl class="fm-corpo r4">
+      ${precisa ? `<div class="fm-precisa"><dt>Precisa de você</dt><dd><b>${esc(tarefa)}</b><span>${esc(px.texto)}</span></dd></div>` : ''}
+      <div class="fm-pedido"><dt>Pedido</dt><dd class="${missao ? '' : 'fm-nada'}">${missao ? esc(missao) : g === 'livre' ? 'Nenhum agora' : 'Tarefa avulsa (sem pedido)'}${etapaHtml}</dd></div>
+      ${precisa ? '' : `<div><dt>Última ação</dt><dd>${esc(tarefa)}</dd></div>`}
+      ${quandoTxt ? `<div class="fm-quando"><dt>${precisa ? 'Esperando' : 'Quando'}</dt><dd>${quandoTxt}</dd></div>` : ''}
+      ${precisa ? '' : `<div class="fm-prox ${g}"><dt>Para você</dt><dd>${esc(px.texto)}</dd></div>`}
+    </dl>
+    <div class="fm-acoes">${px.botao ? `<button type="button" class="btn forte" data-ficha="${px.botao[0]}">${esc(px.botao[1])}</button>` : ''}${mis && !px.botao ? `<button type="button" class="btn forte" data-ficha="pedido" data-mid="${esc(mis.id)}">Ver o pedido</button>` : ''}<button type="button" class="btn" data-ficha="detalhes">Ver detalhes</button></div>`;
   el.hidden = false; el.className = `ficha-mapa ${g}`;
   document.body.classList.add('ficha-aberta');
   cacheMg.t = 0;
   // a ficha cobre o pé da tela: a câmera leva o boneco para a faixa que sobra (da lista, aproxima também)
-  if (centrar || ctx.zoom() >= 1) { const z = centrar ? Math.max(ctx.zoom(), 1.5) : ctx.zoom(); if (z !== ctx.zoom() || setorAtual === 'geral') setorAtual = ''; ctx.vista(z, [b.x, b.y - 10]); desenharBarra(); }
+  if (centrar || ctx.zoom() >= 1) { const z = centrar ? Math.max(ctx.zoom(), 1.5) : ctx.zoom(); if (z !== ctx.zoom() || setorAtual === 'geral') setorAtual = ''; ctx.vista(z, [b.x, b.y - 24]); desenharBarra(); }
   return true;
 }
 export function fecharFicha() { if (!fichaDe) return; fichaDe = null; const el = $('#fichaMapa'); if (el) el.hidden = true; document.body.classList.remove('ficha-aberta'); }
 export const fichaAberta = () => !!fichaDe;
+
+// ======================= foco na sala (celular, aproximado) =======================
+// A sala onde está o meio da tela fica em destaque: o resto do andar escurece um pouco e uma
+// etiqueta diz o nome da sala e quem está nela ("Criação · 3 fazendo · 1 espera você").
+// Arrastou para outra sala? O foco vai junto. No corredor, sem foco.
+function desenharFoco(mundo, z, c, w) {
+  let el = $('#focoSala');
+  if (!el) { el = document.createElement('div'); el.id = 'focoSala'; el.className = 'foco-sala'; el.setAttribute('aria-hidden', 'true'); $('#camada')?.before(el); const n = document.createElement('b'); n.id = 'focoNome'; n.className = 'fs-nome'; $('#palco').appendChild(n); }
+  const S = setores(), mg = margens(), h = $('#palco')?.clientHeight || innerHeight;
+  const meio = [c.x + w / (2 * z), c.y + (mg.topo + (h - mg.topo - mg.baixo) / 2) / z];
+  const id = !cel() || z < 1.4 || fichaDe ? null : S[setorAtual] ? setorAtual : Object.keys(S).find((k) => { const f = S[k].foco; return meio[0] >= f[0] * T && meio[0] <= f[2] * T && meio[1] >= f[1] * T && meio[1] <= f[3] * T; });
+  const nome = $('#focoNome');
+  if (!id) { if (!el.hidden) { el.hidden = true; nome.hidden = true; } return; }
+  nome.hidden = false;
+  const f = S[id].foco, x = Math.round((f[0] * T - c.x) * z), y = Math.round((f[1] * T - c.y) * z);
+  el.hidden = false;
+  el.style.transform = `translate(${x}px, ${y}px)`;
+  el.style.width = `${Math.round((f[2] - f[0]) * T * z)}px`; el.style.height = `${Math.round((f[3] - f[1]) * T * z)}px`;
+  // etiqueta fixa no pé da faixa útil (logo acima do pedido): nome da sala e quem está nela
+  const conta = { fazendo: 0, esperando: 0, livre: 0 };
+  for (const b of mundo.agentes.values()) if (b.x >= f[0] * T && b.x <= f[2] * T && b.y >= f[1] * T && b.y <= f[3] * T) conta[grupoDe(b)]++;
+  const partes = [conta.esperando && `${conta.esperando} espera${conta.esperando > 1 ? 'm' : ''} você`, conta.fazendo && `${conta.fazendo} fazendo`, conta.livre && `${conta.livre} livre${conta.livre > 1 ? 's' : ''}`].filter(Boolean);
+  const txt = `${S[id].nome === 'Sala' ? 'Sua sala' : S[id].nome}${partes.length ? ' · ' + partes.join(' · ') : ' · vazia'}`;
+  if (nome.textContent !== txt) nome.textContent = txt;
+  nome.classList.toggle('espera', conta.esperando > 0);
+  nome.style.transform = `translate(8px, ${Math.round(h - mg.baixo - 42)}px)`;
+}
 
 // ======================= indicadores pixel (por quadro) =======================
 const pool = new Map();
@@ -246,6 +359,7 @@ function quadro() {
   else if (!setorAtual && z < 1) { setorAtual = 'geral'; desenharBarra(); }
   else if (setorAtual && setorAtual !== 'geral' && !c.alvo) { setorAtual = ''; desenharBarra(); } // andou/arrastou: a câmera saiu do setor
   document.body.classList.toggle('mapa-geral', z < 1);
+  desenharFoco(mundo, z, c, w);
   const usar = cel() || mundo.indicadoresDom;
   mundo.semIcones = !!usar;
   for (const el of pool.values()) el.dataset.v = '';
@@ -281,7 +395,7 @@ export function margens() {
   const agora = performance.now(); if (agora - cacheMg.t < 250) return cacheMg.v;
   const palco = $('#palco')?.getBoundingClientRect(); let topoCobre = palco?.bottom || 0;
   for (const s of ['#hudMapa', '#bcAbrir', '#fichaMapa']) { const el = $(s); if (!el || el.hidden) continue; const r = el.getBoundingClientRect(); if (r.height && r.top < topoCobre && r.top > (palco?.top || 0) + 100) topoCobre = r.top; }
-  cacheMg = { t: agora, v: { topo: BARRA + (ctx.zoom() >= 1 ? FAIXA : 0), baixo: palco ? Math.max(0, palco.bottom - topoCobre + 6) : 0 } };
+  cacheMg = { t: agora, v: { topo: BARRA + (ctx.zoom() >= 1 && $('#resumoSetor')?.offsetParent ? FAIXA : 0), baixo: palco ? Math.max(0, palco.bottom - topoCobre + 6) : 0 } };
   return cacheMg.v;
 }
 export const resumoAtual = () => ultResumo;

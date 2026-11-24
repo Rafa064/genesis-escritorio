@@ -1,0 +1,80 @@
+/* Rodada 4 — mapa: câmera do celular (zoom, "Ver tudo") e cartão de quem você toca (pedido, etapa, agora). */
+
+/* ---------- botões de zoom (só celular, só com o mapa aproximado) ---------- */
+.zoom-cel { display: none; }
+@media (max-width: 760px) {
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta):not(.ficha-aberta) .zoom-cel {
+    display: flex; flex-direction: column; gap: 6px; position: absolute; right: 8px; top: 110px; z-index: 4;
+  }
+  .zoom-cel button {
+    width: 44px; height: 44px; padding: 0; border: 0; cursor: pointer; display: grid; place-items: center;
+    background: var(--papel, #f4ecd8); color: var(--tinta, #2a1d12);
+    box-shadow: 0 0 0 2px var(--contorno, #2a1a10), 2px 3px 0 2px rgba(30, 18, 8, .35);
+  }
+  .zoom-cel button:active { transform: translateY(2px); box-shadow: 0 0 0 2px var(--contorno, #2a1a10); }
+  .zoom-cel .zc-tudo { height: auto; min-height: 52px; padding: 6px 0 4px; gap: 3px; }
+  .zoom-cel .zc-tudo span { font: 600 11px/1.05 var(--ui, system-ui, sans-serif); text-align: center; white-space: normal; width: 40px; }
+  /* ícones pixel: + − e a grade de 4 salas */
+  .zc-mais, .zc-menos, .zc-grade { position: relative; display: block; width: 16px; height: 16px; }
+  .zc-mais::before, .zc-menos::before { content: ""; position: absolute; left: 1px; top: 6px; width: 14px; height: 4px; background: currentColor; }
+  .zc-mais::after { content: ""; position: absolute; left: 6px; top: 1px; width: 4px; height: 14px; background: currentColor; }
+  .zc-grade { width: 18px; height: 14px; background:
+    linear-gradient(currentColor 0 0) 0 0 / 8px 6px no-repeat, linear-gradient(currentColor 0 0) 10px 0 / 8px 6px no-repeat,
+    linear-gradient(currentColor 0 0) 0 8px / 8px 6px no-repeat, linear-gradient(currentColor 0 0) 10px 8px / 8px 6px no-repeat; }
+
+  /* chips de sala: cabem 5 (Sua sala · Reunião · Criação · Marketing · Copa); o resto rola de lado */
+  .sm-chips button { padding: 0 6px; }
+}
+
+/* ---------- foco na sala: o resto do andar escurece; etiqueta com nome e quem está lá ---------- */
+.foco-sala, .fs-nome { display: none; }
+@media (max-width: 760px) {
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta) .foco-sala:not([hidden]) {
+    display: block; position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform;
+    box-shadow: 0 0 0 2px rgba(255, 244, 214, .55), 0 0 0 3000px rgba(16, 10, 24, .38);
+    transition: width .25s, height .25s;
+  }
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta):not(.ficha-aberta) .fs-nome:not([hidden]) { display: block; }
+  .fs-nome { z-index: 3; pointer-events: none;
+    position: absolute; left: 0; top: 0; white-space: nowrap; max-width: calc(100vw - 80px); overflow: hidden; text-overflow: ellipsis;
+    padding: 4px 10px; background: rgba(42, 26, 16, .9); color: #fff6dc; font: 600 14px/1.2 var(--ui, system-ui, sans-serif);
+    box-shadow: 0 0 0 2px #2a1a10, inset 3px 0 0 #e8b864;
+  }
+  .fs-nome.espera { box-shadow: 0 0 0 2px #2a1a10, inset 4px 0 0 #ffd23f; }
+}
+
+/* ---------- cartão de quem você tocou: Pedido · Etapa · Agora · Para você ---------- */
+.fm-corpo.r4 { gap: 6px; }
+.fm-corpo.r4 > div { grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; }
+.fm-corpo.r4 dt { font-size: 12px; }
+.fm-corpo.r4 dd.fm-nada { color: var(--meta, #6b5a48); }
+.fm-corpo.r4 dd { overflow-wrap: anywhere; }
+.fm-corpo.r4 dd small { display: inline; margin: 0 0 0 6px; }
+.fm-corpo.r4 .fm-etapa { align-items: center; }
+.fm-trilha { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.fm-trilha li { flex: 1; display: grid; gap: 3px; min-width: 0; font: 600 12px/1.1 var(--ui, system-ui, sans-serif); color: var(--meta, #6b5a48); }
+.fm-trilha li i { display: block; height: 6px; background: var(--papel-escuro, #d9c8a4); box-shadow: inset 0 0 0 1px rgba(42, 26, 16, .35); }
+.fm-trilha li.ok i { background: #4fbf82; }
+.fm-trilha li.atual i { background: #f0973d; }
+.fm-trilha li.atual.alerta i { background: #ffd23f; }
+.fm-trilha li.atual span { color: var(--tinta, #2a1d12); }
+.fm-precisa { padding: 8px 10px; margin: 0 -2px 2px; background: #fff1c2; box-shadow: inset 4px 0 0 #d8a521; }
+.fm-corpo.r4 .fm-precisa { grid-template-columns: 1fr; gap: 2px; }
+.fm-precisa dt { color: #7a5a00 !important; }
+.fm-precisa dd b { display: block; font: 700 17px/1.3 var(--ui, system-ui, sans-serif); color: var(--tinta, #2a1d12); }
+.fm-precisa dd span { display: block; font: 14px/1.35 var(--ui, system-ui, sans-serif); color: var(--meta, #6b5a48); }
+.fm-pedido .fm-trilha { margin-top: 6px; }
+/* celular: quem está livre não leva marcador (só quem trabalha e quem espera você); o selecionado sempre leva */
+@media (max-width: 760px) {
+  .ind-mapa .ind.livre:not(.sel) { display: none; }
+  .ind-mapa .ind.fazendo:not(.sel) { width: 12px; height: 12px; left: -6px; top: -12px; }
+  .ind-mapa .ind.esperando:not(.sel) { width: 22px; height: 22px; left: -11px; top: -22px; }
+}
+.fm-quando dd { color: var(--meta, #6b5a48); }
+.fm-prox { padding-top: 6px; box-shadow: inset 0 1px 0 var(--linha-fina, rgba(42, 26, 16, .15)); }
+.fm-prox.esperando dd { font-weight: 600; }
+@media (max-width: 760px) {
+  .fm-corpo.r4 dd { font-size: 15px; line-height: 1.4; }
+  /* placa da sala de reunião: some na visão geral (lá ela encostava na placa da Criação) */
+  body.mapa-geral #camada .placa.reuniao { display: none !important; }
+}

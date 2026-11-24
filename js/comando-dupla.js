@@ -94,7 +94,7 @@ export function resumoRecado(r) {
 
 // ---------- desenho ----------
 let aberto = guardado('cdAberto', '1') === '1';
-const verAlt = new Set(); let combinando = null;
+const verAlt = new Set(); let combinando = null, dividindo = null;
 const corP = (p) => ctx.corPessoa(p);
 const ponto = ([cls, rot]) => `<span class="cd-st ${cls}"><i></i>${esc(rot)}</span>`;
 
@@ -114,7 +114,7 @@ async function cartaoConflito(c, outro, cb) {
   if (feito) {
     const alvo = c.arq ? ` em ${c.arqNome}` : '';
     const quem = feito.quem === 'dividir' ? `Cada IA fica com uma parte${alvo}` : feito.quem === eu ? `Sua IA continua${alvo}` : `A IA do ${feito.quem} continua${alvo}`;
-    const para = feito.quem === 'dividir' ? 'Vocês combinam na conversa qual parte é de quem' : feito.quem === eu ? `A IA do ${outro} para de mexer nesse arquivo` : 'Sua IA para de mexer nesse arquivo';
+    const para = feito.quem === 'dividir' ? (feito.minha ? (feito.pessoa === eu ? `Sua IA: ${feito.minha}. IA do ${outro}: ${feito.dele}` : `Sua IA: ${feito.dele}. IA do ${feito.pessoa}: ${feito.minha}`) : 'Vocês combinam na conversa qual parte é de quem') : feito.quem === eu ? `A IA do ${outro} para de mexer nesse arquivo` : 'Sua IA para de mexer nesse arquivo';
     const por = feito.pessoa === eu ? 'você' : esc(feito.pessoa);
     return `<div class="cd-conf combinado" data-cd-k="${esc(c.k)}"><div class="cdc-cab">${ico('check')}<div><b>Combinado: ${esc(quem)}</b><small>${c.arq ? esc(c.arq) : ''}</small></div><button type="button" class="cdc-link" data-cdc="mudar">Mudar</button></div>
       <details class="cdc-det"><summary>O que foi combinado</summary><ul class="cdc-feito"><li>${ico('check')}${esc(para)}</li><li>${ico('check')}${feito.pessoa === eu ? `${esc(outro)} foi avisado na conversa` : `${por} avisou você na conversa`}</li><li>${ico('check')}Decisão registrada por ${por} ${haT(feito.criado)}</li></ul></details></div>`;
@@ -123,17 +123,31 @@ async function cartaoConflito(c, outro, cb) {
   const chip = async (p, x, euMesmo) => `<span class="cdc-chip" style="--cor:${corP(p)}"><img src="${await ctx.retrato(p)}" alt=""><b>${euMesmo ? 'Você' : esc(p)}</b>${haT(x.t)}</span>`;
   const aviso = avisados(), avisouAgora = aviso && aviso >= (c.t || 0);
   const pasta = c.arq ? c.arq.replace(/\\/g, '/').split('/').slice(0, -1).join('/') : '';
-  let html = `<div class="cd-conf aberto" data-cd-k="${esc(c.k)}">
-    <div class="cdc-cab">${ico('alerta')}<div><b>${c.arq ? 'As IAs de vocês dois mexeram no mesmo arquivo' : 'Possível conflito'}</b><small>${c.arq ? 'Combinem quem continua antes de salvar uma versão.' : esc(c.curto)}</small></div></div>`;
-  if (c.arq) html += `<p class="cdc-arq">${ico('lapis')}<span><code>${esc(c.arqNome)}</code><small>${pasta ? `em ${esc(pasta)}` : ''}${c.mais ? ` · +${c.mais} arquivo${c.mais > 1 ? 's' : ''}` : ''}</small></span></p>
-    <p class="cdc-quando"><span>Mexeram:</span>${await chip(eu, c.meu, true)}${await chip(outro, c.dele, false)}</p>`;
-  if (verAlt.has(c.k) && c.arq) {
-    const lin = (p, x) => x.mexidas.slice().sort((a, b) => b.t - a.t).slice(0, 4).map((m) => `<li><span class="cdc-h">${D.hora(m.t)}</span><span><span><b>${esc(p === eu ? 'Você' : p)}</b>: ${esc(nomeQuem(m.agente, p))} ${m.ferramenta === 'Write' ? 'reescreveu o arquivo' : 'editou trechos'}</span><small>pedido “${esc(primeiraFrase(m.titulo || '', 50))}”</small></span><button type="button" class="cdc-link" data-cd-abrir="${esc(m.missao)}">Abrir</button></li>`).join('');
-    html += `<div class="cdc-alt"><p>Alterações nas últimas 3 h</p><ol>${lin(eu, c.meu)}${lin(outro, c.dele)}</ol></div>`;
+  void chip;
+  // Uma escolha clara: o que aconteceu (duas IAs, um arquivo, quais pedidos), a pergunta e 3 botões com a consequência.
+  const alvo = c.arq ? `<b>${esc(c.arqNome)}</b>` : 'essa parte';
+  let html = `<div class="cd-conf aberto cdc-r4" data-cd-k="${esc(c.k)}">
+    <div class="cdc-cab">${ico('alerta')}<div><b>${c.arq ? 'Duas IAs alteraram o mesmo arquivo' : 'Possível conflito'}</b><small>${c.arq ? `A sua e a do ${esc(outro)}. Escolha quem continua antes de salvar uma versão.` : esc(c.curto)}</small></div></div>`;
+  if (c.arq) {
+    const quem = async (p, x, euMesmo) => `<li style="--cor:${corP(p)}"><img src="${await ctx.retrato(p)}" alt=""><span><b>${euMesmo ? 'Sua IA' : `IA do ${esc(p)}`}</b><small>${esc(nomeQuem(x.agente, p))} · ${x.mexidas.length > 1 ? `${x.mexidas.length} edições` : x.mexidas[0]?.ferramenta === 'Write' ? 'reescreveu o arquivo' : 'editou trechos'} · ${haT(x.t)}</small>${x.missao ? `<button type="button" class="cdc-ped" data-cd-abrir="${esc(x.missao)}" title="Abrir a página deste pedido">Pedido “${esc(primeiraFrase(x.titulo || '', 56))}” ›</button>` : ''}</span></li>`;
+    html += `<p class="cdc-arq">${ico('lapis')}<span><code>${esc(c.arqNome)}</code><small>${pasta ? `em ${esc(pasta)}` : ''}${c.mais ? ` · +${c.mais} arquivo${c.mais > 1 ? 's' : ''}` : ''}</small></span></p>
+      <ul class="cdc-quem">${await quem(eu, c.meu, true)}${await quem(outro, c.dele, false)}</ul>`;
   }
-  html += `<div class="cdc-combinar"><p>Combinar responsável${c.arq ? ` por <b>${esc(c.arqNome)}</b>` : ''}:</p>
-      <div class="cdc-duas"><button type="button" class="btn" data-cdc-quem="${esc(eu)}"><b>Minha IA continua</b><small>a do ${esc(outro)} para de mexer nele</small></button><button type="button" class="btn" data-cdc-quem="${esc(outro)}"><b>IA do ${esc(outro)} continua</b><small>a sua para de mexer nele</small></button></div></div>
-    <div class="cdc-links">${c.arq ? `<button type="button" class="cdc-link" data-cdc="ver" aria-expanded="${verAlt.has(c.k)}">${verAlt.has(c.k) ? 'Esconder alterações' : 'Ver alterações'}</button>` : ''}<button type="button" class="cdc-link" data-cd-conf="${esc(c.k)}">${avisouAgora ? `Avisado ${haT(aviso)} · avisar de novo` : `Avisar ${esc(outro)}`}</button><button type="button" class="cdc-link" data-cdc-quem="dividir">Dividir o arquivo</button></div>`;
+  html += `<div class="cdc-combinar"><p class="cdc-perg">Quem continua mexendo em ${alvo}?</p>
+      <div class="cdc-escolhas">
+        <button type="button" class="btn cdc-op" data-cdc-quem="${esc(eu)}"><b>Continuar com a minha IA</b><small>A IA do ${esc(outro)} fica pausada neste arquivo. Ele recebe o aviso na conversa.</small></button>
+        <button type="button" class="btn cdc-op" data-cdc-quem="${esc(outro)}"><b>Continuar com a IA do ${esc(outro)}</b><small>A sua IA fica pausada neste arquivo. O resto do seu pedido segue.</small></button>
+        <button type="button" class="btn cdc-op cdc-op-sec" data-cdc="dividir" aria-expanded="${dividindo === c.k}"><b>Dividir o arquivo</b><small>Cada IA fica com uma parte. Você diz agora qual parte é de quem.</small></button>
+      </div>${dividindo === c.k ? `<div class="cdc-dividir"><p><b>Quem fica com qual parte${c.arq ? ` de ${esc(c.arqNome)}` : ''}?</b></p>
+        <label><span>Sua IA fica com</span><input name="cdcMinha" maxlength="120" placeholder="ex.: as funções de corte no ritmo"></label>
+        <label><span>A IA do ${esc(outro)} fica com</span><input name="cdcDele" maxlength="120" placeholder="ex.: o resto do arquivo"></label>
+        <p class="cdc-dividir-nota">Cada IA só mexe na parte dela. ${esc(outro)} recebe a divisão na conversa.</p>
+        <div class="cdc-dividir-bt"><button type="button" class="btn" data-cdc="cancelar">Voltar</button><button type="button" class="btn forte" data-cdc="dividir-ok">Combinar divisão</button></div></div>` : ''}</div>`;
+  if (c.arq) {
+    const lin = (p, x) => x.mexidas.slice().sort((a, b) => b.t - a.t).slice(0, 4).map((m) => `<li><span class="cdc-h">${D.hora(m.t)}</span><span><span><b>${esc(p === eu ? 'Você' : p)}</b>: ${esc(nomeQuem(m.agente, p))} ${m.ferramenta === 'Write' ? 'reescreveu o arquivo' : 'editou trechos'}</span><small>pedido “${esc(primeiraFrase(m.titulo || '', 50))}”</small></span></li>`).join('');
+    html += `<details class="cdc-comparar"${verAlt.has(c.k) ? ' open' : ''}><summary>Comparar alterações</summary><div class="cdc-alt"><p>Alterações nas últimas 3 h${pasta ? ` · ${esc(c.arq)}` : ''}</p><ol>${lin(eu, c.meu)}${lin(outro, c.dele)}</ol></div></details>`;
+  }
+  html += `<div class="cdc-links"><button type="button" class="cdc-link" data-cd-conf="${esc(c.k)}">${avisouAgora ? `Avisado ${haT(aviso)} · avisar de novo` : `Só avisar o ${esc(outro)} (sem decidir agora)`}</button></div>`;
   return html + '</div>';
 }
 
@@ -158,7 +172,11 @@ export async function desenhar() {
     html += '</div>';
   }
   html += '</div>';
+  // Redesenho periódico: o que está sendo digitado na divisão do arquivo não se perde.
+  const vals = [...el.querySelectorAll('.cdc-dividir input')].map((i) => [i.name, i.value]), foco = el.contains(document.activeElement) ? document.activeElement.name : '';
   el.innerHTML = html;
+  for (const [n, v] of vals) { const i = el.querySelector(`.cdc-dividir [name=${n}]`); if (i) i.value = v; }
+  if (foco) el.querySelector(`.cdc-dividir [name=${foco}]`)?.focus();
   ligar(el);
   desenharChip(po, conflitosAbertos().length, praMim.length);
 }
@@ -219,7 +237,20 @@ function ligar(el) {
       const acao = cc.dataset.cdc;
       if (acao === 'ver') { if (verAlt.has(k)) verAlt.delete(k); else verAlt.add(k); }
       else if (acao === 'combinar') combinando = k;
-      else if (acao === 'cancelar') combinando = null;
+      else if (acao === 'cancelar') { combinando = null; dividindo = null; }
+      else if (acao === 'dividir') dividindo = dividindo === k ? null : k;
+      else if (acao === 'dividir-ok') {
+        const box = cc.closest('.cdc-dividir'), minha = box?.querySelector('[name=cdcMinha]')?.value.trim(), dele = box?.querySelector('[name=cdcDele]')?.value.trim();
+        if (!minha) { box?.querySelector('[name=cdcMinha]')?.focus(); return ctx.toast({ titulo: 'Diga qual parte fica com a sua IA', texto: 'Ex.: as funções de corte no ritmo.', cor: '#ffd23f' }); }
+        const c = conflitos().find((x) => x.k === k); if (!c) return;
+        try {
+          await enviar(JSON.stringify({ k, quem: 'dividir', arq: c.arq || '', por: ctx.eu().pessoa, minha: minha.slice(0, 120), dele: (dele || 'o resto').slice(0, 120) }).slice(0, 480), 'combinado');
+          await enviar(`🤝 Combinado${c.arq ? ` em ${c.arqNome}` : ''}: a minha IA fica com ${minha}; a sua fica com ${dele || 'o resto'}. Cada uma só mexe na parte dela.`, 'msg');
+          dividindo = null;
+          ctx.toast({ titulo: 'Divisão combinada', texto: `${ctx.outra()} vê a divisão na conversa e o aviso sai do topo dos dois.`, cor: '#4fbf82' });
+        } catch {}
+        ctx.redesenharTopo?.();
+      }
       else if (acao === 'mudar') { const x = combinados().get(k), r = x && ctx.recados().find((y) => y.id === x.id); if (r) { try { await ctx.tirarRecado(r); } catch {} } combinando = k; }
       return desenhar();
     }
@@ -239,7 +270,7 @@ function ligar(el) {
     }
     const cf = t.closest('[data-cd-conf]');
     if (cf) { const c = conflitos().find((x) => x.k === cf.dataset.cdConf); if (c) { await enviar(c.recado, 'msg'); ctx.toast({ titulo: 'Avisei o ' + ctx.outra(), texto: 'Ele recebe a mensagem com o arquivo e o horário.', cor: '#4fbf82' }); desenhar(); } return; }
-    const ab = t.closest('[data-cd-abrir]'); if (ab) return ctx.abrirMissao(ab.dataset.cdAbrir);
+    const ab = t.closest('[data-cd-abrir]'); if (ab) return ctx.abrirPedidoPagina ? ctx.abrirPedidoPagina({ missao: ab.dataset.cdAbrir }) : ctx.abrirMissao(ab.dataset.cdAbrir);
     const rg = t.closest('[data-cd-reagir]');
     if (rg) { const id = rg.closest('[data-cd-missao]').dataset.cdMissao, txt = `${rg.dataset.cdReagir} ${id}`, minha = ctx.recados().find((r) => r.cor === 'reacao' && r.pessoa === ctx.eu().pessoa && r.texto === txt); if (minha) await ctx.tirarRecado(minha); else await enviar(txt, 'reacao'); return desenhar(); }
     const ba = t.closest('[data-bola-acao]');

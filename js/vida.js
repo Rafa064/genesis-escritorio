@@ -3,6 +3,7 @@
 // relógio real (janelas com céu, luminárias à noite). Tudo chamado pelo mundo.js.
 import { T, MW, MH, tileDe } from './mapa.js';
 import { tituloDe } from './config.js';
+import { ARANDELAS } from './ambientes.js';
 
 const URLP = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 export const DEMO = URLP.has('demo');
@@ -451,7 +452,7 @@ export function desenharLuz(g, w, cam, vw, vh) {
   g.save();
   g.globalCompositeOperation = 'multiply';
   if (f.ouro > 0.02) { g.fillStyle = `rgba(255,190,110,${0.38 * f.ouro})`; g.fillRect(cam.x, cam.y, vw, vh); }
-  if (f.noite > 0.02) { g.fillStyle = `rgba(38,50,122,${0.68 * f.noite})`; g.fillRect(cam.x, cam.y, vw, vh); }
+  if (f.noite > 0.02) { g.fillStyle = `rgba(38,50,122,${0.56 * f.noite})`; g.fillRect(cam.x, cam.y, vw, vh); }
   g.globalCompositeOperation = 'lighter';
   // de dia o escritório fica mais claro (de manhã, mais ainda)
   const claro = (1 - f.noite) * (0.05 + 0.05 * f.manha);
@@ -465,6 +466,8 @@ export function desenharLuz(g, w, cam, vw, vh) {
   if (f.noite > 0.05) {
     const luz = (x, y, r, cor) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, cor); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); };
     for (const l of w.planta.luminarias) luz(l.x, l.y - 14, 64, `rgba(255,180,95,${0.55 * f.noite})`);
+    for (const ax of ARANDELAS) luz(ax, 9, 34, `rgba(255,196,110,${0.5 * f.noite})`); // arandelas da parede do fundo
+    for (const b of w.agentes.values()) luz(b.x, b.y - 14, 18, `rgba(255,232,196,${0.2 * f.noite})`); // os bonecos não somem no escuro
     for (const b of w.agentes.values()) if (b.modo === 'sentado' && OCUPADO.includes(b.status) && b.lugar?.pc) luz(b.lugar.pc.x + 8, b.lugar.pc.y + 10, 28, `rgba(120,180,255,${0.42 * f.noite})`);
     for (const m of w.planta.moveis) if (m.anima?.startsWith('dono')) luz(m.x + 8, m.y + 6, 22, `rgba(120,180,255,${0.3 * f.noite})`);
     for (const j of w.planta.janelas) luz(j.x + j.w / 2, j.y + (j.h || 20) / 2, 20, `rgba(140,160,255,${0.12 * f.noite})`);

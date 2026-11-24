@@ -4,6 +4,9 @@ import { tituloDe } from './config.js';
 
 const curto = (s, n = 70) => { s = String(s ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const arquivo = (s) => curto(String(s ?? '').split(/[\\/]/).pop(), 50);
+// "player.gd" vira "o código do jogo “player”": o tipo em palavras, o nome sem a extensão.
+const TIPO_ARQ = [[/\.(gd|tscn|tres|godot)$/i, 'o código do jogo'], [/\.(tsx|jsx)$/i, 'o código do vídeo'], [/\.(js|mjs|cjs|ts|py|cs|css|html)$/i, 'o código'], [/\.(png|jpe?g|webp|gif|svg|aseprite)$/i, 'a imagem'], [/\.(mp4|mov|webm)$/i, 'o vídeo'], [/\.(wav|mp3|ogg)$/i, 'o áudio'], [/\.(md|txt)$/i, 'a anotação'], [/\.(json|ya?ml|toml|cfg|ini)$/i, 'a configuração'], [/\.(blend|glb|fbx|obj)$/i, 'o modelo 3D']];
+function arquivoLeigo(s) { const n = arquivo(s), t = TIPO_ARQ.find(([re]) => re.test(n)); return t ? `${t[1]} “${n.replace(/\.[^.]+$/, '')}”` : n; }
 
 // Comandos de terminal conhecidos -> o que eles significam no dia a dia do estúdio.
 const COMANDOS = [
@@ -72,11 +75,11 @@ export function passo(ferramenta, alvo, entrada = {}) {
   const t = String(ferramenta || '');
   const a = alvo ?? entrada.file_path ?? entrada.pattern ?? entrada.command ?? entrada.query ?? entrada.url ?? '';
   switch (t) {
-    case 'Read': return `Lendo ${arquivo(a)}`;
-    case 'Edit': case 'MultiEdit': return `Editando ${arquivo(a)}`;
+    case 'Read': return `Lendo ${arquivoLeigo(a)}`;
+    case 'Edit': case 'MultiEdit': { const l = arquivoLeigo(a); return /^[oa] /.test(l) ? `Mexendo n${l}` : `Editando ${l}`; }
     case 'Write': return `Escrevendo ${arquivo(a)}`;
     case 'NotebookEdit': return `Editando o notebook ${arquivo(a)}`;
-    case 'Grep': return `Procurando “${curto(String(a).split(' em ')[0], 40)}” no código`;
+    case 'Grep': return 'Procurando um trecho no código';
     case 'Glob': return `Listando arquivos (${curto(a, 40)})`;
     case 'LS': return 'Olhando os arquivos de uma pasta';
     case 'WebSearch': return `Pesquisando na web: “${curto(a, 50)}”`;
@@ -181,8 +184,8 @@ export function resumo(passos) {
   const out = [];
   if (por.chamar) out.push({ icone: '🤖', texto: `Chamou ${lista(por.chamar.map((e) => e.ferramenta ? '' : tituloDe(e.agente)), 4) || 'um ajudante'}` });
   if (por.skill) out.push({ icone: '📘', texto: `Seguiu a skill ${lista(por.skill.map((e) => e.alvo))}` });
-  if (por.ler) out.push({ icone: '📖', texto: `Leu ${new Set(por.ler.map(alvoArq)).size} arquivo(s) e fez ${por.ler.filter((e) => /Grep|Glob/.test(e.ferramenta)).length} busca(s)`.replace(' e fez 0 busca(s)', '') });
-  if (por.escrever) { const a = por.escrever.map(alvoArq); out.push({ icone: '✏️', texto: `Mudou ${new Set(a).size} arquivo(s): ${lista(a)}` }); }
+  if (por.ler) out.push({ icone: '📖', texto: (() => { const a = new Set(por.ler.map(alvoArq)).size, b = por.ler.filter((e) => /Grep|Glob/.test(e.ferramenta)).length; return `Leu ${a} arquivo${a === 1 ? '' : 's'}${b ? ` e fez ${b} busca${b === 1 ? '' : 's'}` : ''}`; })() });
+  if (por.escrever) { const a = por.escrever.map(alvoArq); const n = new Set(a).size; out.push({ icone: '✏️', texto: `Mudou ${n} arquivo${n === 1 ? '' : 's'}: ${lista(a)}` }); }
   if (por.cmd) {
     const c = new Map(); for (const e of por.cmd) { const f = passo(e.ferramenta, e.alvo); c.set(f, (c.get(f) || 0) + 1); }
     const top = [...c].sort((a, b) => b[1] - a[1]).filter(([f]) => !/^(Lendo um arquivo|Olhando os arquivos|Olhando o histórico)/.test(f));
@@ -191,7 +194,7 @@ export function resumo(passos) {
   if (por.mcp) out.push({ icone: '🔌', texto: lista(por.mcp.map((e) => passo(e.ferramenta, e.alvo)), 2) });
   if (por.web) out.push({ icone: '🌐', texto: `Pesquisou na web${vezes(por.web.length)}` });
   if (por.alerta) out.push({ icone: '⚠️', texto: `Pediu sua permissão${vezes(por.alerta.length)}` });
-  if (por.erro) out.push({ icone: '❌', texto: `${por.erro.length} erro(s): ${primeiraFrase(frase(por.erro.at(-1)).replace(/^Deu erro: /, ''), 70)}` });
+  if (por.erro) out.push({ icone: '❌', texto: `${por.erro.length} erro${por.erro.length === 1 ? '' : 's'}: ${primeiraFrase(frase(por.erro.at(-1)).replace(/^Deu erro: /, ''), 70)}` });
   return out;
 }
 
@@ -206,7 +209,7 @@ export function fases(passos) {
   for (const f of out) {
     const n = f.itens.length, a = f.itens.map(alvoArq);
     f.texto = f.cat === 'ler' && n > 1 ? `Leu ${new Set(a).size} arquivos: ${lista(a)}`
-      : f.cat === 'escrever' && n > 1 ? `Mudou ${new Set(a).size} arquivo(s): ${lista(a)}`
+      : f.cat === 'escrever' && n > 1 ? `Mudou ${new Set(a).size} arquivo${new Set(a).size === 1 ? '' : 's'}: ${lista(a)}`
       : f.cat === 'cmd' && n > 1 ? lista(f.itens.map((e) => passo(e.ferramenta, e.alvo)), 3)
       : f.cat === 'web' && n > 1 ? `Pesquisou na web ${n}×`
       : f.cat === 'organizar' ? 'Organizou a lista de tarefas'

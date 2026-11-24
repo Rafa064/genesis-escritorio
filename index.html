@@ -21,7 +21,7 @@
 <link rel="modulepreload" href="js/config.js"><link rel="modulepreload" href="js/mapa.js"><link rel="modulepreload" href="js/mundo.js"><link rel="modulepreload" href="js/arte.js">
 <link rel="modulepreload" href="js/personagens.js"><link rel="modulepreload" href="js/humano.js"><link rel="modulepreload" href="js/frentes.js"><link rel="modulepreload" href="js/tipos.js">
 <link rel="modulepreload" href="js/dados.js"><link rel="modulepreload" href="js/rede.js"><link rel="modulepreload" href="js/funcoes-hoje.js"><link rel="modulepreload" href="js/comando-ctx.js">
-<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js"><link rel="modulepreload" href="js/comando-topo.js"><link rel="modulepreload" href="js/comando-pedido.js"><link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js"><link rel="modulepreload" href="js/mapa-cel.js">
+<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js"><link rel="modulepreload" href="js/comando-topo.js"><link rel="modulepreload" href="js/comando-pedido.js"><link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js"><link rel="modulepreload" href="js/mapa-cel.js"><link rel="modulepreload" href="js/pedido-pagina.js">
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm" crossorigin>
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
@@ -33,6 +33,9 @@
 <link rel="stylesheet" href="estilo-fluxo.css">
 <link rel="stylesheet" href="estilo-telas.css">
 <link rel="stylesheet" href="estilo-r3-fluxo.css"><link rel="stylesheet" href="estilo-r3-telas.css">
+<link rel="stylesheet" href="estilo-r4-mapa.css">
+<link rel="stylesheet" href="estilo-r4-pedido.css">
+<link rel="stylesheet" href="estilo-r4-leitura.css">
 </head>
 <body>
 <header id="topo">
@@ -116,6 +119,8 @@
     <section data-painel="mais" class="painel" hidden><div id="listaMais" class="mais"></div></section>
     <section data-painel="hoje" class="painel" hidden><div id="hojeCorpo" class="hoje"></div></section>
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
+    <!-- Página do pedido (js/pedido-pagina.js): andamento, próximo passo, decisões, entregas e ações. -->
+    <section data-painel="pedido" class="painel painel-pedido" hidden><div id="pedidoPagina" class="pp"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
       <div class="seg-conversas com-novo"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>

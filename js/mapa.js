@@ -122,6 +122,9 @@ export function montarPlanta() {
   // estante das ferramentas (PixelLab, Blender, Godot...): desenhada em código (vida.js); os itens moram nela
   trava(14, 9, 16, 9);
   const mural = { x: 14 * T + 16, y: 2 * T + 12, tile: [15, 2] };
+  // sala de reunião: vidro dos dois lados, porta larga no meio (x 17..22)
+  vidros.push({ h: true, x0: 13, x1: 16, y: 11, reuniao: true }, { h: true, x0: 23, x1: 26, y: 11, reuniao: true });
+  trava(13, 11, 16, 11); trava(23, 11, 26, 11);
 
   // ---------- duas alas: Criação (esquerda) e Marketing (direita) ----------
   // Cada ala tem uma fileira por jogo (Genesis em cima, Cook embaixo), com 4 mesas.
@@ -179,6 +182,7 @@ export function montarPlanta() {
     { texto: '📣 MARKETING', x: 30 * T, y: 12.6 * T, setor: 'marketing' },
     ...ALAS.flatMap((ala) => FILAS.map((f) => ({ texto: f.rotulo, x: (ala.x0 - 1.1) * T, y: (f.y + 2.4) * T, jogo: f.jogo, lado: true }))),
     { texto: '☕ COPA · quem está livre', x: 19.5 * T, y: 22.55 * T, copa: true },
+    { texto: '🤝 REUNIÃO', x: 15 * T, y: 11.1 * T, setor: 'reuniao' },
   ];
   // pontos de passeio (só no salão e na copa)
   const passeio = [[15, 8], [16, 6], [21, 3], [23, 4], [26, 5], [15, 4]];

@@ -4,6 +4,7 @@ import { imagem, colorir, carregarMoveis, montarPersonagem, novoCanvas } from '.
 import { visualDe } from './personagens.js';
 import { enfeitar, desenharQuadro, caneca } from './bonecos.js';
 import * as vida from './vida.js';
+import { pintarAmbientes, pintarParedes, enfeitarDivisorias } from './ambientes.js';
 import { iniciarSomAmbiente } from './som-ambiente.js';
 
 const rnd = (s) => { let x = s >>> 0 || 1; return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 4294967296); };
@@ -27,16 +28,12 @@ export async function criarMundo() {
     return pisos.get(k);
   };
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (planta.tipo[y][x] > 0) b.drawImage(await pisoDe(planta.tipo[y][x], planta.cor[y][x]), x * T, y * T);
+  // chão de cada ambiente (madeira, carpete, ladrilho, taco e tapetes) por cima dos pisos base
+  pintarAmbientes(fundo);
   // sombra suave do pé das paredes e dos vidros
   b.fillStyle = 'rgba(10,8,20,.22)'; b.fillRect(T, 2 * T, (MW - 2) * T, 4);
-  // ---- paredes (auto-tile 4x4 pela vizinhança, colorido) ----
-  const folhaParede = colorir(await imagem('paredes/wall_0.png'), planta.cor[0][0]);
-  const ehParede = (x, y) => y >= 0 && x >= 0 && x < MW && y < MH && planta.tipo[y][x] === 0;
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    if (!ehParede(x, y)) continue;
-    const mask = (ehParede(x, y - 1) ? 1 : 0) | (ehParede(x + 1, y) ? 2 : 0) | (ehParede(x, y + 1) ? 4 : 0) | (ehParede(x - 1, y) ? 8 : 0);
-    b.drawImage(folhaParede, (mask % 4) * 16, Math.floor(mask / 4) * 32, 16, 32, x * T, y * T - T, 16, 32);
-  }
+  // ---- paredes: papel de parede por sala, lambri, rodapé, arandelas; soleiras e capachos (ambientes.js) ----
+  pintarParedes(fundo);
   // ---- coisas na parede ----
   for (const p of planta.naParede) { const img = mv[p.img]; if (img) b.drawImage(img, Math.round(p.x), Math.round(p.y)); }
   // ---- divisórias das baias (tecido azul-acinzentado com borda clara em cima) ----
@@ -46,6 +43,7 @@ export async function criarMundo() {
     b.fillStyle = '#b8c3d9'; b.fillRect(d.x + 1, d.y + 1, d.w - 2, 2);
     if (!d.lado) { b.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 6; k < d.w - 4; k += 7) b.fillRect(d.x + k, d.y + 6, 1, d.h - 9); b.fillStyle = 'rgba(10,8,20,.25)'; b.fillRect(d.x + 1, d.y + d.h, d.w - 2, 3); }
   }
+  enfeitarDivisorias(fundo, planta.divisorias);
   // ---- vidros ----
   for (const v of planta.vidros) {
     if (v.h) for (let x = v.x0; x <= v.x1; x++) {
@@ -58,6 +56,7 @@ export async function criarMundo() {
       if ((x * 7) % 5 < 2) { b.fillStyle = 'rgba(255,255,255,.4)'; for (let k = 0; k < 7; k++) b.fillRect(px + 3 + k, py - 8 + k * 3, 1, 3); }
     }
     if (v.h && v.porta != null) { b.fillStyle = '#3b4a5c'; b.fillRect(v.porta * T - 2, v.y * T - 14, 3, 30); b.fillRect((v.porta + 2) * T - 1, v.y * T - 14, 3, 30); }
+    if (v.reuniao) { b.fillStyle = '#3b4a5c'; b.fillRect(v.x0 > 20 ? v.x0 * T - 1 : (v.x1 + 1) * T - 2, v.y * T - 14, 3, 30); }
     if (v.v) for (let y = v.y0; y <= v.y1; y++) { const px = v.x * T + 6, py = y * T; b.fillStyle = 'rgba(150,205,235,.34)'; b.fillRect(px, py, 4, T); b.fillStyle = '#3b4a5c'; b.fillRect(px - 1, py, 1, T); b.fillStyle = '#d6edf7'; b.fillRect(px + 4, py, 1, T); }
   }
 

@@ -51,10 +51,10 @@ const trilha = (n, alerta) => `<ol class="cp-etapas" aria-label="Etapa ${n} de 4
 const nomePedido = (m, pedido) => primeiraFrase(m?.titulo || pedido || 'Seu pedido', 70);
 
 // Chip do pedido no mapa: toque leva ao cartão na conversa.
-export function htmlChipMapa({ m, pend = 0, titulo = '' }) {
+export function htmlChipMapa({ m, pend = 0, titulo = '', decisao = '' }) {
   const n = etapaDe(m);
   return `<button type="button" class="cp-chip-mapa${pend ? ' alerta' : ''}" data-pedido-abrir="${esc(m?.id || '')}" title="Abrir o seu pedido">
-    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? `Precisa de você · ${pend} decis${pend > 1 ? 'ões' : 'ão'} neste pedido` : `Etapa ${n} de 4 · ${nomeEtapa(n)}`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
+    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? (decisao ? `Espera você autorizar: ${esc(primeiraFrase(decisao.charAt(0).toLowerCase() + decisao.slice(1), 48))}${pend > 1 ? ` · +${pend - 1} neste pedido` : ''}` : `Precisa de você · ${pend} decis${pend > 1 ? 'ões' : 'ão'} neste pedido`) : `Etapa ${n} de 4 · ${nomeEtapa(n)}`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
 }
 
 // O que vem depois de cada etapa, em uma frase (o cartão recolhido mostra "Agora" e "Próximo").
@@ -93,6 +93,7 @@ function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo) {
     ${!aberto && !pend.length ? `<p class="cp-agora cp-agora-curta"><b>Agora:</b> ${esc(agora)}${ultT ? `<small class="cp-ult"> · ${D.ha(ultT)}</small>` : ''}</p><p class="cp-depois"><b>Próximo:</b> ${esc(PROXIMO[n] || '')}</p>` : ''}
     ${fila ? `<p class="cp-fila">+${fila} pedido${fila > 1 ? 's' : ''} seu${fila > 1 ? 's' : ''} na fila: começa${fila > 1 ? 'm' : ''} quando este terminar.</p>` : ''}
     ${aberto ? `<div class="cp-menu">
+      <button type="button" class="cp-pagina" data-cp="pagina">${ico('jornal')} Página do pedido: andamento e entregas</button>
       ${escalacaoHtml ? `<button type="button" data-cp="escalacao">${ico('equipe')} Quem está fazendo o quê</button>` : ''}
       ${m ? `<button type="button" data-cp="missao" data-id="${esc(m.id)}">${ico('jornal')} Passo a passo completo</button>` : ''}
       <button type="button" class="cp-parar" data-cp="parar">${ico('pare')} Interromper pedido</button>
@@ -108,7 +109,7 @@ function htmlPronto(m, titulo) {
   return `<div class="cp cp-pronto">
     <div class="cp-cab"><span class="cp-ok">${ico('check')}</span><div class="cp-tit"><b>${esc(titulo || nomePedido(m))}</b><small>Pronto em ${tempoDe(m.duracao)} · ${D.ha(m.fim)} · mudou ${esc(resumoMudou(arqs, minis))}</small></div></div>
     ${frase1 ? `<p class="cp-resumo">${esc(frase1)}</p>` : ''}
-    <div class="cp-pronto-acoes"><button type="button" class="btn forte cp-ver" data-cp="missao" data-id="${esc(m.id)}">Ver resultado</button>
+    <div class="cp-pronto-acoes"><button type="button" class="btn forte cp-ver" data-cp="pagina">Ver resultado</button>
       <button type="button" class="btn cp-mais" data-cp="mais" aria-expanded="${maisAcoes}">E agora? ${maisAcoes ? '▴' : '▾'}</button></div>
     ${maisAcoes ? `<div class="cp-prox">${passos.map((p, i) => `<button type="button" class="cp-sug" data-cp-sug="${i}">${esc(p.rot)}</button>`).join('')}</div>` : ''}
   </div>`;
@@ -126,6 +127,7 @@ export function ligarAgora(el, missaoAtual) {
     if (b.dataset.cp === 'parar') { menuAberto = false; ctx.redesenharPedido?.(); return ctx.parar(); }
     if (b.dataset.cp === 'escalacao') { escAberta = !escAberta; const box = el.querySelector('.cp-esc'); if (box) box.hidden = !escAberta; return; }
     if (b.dataset.cp === 'missao') { menuAberto = false; return ctx.abrirMissao(b.dataset.id); }
+    if (b.dataset.cp === 'pagina') { menuAberto = false; return ctx.abrirPedidoPagina?.({ conv: ctx.conversaAtual?.() ?? null, missao: m?.id || null }); }
     if (b.dataset.cp === 'aprovar') {
       if (ctx.abrirAutorizacoes) return ctx.abrirAutorizacoes();
       const ap = document.querySelector('#msgs .aprovacao'); if (!ap) return;

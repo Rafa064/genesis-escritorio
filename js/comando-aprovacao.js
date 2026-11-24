@@ -3,9 +3,21 @@
 // A decisão continua uma só (a ponte pergunta pela ferramenta inteira): o cartão diz isso com clareza.
 import { esc, lerJson, nomeArq } from './comando-ctx.js';
 import { ico } from './comando-icones.js';
+import { nomeProjeto } from './leitura.js';
 
 const curto = (t, n = 60) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const code = (t) => `<code>${esc(curto(t, 48))}</code>`;
+// "gen-186-trailer-v2" → "trailer v2" (o número do card e os hífens ficam nos detalhes).
+const versaoHumana = (b) => String(b).replace(/^(origin\/)?/, '').replace(/^[a-z]{2,5}-\d+-/i, '').replace(/[-_/]+/g, ' ').trim() || b;
+// Para onde vai o efeito da ação, numa linha ("Destino").
+function destino(y, projeto) {
+  if (y.dest === 'github') return `Repositório ${projeto || 'do projeto'} no GitHub`;
+  if (y.ic === 'globo' && /Publicar/.test(y.t)) return 'Internet (site público)';
+  if (y.ic === 'globo') return 'Internet';
+  if (y.ic === 'cubo' || y.ic === 'imagem') return 'Serviço de IA externo (gasta créditos)';
+  if (y.ic === 'lixo') return `Arquivos do seu PC${projeto ? ` · ${projeto}` : ''}`;
+  return `Seu PC${projeto ? ` · projeto ${projeto}` : ''}`;
+}
 const args = (p) => p.split(/\s+/).slice(1).filter((x) => x && !x.startsWith('-')).map((x) => x.replace(/^["']|["']$/g, ''));
 
 // Uma parte do comando ("git push origin x") vira uma ação com título, explicação e botão.
@@ -13,7 +25,7 @@ function acaoDoComando(p, descricao) {
   const s = p.trim();
   let m;
   if (/^git\s+push\b.*(\s--force\b|\s-f\b)/i.test(s)) return { ic: 'subir', t: 'Publicar no GitHub por cima (forçado)', d: 'Troca o que está no GitHub pela versão do seu PC. Pode apagar trabalho que o Kenny já subiu.', perigo: true, sim: 'Autorizar envio forçado', nao: 'O GitHub continua como está.' };
-  if ((m = /^git\s+push\b(?:\s+(\S+))?(?:\s+(\S+))?/i.exec(s))) return { ic: 'subir', t: 'Publicar alterações no GitHub', d: `Envia ${m[2] ? `a versão ${code(m[2])}` : 'as versões salvas'} para o GitHub. Quem tem acesso ao projeto (o Kenny) passa a ver.`, sim: 'Autorizar publicação', nao: 'Nada sai do seu PC. As mudanças continuam salvas aqui.' };
+  if ((m = /^git\s+push\b(?:\s+(\S+))?(?:\s+(\S+))?/i.exec(s))) return { ic: 'subir', t: m[2] ? `Publicar a versão “${versaoHumana(m[2])}” no GitHub` : 'Publicar alterações no GitHub', d: 'Quem tem acesso ao projeto (o Kenny) passa a ver e pode baixar essa versão.', dest: 'github', versao: m[2] || '', sim: 'Autorizar publicação', nao: 'Nada sai do seu PC. As mudanças continuam salvas aqui.' };
   if (/^git\s+commit\b/i.test(s)) return { ic: 'disco', t: 'Salvar uma versão (commit)', d: 'Guarda as mudanças no histórico do projeto. Fica só no seu PC até alguém publicar.', sim: 'Autorizar commit', nao: 'As mudanças continuam no PC, sem uma versão salva.' };
   if (/^git\s+(reset\s+--hard|clean\s|checkout\s+--\s|restore\s|branch\s+-D|stash\s+drop)/i.test(s)) return { ic: 'alerta', t: 'Desfazer mudanças no projeto', d: 'Joga fora mudanças que ainda não foram salvas. Não dá para recuperar depois.', perigo: true, sim: 'Autorizar e desfazer', nao: 'Nada é jogado fora.' };
   if (/^git\s+(pull|fetch|merge|rebase|checkout|switch)\b/i.test(s)) return { ic: 'terminal', t: 'Atualizar o projeto com o GitHub', d: 'Traz ou junta versões do projeto. Se houver conflito, ela avisa.', sim: 'Autorizar' };
@@ -103,7 +115,7 @@ function caminho(f) {
 // "Pedido “X” · decisão 2 de 3 deste pedido": info.ordem ({ base, total }) soma as autorizações do mesmo pedido.
 function numero(info, n, i) {
   const o = info.ordem, tot = o ? o.total : n, k = (o ? o.base : 0) + i + 1, num = tot > 1 ? `decisão ${k} de ${tot} deste pedido` : '';
-  if (info.pedido) return `<p class="ap3-pedido">Pedido <b>“${esc(info.pedido)}”</b>${num ? ` · ${num}` : ''}</p>`;
+  if (info.pedido) return `<p class="ap3-pedido">${num ? `<span class="ap3-num">${num.charAt(0).toUpperCase()}${num.slice(1, num.indexOf(' deste') > 0 ? num.indexOf(' deste') : undefined)} ·</span> ` : ''}${info.convId != null ? `<button type="button" class="ap3-pedido-link" data-pp-conv="${esc(info.convId)}" title="Abrir a página do pedido">pedido <b>“${esc(info.pedido)}”</b> ›</button>` : `pedido <b>“${esc(info.pedido)}”</b>`}</p>`;
   return num ? `<p class="ap3-pedido">${num.charAt(0).toUpperCase()}${num.slice(1)}</p>` : '';
 }
 // Quantas decisões este pedido de autorização pede (uma por ação).
@@ -137,13 +149,14 @@ export function html(a, info, escolhas = {}) {
       : `<div class="ap-botoes ap3-botoes"><button type="button" class="btn ${perigo ? 'perigo-forte' : 'forte'}" data-ap-dec="sim">${esc(y.sim)}</button><button type="button" class="btn ap3-recusar" data-ap-dec="nao">Recusar</button></div>`;
     return `<div class="aprovacao ap3${perigo ? ' perigo' : ''}${dec ? ' decidida' : ''}" data-ap="${a.id}" data-ap-i="${i}">
       ${numero(info, n, i)}
-      <div class="ap3-cab"><span class="ap-ic">${ico(y.ic)}</span><div class="ap3-tit"><b>${esc(y.t)}</b><small>${esc(info.quem)} quer fazer${info.projeto ? ` · ${esc(info.projeto)}` : ''}${info.quando ? ` · ${esc(info.quando)}` : ''}</small></div></div>
+      <div class="ap3-cab"><span class="ap-ic">${ico(y.ic)}</span><div class="ap3-tit"><b>${esc(y.t)}</b><small class="ap3-dest"><span>Destino:</span> ${esc(destino(y, info.projeto))}</small></div></div>
       ${arqs}
-      <dl class="ap3-conseq"><div class="sim"><dt>Ao autorizar</dt><dd>${arqs ? 'Tudo o que está na lista acima é apagado de vez.' : y.d}</dd></div><div class="nao"><dt>Ao recusar</dt><dd>${esc(nao)}</dd></div></dl>
+      <dl class="ap3-conseq"><div class="sim"><dt>Se autorizar</dt><dd>${arqs ? 'Tudo o que está na lista acima é apagado de vez.' : y.d}</dd></div></dl>
+      ${dec ? '' : `<p class="ap3-nao"><b>Se recusar</b> ${esc(nao)}</p>`}
       ${extras}
       ${x.cortado && i === 0 ? '<p class="ap-nota ap-cortado">O pedido veio cortado (grande demais). Confira no PC antes de autorizar.</p>' : ''}
       ${estado}
-      <details class="ap-det"><summary>Detalhes técnicos</summary><p>${esc(info.origemTxt || '')}${info.dentroHtml ? ` · ${info.dentroHtml}` : ''}</p><pre class="det">${esc(y.cmd || Object.entries(x.campos).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n') || a.ferramenta)}</pre></details>
+      <details class="ap-det"><summary>Detalhes técnicos</summary><p>Quem pediu: <b>${esc(info.quem)}</b>${info.quando ? ` · ${esc(info.quando)}` : ''}${y.versao ? ` · versão <code>${esc(y.versao)}</code>` : ''}</p><p>${esc(info.origemTxt || '')}${info.dentroHtml ? ` · ${info.dentroHtml}` : ''}</p><pre class="det">${esc(y.cmd || Object.entries(x.campos).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n') || a.ferramenta)}</pre></details>
     </div>`;
   }).join('');
 }

@@ -6,6 +6,7 @@
 // Fontes: estado.info.sugestoes e estado.info.uso (a ponte manda), eventos, comandos (só os seus) e o quadro.
 import * as D from './dados.js';
 import { primeiraFrase, frase } from './humano.js';
+import { icoPx, nomeProjeto, plural } from './leitura.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -49,14 +50,17 @@ export async function desenhar(forcar = false) {
   const el = document.getElementById('hojeCorpo'); if (!el || !ctx) return;
   // Não apaga o que a pessoa está escrevendo (o painel se redesenha sozinho a cada 15-20 s).
   if (!forcar && (editando || confirmar || el.contains(document.activeElement) && document.activeElement.matches('textarea, input'))) return;
-  const abas = [['sugestoes', '💡', 'Sugestões'], ['fila', '📋', 'Fila'], ['custo', '🪙', 'Custo']];
+  const abas = [['sugestoes', icoPx('sol'), 'Sugestões'], ['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Custo']];
   const topo = `<div class="hj-abas" role="tablist">${abas.map(([id, ic, t]) => `<button role="tab" data-hsub="${id}" class="${sub === id ? 'on' : ''}" aria-selected="${sub === id}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>`;
   let corpo = '';
   try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : htmlSugestoes(); }
   catch (e) { console.warn('hoje:', e); corpo = `<p class="hj-vazio">Não consegui montar esta parte agora (${ctx.esc(e.message)}).</p>`; }
   let cab = '';
   try { cab = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
+  // O painel se redesenha sozinho: o que estava aberto (detalhes recolhidos) continua aberto.
+  const abertos = new Set([...el.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
   el.innerHTML = cab + topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>`;
+  el.querySelectorAll('details > summary').forEach((x) => { if (abertos.has(x.textContent)) x.parentElement.open = true; });
   el.onclick = clique;
   atualizarSelo();
 }
@@ -98,11 +102,14 @@ export function htmlNumerosDia(r, { custo = false, curto = false } = {}) {
 function htmlCabecaDia(r) {
   if (!r) return '';
   const { esc } = ctx;
-  return `<section class="hj-dia" aria-label="Resumo de hoje">
-    <div class="hj-dia-custo"><div class="hj-dia-total"><small>Gasto de IA hoje</small><b>${dinheiro(r.hoje)}</b><span>${esc(comparacao(r))}</span></div>
-      <ul><li><span>Média (${r.diasMedia || 0} ${r.diasMedia === 1 ? 'dia' : 'dias'})</span><b>${dinheiro(r.media)}</b></li><li><span>Ontem</span><b>${dinheiro(r.ontem)}</b></li><li><span>Fila (${r.fila})</span><b>≈ ${dinheiro(r.estimativaFila)}</b></li></ul></div>
-    ${htmlNumerosDia(r)}
-    <p class="hj-dia-nota">Consumo estimado pelo uso (não é cobrança: a assinatura já cobre). A fila usa o custo médio por pedido da semana.</p>
+  // Uma linha só: quanto foi hoje e como está perto da média. O resto (média, ontem, fila, números) fica recolhido.
+  return `<section class="hj-dia r4" aria-label="Resumo de hoje">
+    <div class="hj-dia-linha"><span class="hj-dia-rot">Gasto de IA hoje</span><b>${dinheiro(r.hoje)}</b><span class="hj-dia-comp">${esc(comparacao(r))}</span></div>
+    <details class="hj-dia-mais"><summary>Ver média, fila e quem está trabalhando</summary>
+      <ul class="hj-dia-ul"><li><span>Média (${r.diasMedia || 0} ${r.diasMedia === 1 ? 'dia' : 'dias'})</span><b>${dinheiro(r.media)}</b></li><li><span>Ontem</span><b>${dinheiro(r.ontem)}</b></li><li><span>Fila (${r.fila})</span><b>≈ ${dinheiro(r.estimativaFila)}</b></li></ul>
+      ${htmlNumerosDia(r)}
+      <p class="hj-dia-nota">É uma estimativa pelo uso, não uma cobrança: a assinatura já cobre. A fila usa o custo médio por pedido da semana.</p>
+    </details>
   </section>`;
 }
 
@@ -183,9 +190,9 @@ function htmlSugestoes() {
   const p = projetoAtual(s);
   const velho = (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
-  const projs = s.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(x.projeto)} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
-  const cab = `<div class="hj-cab"><div><b>Sugestões para hoje</b><small>${esc(p.projeto)} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar sugestões</button></div>`;
-  const destino = (x) => `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · ${esc(p.projeto)}`;
+  const projs = s.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
+  const cab = `<div class="hj-cab"><div><b>Sugestões para hoje</b><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`;
+  const destino = (x) => `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
   const editor = (titulo, n, rows, extra = '') => `<article class="hj-sug editando"><header><span class="hj-n">${n}</span><b>${esc(titulo)}</b></header>
       <label class="hj-rot" for="hjEditor">Revise o pedido. Nada é enviado até você tocar em “Enviar pedido”.</label><textarea id="hjEditor" rows="${rows}">${esc(editando.texto)}</textarea>
       <div class="hj-alvo"><span>Vai para</span><button data-ed-alvo="claude" class="${editando.alvo !== 'codex' ? 'on' : ''}">👑 Claude</button><button data-ed-alvo="codex" class="${editando.alvo === 'codex' ? 'on' : ''}">🧠 Codex</button></div>
@@ -200,7 +207,7 @@ function htmlSugestoes() {
     if (!conf) return `<article class="hj-sug compacta ${enviada ? 'enviada' : ''}" style="--atraso:${i * 60}ms">
       <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
       ${x.por ? `<button type="button" class="hj-motivo" data-motivo aria-expanded="false" title="Tocar para ler o motivo inteiro"><span>${esc(x.por)}</span></button>` : ''}
-      <div class="hj-rodape"><span class="hj-meta">⏱ ${tam[2]} · ${quemCurto}</span>${enviada ? '<span class="hj-ok">Enviado ✓</span>' : ''}<button class="btn hj-revisar" data-mandar="${i}" aria-expanded="false">${enviada ? 'Ver de novo' : 'Revisar pedido'}</button></div>
+      <div class="hj-rodape"><span class="hj-meta">${icoPx('relogio')} ${tam[2]} · ${quemCurto}</span>${enviada ? '<span class="hj-ok">Enviado ✓</span>' : ''}<button class="btn hj-revisar" data-mandar="${i}" aria-expanded="false">${enviada ? 'Ver de novo' : 'Revisar pedido'}</button></div>
     </article>`;
     return `<article class="hj-sug aberta ${enviada ? 'enviada' : ''}" style="--atraso:0ms">
       <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
@@ -211,10 +218,10 @@ function htmlSugestoes() {
       <div class="hj-acoes"><button class="btn" data-cancelar="${i}">Fechar</button><button class="btn" data-editar="${i}">Editar</button><button class="btn forte" data-mandar="${i}">Enviar pedido ▶</button></div>
     </article>`;
   }).join('');
-  const melhorias = (p.melhorias || []).length ? `<h3 class="hj-sec">🛠 Ideias de melhoria</h3>${p.melhorias.map((m, i) => editando && editando.melhoria === i
+  const melhorias = (p.melhorias || []).length ? `<h3 class="hj-sec">${icoPx('engrenagem')} Ideias de melhoria</h3>${p.melhorias.map((m, i) => editando && editando.melhoria === i
     ? editor(m.titulo, '★', 5)
     : `<div class="hj-melhoria"><div><b>${esc(m.titulo)}</b><p>${esc(m.texto)}</p></div><button class="btn mini" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button></div>`).join('')}` : '';
-  return projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + '<p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões vêm de um modelo barato (Haiku): confira antes de pedir coisa grande.</p>';
+  return projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
 }
 
 // ======================= 📋 fila do dia =======================
@@ -271,11 +278,11 @@ async function htmlFila() {
   const { esc } = ctx;
   const por = await filaDoDia(), eu = ctx.eu().pessoa;
   const ordem = [eu, ...[...por.keys()].filter((p) => p !== eu)];
-  let html = '<p class="hj-intro">O que cada agente está fazendo <b>agora</b>, o que vem <b>depois</b> (fila, escalação e quadro) e quanto já entregou <b>hoje</b>.</p>';
+  let html = '<p class="hj-intro">O que cada agente está fazendo <b>agora</b>, o que vem <b>depois</b> e quanto já entregou <b>hoje</b>.</p>';
   for (const p of ordem) {
     const linhas = [...(por.get(p)?.values() || [])].filter((l) => l.agora.length || l.depois.length || l.feitos);
     const ag = linhas.reduce((n, l) => n + l.agora.length, 0), dp = linhas.reduce((n, l) => n + l.depois.length, 0), ft = linhas.reduce((n, l) => n + l.feitos, 0);
-    html += `<section class="hj-pessoa" style="--cor:${ctx.corPessoa(p)}"><h3><span>${esc(p === eu ? 'Sua equipe' : 'Equipe de ' + p)}</span><small>${ag} trabalhando · ${dp} na fila ou no quadro · ${ft} entregas hoje</small></h3>`;
+    html += `<section class="hj-pessoa" style="--cor:${ctx.corPessoa(p)}"><h3><span>${esc(p === eu ? 'Sua equipe' : 'Equipe de ' + p)}</span><small>${ag} trabalhando · ${dp} na fila · ${plural(ft, 'entrega')} hoje</small></h3>`;
     if (!linhas.length) { html += '<p class="hj-vazio mini">Ninguém trabalhando nem na fila. Que tal uma sugestão do dia?</p></section>'; continue; }
     linhas.sort((a, b) => (b.agora.length - a.agora.length) || (b.depois.length - a.depois.length) || (b.feitos - a.feitos));
     for (const l of linhas) {
@@ -286,12 +293,12 @@ async function htmlFila() {
       html += `<div class="hj-ag est-${st[0]}"><img src="${await ctx.retratoDe(l.nome)}" alt=""><div class="hj-ag-txt">
         <div class="hj-ag-nome"><b>${esc(nome)}</b><span class="hj-est">${st[1]}</span>${l.feitos ? `<span class="hj-feitos" title="Entregas de hoje">✓ ${l.feitos} hoje</span>` : ''}</div>
         ${l.agora.length ? `<div class="hj-rotulo hj-r-agora">Agora</div><ul class="hj-agora">${l.agora.slice(0, 2).map((x) => `<li>${esc(x.t)}</li>`).join('')}${mais(l.agora, 2)}</ul>` : ''}
-        ${lista(l.depois.filter((x) => x.de !== 'quadro'), 'Na fila', (x) => x.de === 'fila' ? '⏳' : '○', (x) => x.de === 'fila' ? 'pedido seu' : 'chamado na missão')}${lista(l.depois.filter((x) => x.de === 'quadro'), 'No quadro · ainda não pedido', () => '🏁', () => l.nome !== 'Orquestrador' ? 'agente provável' : '', 'sugerido')}
+        ${lista(l.depois.filter((x) => x.de !== 'quadro'), 'Na fila', (x) => x.de === 'fila' ? '⏳' : '○', (x) => x.de === 'fila' ? 'pedido seu' : 'chamado no pedido')}${lista(l.depois.filter((x) => x.de === 'quadro'), 'No quadro · ainda não pedido', () => '🏁', () => l.nome !== 'Orquestrador' ? 'agente provável' : '', 'sugerido')}
       </div></div>`;
     }
     html += '</section>';
   }
-  return html + '<p class="hj-nota">⏳ pedido seu esperando a vez · ○ a assistente já chamou este agente na missão · 🏁 etapa aberta no quadro que ninguém pediu ainda (o agente é um palpite pelas palavras). Os pedidos na fila do outro só ele vê.</p>';
+  return html + '<details class="hj-nota-det"><summary>O que significa cada sinal</summary><p class="hj-nota">⏳ pedido seu esperando a vez · ○ a assistente já chamou este agente no pedido · 🏁 etapa aberta no quadro que ninguém pediu ainda (o agente é um palpite pelas palavras). Os pedidos na fila do outro só ele vê.</p></details>';
 }
 
 // ======================= 🪙 custo e uso =======================
@@ -406,7 +413,7 @@ function prepararDemo() {
     projeto: 'genesis-game', gerado: new Date(ag - 95 * 60e3).toISOString(), modelo: 'haiku', fontes: { commits: 12, marcos: 6, pendencias: 2, skills: 36, agentes: 12 },
     prompts: [
       { titulo: 'Fechar o Short Raio + Fogo', prompt: 'Termine a edição do Short "Raio + Fogo = ?" (marco #1): ajuste o corte do compasso 3, que o Codex disse que atrasa, e renderize de novo em 1080x1920. Depois peça a nota ao Codex com as folhas de quadros. Pronto quando a nota for 9 ou mais e o vídeo estiver em _video/out.', alvo: 'claude', agente: 'editor-de-video', skill: 'video-do-jogo', por: 'É prioridade 1 com prazo em 2 dias e só faltam 2 etapas.', tamanho: 'M', marco: 1 },
-      { titulo: 'Teste automático do dash', prompt: 'Escreva o teste automático do dash do player (marco #2): rode o Godot sem tela, faça o player dar dash 20 vezes e confira a invencibilidade curta e que não aparece o erro "Nonexistent function dash in base Nil". Pronto quando o teste passar e estiver no CI local.', alvo: 'claude', agente: 'revisor-godot', skill: '', por: 'O marco do Kenny está atrasado 1 dia e o erro de ontem ainda aparece no log.', tamanho: 'P', marco: 2 },
+      { titulo: 'Teste automático do avanço rápido (dash)', prompt: 'Escreva o teste automático do dash do player (marco #2): rode o Godot sem tela, faça o player dar dash 20 vezes e confira a invencibilidade curta e que não aparece o erro "Nonexistent function dash in base Nil". Pronto quando o teste passar e estiver no CI local.', alvo: 'claude', agente: 'revisor-godot', skill: '', por: 'O marco do Kenny está atrasado 1 dia e o erro de ontem ainda aparece no registro de erros.', tamanho: 'P', marco: 2 },
       { titulo: 'Segunda opinião no inventário', prompt: 'Faça uma revisão crítica da separação entre InventoryModel e InventoryView do Cook. Procure acoplamento escondido, sinais duplicados e nós criados por frame. Não edite nada: devolva uma lista priorizada com arquivo e linha.', alvo: 'codex', agente: '', skill: '', por: 'O Codex mexeu em 14 arquivos ontem: vale outro olhar antes de seguir com o baú.', tamanho: 'M', marco: 3 },
       { titulo: 'Rodada de bots no Veterano', prompt: 'Rode 30 partidas com bots no Veterano e confira se a taxa de vitória ficou entre 45% e 55% depois do ajuste do Dragão do Inverno e da Morvane. Mexa só em data/. Pronto quando tiver a tabela antes/depois.', alvo: 'claude', agente: 'balanceador', skill: 'balanceamento-com-bots', por: 'O marco está em "revisar": falta a prova com números para fechar.', tamanho: 'G', marco: 6 },
       { titulo: 'Roteiro do trailer de lançamento', prompt: 'Escreva o roteiro do trailer de 60 s para a página da Steam (marco #4): gancho em 3 s, 3 mecânicas, chefe, chamada final. Liste as cenas que precisamos gravar do jogo e a trilha sugerida.', alvo: 'claude', agente: 'criador-de-conteudo', skill: 'video-do-jogo', por: 'Está em "a fazer" sem etapas: o roteiro destrava o resto.', tamanho: 'M', marco: 4 },

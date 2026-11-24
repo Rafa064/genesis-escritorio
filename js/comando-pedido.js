@@ -81,7 +81,7 @@ function aoClicar(e) {
   const b = e.target.closest('[data-np],[data-np-para],[data-np-ia],[data-np-conv],[data-np-outro]'); if (!b) return;
   const v = valores();
   if (b.dataset.np === 'fechar') return fechar();
-  if (b.dataset.np === 'acompanhar') { fechar(); return st.criado?.para === 'eu' ? ctx.acompanharPedido(st.criado.convId) : ctx.abrirAba('dupla'); }
+  if (b.dataset.np === 'acompanhar') { fechar(); return st.criado?.para === 'eu' ? (ctx.abrirPedidoPagina ? ctx.abrirPedidoPagina({ conv: st.criado.convId }) : ctx.acompanharPedido(st.criado.convId)) : ctx.abrirAba('dupla'); }
   if (b.dataset.np === 'outro') return abrirNovoPedido({});
   st.projeto = v.projeto;
   if (b.dataset.npPara) st.para = b.dataset.npPara;
@@ -108,8 +108,10 @@ async function enviar() {
       st.criado = { para: 'eu', titulo: texto, alvo: st.alvo, projeto: r.conv?.projeto || v.projeto, convId: r.conv?.id ?? null, naFila: r.naFila, ligado: r.ligado, pausada: r.pausada, convTitulo: r.conv?.titulo || '' };
       if (st.bola) await CDu.bolaEncaminhada(st.bola.id);
     }
-    desenharCriado();
     ctx.redesenharTopo?.();
+    // Pedido seu: vai direto para a página do pedido (andamento, decisões e entregas num lugar só).
+    if (st.criado.para === 'eu' && st.criado.convId != null && ctx.abrirPedidoPagina) { fechar(); ctx.abrirPedidoPagina({ conv: st.criado.convId, recem: true }); return; }
+    desenharCriado();
   } catch (err) {
     ctx.toast({ titulo: 'Não consegui mandar', texto: err.message, cor: '#ef6a55' });
     if (bt) { bt.disabled = false; bt.textContent = st.para !== 'eu' ? `Enviar ao ${st.para}` : 'Enviar pedido'; }
@@ -147,6 +149,7 @@ async function desenharCriado() {
 // Pedido mandado direto (ex.: "Mandar" de uma sugestão do Hoje): mostra o mesmo "Pedido criado".
 export function mostrarCriado(criado) {
   garantir(); st = { ...st, para: 'eu', criado: { para: 'eu', ...criado } };
+  if (criado.convId != null && ctx.abrirPedidoPagina) { fechar(); return ctx.abrirPedidoPagina({ conv: criado.convId, recem: true }); }
   fundo.hidden = false; document.body.classList.add('np-aberto');
   desenharCriado();
 }

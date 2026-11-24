@@ -1,0 +1,263 @@
+/* =====================================================================
+   Estúdio Genesis · RODADA 4 · PEDIDO (carregado depois do estilo-r3-*.css)
+   (1) topo com UMA prioridade: faixa acionável + "Resumo ▾" (fila, fazendo, custo e outros avisos)
+   (3) página do pedido: linha do tempo, próximo passo, decisões, entregas e ações
+   (4) conflito com o Kenny: escolha clara com a consequência de cada botão
+   (5) decisões: ação → destino → consequência → botões
+   ===================================================================== */
+:root { --ok-cor: #3a8a4f; --alerta-fundo: #ffe08a; --alerta-borda: #d8a521; --erro-cor: #b8402f; --corpo: 16px; }
+
+/* ======================= (1) TOPO ======================= */
+.av-item.calmo { background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra); }
+.av-item.calmo .av-ic { background: #3a8a4f; color: #e9ffe9; }
+.av-item.calmo .av-txt b { font-weight: 500; }
+.av-resumo { display: inline-flex !important; align-items: center; gap: 5px; padding: 0 10px; font: 600 15px var(--ui) !important; position: relative; }
+.av-resumo span { font: 600 15px/1 var(--ui); }
+.av-resumo i { font-style: normal; font-size: 12px; opacity: .8; }
+.av-resumo .av-n { min-width: 20px; height: 20px; display: grid; place-items: center; padding: 0 4px; font: 600 13px/1 var(--ui); background: var(--acao); color: var(--contorno); box-shadow: 0 0 0 2px var(--contorno); }
+.av-lista .av-numeros .rd-linha { margin: 0; }
+.av-lista { max-height: 70vh; overflow: auto; }
+@media (max-width: 760px) {
+  #topo { grid-template-rows: 44px 42px; }
+  /* "4 decisões suas · Resolver": o verbo fica à vista (não só a setinha) */
+  .av-item.principal .av-acao { font: 600 17px/1 var(--titulo); padding: 0 10px; min-height: 30px; background: var(--contorno); color: #ffe7a8; }
+  .av-item.principal .av-acao i { font: 600 18px/1 var(--titulo); }
+  .av-item.calmo .av-acao { background: transparent; color: var(--tinta); box-shadow: inset 0 0 0 2px var(--contorno); }
+  .av-item { min-height: 42px; gap: 7px; padding-left: 7px; padding-right: 5px; }
+  .av-item .av-ic { width: 26px; height: 26px; }
+  .av-item .av-txt b { font-size: 16px; }
+  .av-resumo { min-height: 42px; min-width: 0 !important; padding: 0 8px; gap: 4px; }
+  .av-resumo span { font-size: 13px !important; }
+  .av-resumo i { display: none; }
+  .aviso-topo { gap: 5px; }
+  body #area, body.sem-aviso #area { inset: calc(100px + env(safe-area-inset-top)) 0 calc(64px + env(safe-area-inset-bottom)) 0; }
+  /* fila/fazendo/custo saem de cima do mapa: moram no "Resumo ▾" do topo */
+  #resumoSetor { display: none !important; }
+}
+
+/* ======================= (3) PÁGINA DO PEDIDO ======================= */
+.painel-pedido { padding: 0 !important; }
+.pp { display: grid; gap: 14px; padding: 14px 14px 28px; font: var(--corpo)/1.5 var(--ui); color: var(--tinta); }
+.pp h2, .pp h3 { margin: 0; }
+.pp-recem { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 12px; background: #dff3e2; box-shadow: inset 0 0 0 2px #6cb37f; font-size: 15px; }
+.pp-recem .pxi { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--ok-cor); }
+.pp-cab { display: grid; gap: 6px; }
+.pp-cab h2 { font: 600 30px/1.05 var(--titulo); letter-spacing: .01em; overflow-wrap: anywhere; }
+.pp-pedido { margin: 0; font-size: 15px; color: var(--fraco); }
+.pp-meta { margin: 0; font-size: 14px; color: var(--fraco); }
+.pp-meta:empty { display: none; }
+.pp-est { justify-self: start; display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 8px; font: 600 14px/1.2 var(--ui); background: var(--papel-claro); box-shadow: inset 0 0 0 2px var(--borda-clara); white-space: nowrap; }
+.pp-est i { width: 10px; height: 10px; background: currentColor; box-shadow: 0 0 0 2px var(--contorno); }
+.pp-est.alerta { background: var(--alerta-fundo); box-shadow: inset 0 0 0 2px var(--alerta-borda); color: #7a5200; }
+.pp-est.trab { color: #b8601f; }
+.pp-est.fila { color: #6f5136; }
+.pp-est.ok { color: var(--ok-cor); background: #e6f6e8; box-shadow: inset 0 0 0 2px #8fc79c; }
+.pp-est.erro { color: var(--erro-cor); background: #fde3dd; box-shadow: inset 0 0 0 2px #e49a8c; }
+
+/* linha do tempo: 4 passos, o atual em destaque */
+.pp-tempo { list-style: none; margin: 0; padding: 12px 6px 10px; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--papel-claro); box-shadow: var(--cartao); }
+.pp-tempo li { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; font: 600 14px/1.15 var(--ui); color: var(--muito-fraco); padding: 0 2px; }
+.pp-tempo li::before { content: ""; position: absolute; top: 8px; left: calc(-50% + 12px); right: calc(50% + 12px); height: 4px; background: var(--papel-sombra); }
+.pp-tempo li:first-child::before { display: none; }
+.pp-tempo li i { width: 18px; height: 18px; background: var(--papel); box-shadow: 0 0 0 2px var(--papel-sombra); position: relative; z-index: 1; }
+.pp-tempo li small { font: 500 12px/1.2 var(--ui); color: var(--fraco); }
+.pp-tempo li.ok { color: var(--tinta); }
+.pp-tempo li.ok i { background: var(--ok-cor); box-shadow: 0 0 0 2px var(--contorno); }
+.pp-tempo li.ok::before, .pp-tempo li.atual::before, .pp-tempo li.pulou::before { background: var(--ok-cor); }
+.pp-tempo li.atual { color: var(--tinta); }
+.pp-tempo li.atual i { background: var(--acao); box-shadow: 0 0 0 2px var(--contorno), 0 0 0 5px rgba(240, 160, 72, .35); animation: pp-pulsa 1.4s steps(2) infinite; }
+.pp-tempo li.atual.alerta i { background: #ffd23f; box-shadow: 0 0 0 2px var(--contorno), 0 0 0 5px rgba(255, 210, 63, .5); }
+.pp-tempo li.atual.erro i { background: var(--erro-cor); }
+.pp-tempo li.pulou { color: var(--muito-fraco); }
+.pp-tempo li.pulou i { background: var(--papel); box-shadow: 0 0 0 2px var(--ok-cor); }
+@keyframes pp-pulsa { 50% { transform: scale(.82); } }
+@media (prefers-reduced-motion: reduce) { .pp-tempo li.atual i { animation: none; } }
+
+/* próximo passo: o bloco mais forte da página */
+.pp-prox { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 14px; background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), 4px 4px 0 rgba(30, 18, 8, .25); }
+.pp-prox-ic { width: 40px; height: 40px; display: grid; place-items: center; background: var(--contorno); color: var(--papel-claro); }
+.pp-prox-ic .pxi { width: 22px; height: 22px; }
+.pp-prox small { display: block; font: 600 12px/1 var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--fraco); }
+.pp-prox b { display: block; margin-top: 3px; font: 600 24px/1.1 var(--titulo); }
+.pp-prox p { margin: 6px 0 0; font-size: 16px; line-height: 1.45; }
+.pp-prox-bt { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pp-prox-bt .btn { min-height: 46px; padding: 0 16px; font: 600 20px var(--titulo); }
+.pp-prox.alerta { background: #fff3c4; }
+.pp-prox.alerta .pp-prox-ic { color: #ffd23f; }
+.pp-prox.trab .pp-prox-ic { color: var(--acao); }
+.pp-prox.ok .pp-prox-ic { color: #9be3ad; }
+.pp-prox.erro { background: #fde9e4; }
+.pp-prox.erro .pp-prox-ic { color: #ff9a86; }
+
+.pp-sec { display: grid; gap: 10px; }
+.pp-sec > h3 { display: flex; align-items: center; gap: 8px; font: 600 22px/1.1 var(--titulo); }
+.pp-sec > h3 .pxi { width: 18px; height: 18px; color: var(--madeira); }
+.pp-sec > h3 small { font: 600 13px/1 var(--ui); padding: 3px 7px; background: var(--papel-escuro); color: var(--tinta); }
+.pp-decisoes .pp-ap { display: grid; gap: 12px; }
+.pp .ap3-pedido { display: none; } /* na página do pedido o nome do pedido já está no alto */
+
+/* responsável */
+.pp-resp { display: grid; gap: 8px; padding: 12px; background: var(--papel-claro); box-shadow: var(--cartao); }
+.pp-pessoa { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; }
+.pp-pessoa img { width: 40px; height: 40px; background: var(--papel-escuro); image-rendering: pixelated; box-shadow: 0 0 0 2px var(--contorno); }
+.pp-pessoa span { display: grid; min-width: 0; line-height: 1.25; }
+.pp-pessoa small, .pp-equipe small { font: 600 12px/1.2 var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--fraco); }
+.pp-pessoa b { font: 600 17px/1.2 var(--ui); }
+.pp-pessoa em { font: 14px/1.35 var(--ui); font-style: normal; color: var(--fraco); overflow-wrap: anywhere; }
+.pp-equipe { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; border-top: 1px dashed var(--borda-clara); }
+.pp-equipe span { display: flex; gap: 6px; }
+.pp-equipe img { width: 30px; height: 30px; background: var(--papel-escuro); image-rendering: pixelated; box-shadow: 0 0 0 2px var(--borda-clara); }
+
+/* entregas */
+.pp-resposta { margin: 0; padding: 10px 12px; background: #fffbef; box-shadow: inset 4px 0 0 var(--madeira-clara), inset 0 0 0 2px var(--borda); font-size: 16px; }
+.pp-resposta small { display: block; margin-bottom: 4px; font: 600 12px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--fraco); }
+.pp-prints { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.pp-print { display: grid; gap: 4px; padding: 4px; border: 0; background: var(--papel-claro); box-shadow: var(--cartao); cursor: pointer; text-align: left; font: 13px var(--ui); color: var(--tinta); }
+.pp-print img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--papel-escuro); }
+.pp-print span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-arqs, .pp-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; background: var(--papel-claro); box-shadow: var(--cartao); }
+.pp-arqs li, .pp-links li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--borda); }
+.pp-arqs li:last-child, .pp-links li:last-child { border-bottom: 0; }
+.pp-arqs .pxi, .pp-links .pxi { width: 16px; height: 16px; color: var(--madeira); }
+.pp-arqs span { display: grid; min-width: 0; line-height: 1.25; }
+.pp-arqs b { font: 600 15px ui-monospace, monospace; overflow-wrap: anywhere; }
+.pp-arqs small { font: 13px var(--ui); color: var(--fraco); overflow-wrap: anywhere; }
+.pp-arqs .pp-mais { display: block; color: var(--fraco); font-size: 14px; }
+.pp-links a { color: var(--azul); font-size: 15px; overflow-wrap: anywhere; }
+.pp-vazio, .pp-nota { margin: 0; font-size: 15px; color: var(--fraco); }
+
+/* ações */
+.pp-acoes { padding: 12px; background: var(--papel-claro); box-shadow: var(--cartao); }
+.pp-form { display: grid; gap: 8px; }
+.pp-form .btn { justify-self: end; }
+@media (min-width: 761px) { .pp-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } }
+.pp-form textarea { min-height: 48px; padding: 10px 12px; resize: vertical; font: 16px/1.4 var(--ui); color: var(--tinta); background: #fff; border: 0; box-shadow: inset 0 0 0 2px var(--borda-clara); }
+.pp-form textarea:focus { outline: 3px solid var(--acao); outline-offset: 0; }
+.pp-form .btn { min-height: 48px; padding: 0 16px; font: 600 20px var(--titulo); }
+.pp-outras { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-outras .btn { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; font: 600 15px var(--ui); }
+.pp-outras .pxi { width: 14px; height: 14px; }
+.pp-outras .pxi.gira { transform: scaleX(-1) rotate(90deg); }
+.pp-parar { color: var(--erro-cor); }
+.pp-conf { display: grid; gap: 10px; padding: 12px; background: #fff3c4; box-shadow: inset 0 0 0 2px var(--alerta-borda); }
+.pp-conf p { margin: 0; font-size: 15px; }
+.pp-conf-bt { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.pp-conf-bt .btn { min-height: 44px; }
+
+/* lista "Seus pedidos" (Atividade › Resumo) */
+.pp-lista { display: grid; gap: 6px; }
+.pp-item { display: grid; grid-template-columns: minmax(0, 1fr) 20px; grid-template-areas: "est seta" "tit seta" "sub seta"; gap: 3px 10px; align-items: center; padding: 10px 12px; border: 0; text-align: left; cursor: pointer; background: var(--papel-claro); color: var(--tinta); box-shadow: var(--cartao); }
+.pp-item:active { transform: translateY(2px); }
+.pp-item .pp-est { grid-area: est; font-size: 13px; }
+.pp-item b { grid-area: tit; font: 600 17px/1.25 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-item small { grid-area: sub; font: 14px/1.3 var(--ui); color: var(--fraco); }
+.pp-item-seta { grid-area: seta; color: var(--madeira); }
+.pp-item-seta .pxi { width: 16px; height: 16px; }
+.pp-item.alerta { box-shadow: inset 0 0 0 2px var(--alerta-borda), inset 5px 0 0 var(--alerta-borda); }
+.pp-novo { justify-self: start; min-height: 40px; font: 600 15px var(--ui); }
+
+/* ======================= (5) DECISÕES: ação → destino → consequência → botões ======================= */
+.ap3-pedido { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px; font-size: 14px; }
+.ap3-pedido-link { padding: 2px 0; border: 0; background: none; color: var(--tinta); font: 14px var(--ui); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--borda-clara); min-height: 32px; }
+.ap3-pedido-link b { font-weight: 600; }
+.ap3-dest { display: block; font: 14px/1.35 var(--ui) !important; color: var(--tinta) !important; overflow-wrap: anywhere; }
+.ap3-dest span { color: var(--fraco); }
+.ap3 .ap3-tit b { overflow-wrap: anywhere; }
+.ap3 .ap3-conseq dd { overflow-wrap: anywhere; }
+.ap3 .ap-botoes { margin-top: 4px; }
+
+/* ======================= (4) CONFLITO: uma escolha clara ======================= */
+.cdc-r4 .cdc-cab b { font-size: 22px; }
+.cdc-r4 .cdc-quem li { align-items: flex-start; padding: 8px 10px; background: #fffbef; box-shadow: inset 4px 0 0 var(--cor, var(--contorno)), inset 0 0 0 1px var(--borda); }
+.cdc-r4 .cdc-quem li > span { flex: 1; min-width: 0; }
+.cdc-r4 .cdc-quem b { font: 600 16px/1.2 var(--ui); }
+.cdc-r4 .cdc-quem .cdc-ped { justify-self: start; margin-top: 2px; padding: 4px 0; min-height: 32px; border: 0; background: none; cursor: pointer; text-align: left; font: 14px/1.35 var(--ui); color: var(--tinta); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--borda-clara); }
+.cdc-r4 .cdc-quem img { width: 30px; height: 30px; }
+.cdc-perg { margin: 0; font: 600 20px/1.2 var(--titulo); }
+.cdc-escolhas { display: grid; gap: 8px; margin-top: 6px; }
+.cdc-op { display: grid !important; gap: 3px; justify-items: start; text-align: left; padding: 10px 12px !important; min-height: 56px; height: auto !important; white-space: normal !important; }
+.cdc-op b { font: 600 19px/1.15 var(--titulo); }
+.cdc-op small { font: 14px/1.35 var(--ui); color: var(--fraco); }
+.cdc-op:not(.cdc-op-sec) { background: var(--papel-claro); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra); }
+.cdc-op-sec { background: transparent !important; box-shadow: inset 0 0 0 2px var(--borda-clara) !important; }
+.cdc-comparar { padding: 0; }
+.cdc-comparar summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font: 600 15px var(--ui); color: var(--madeira-escura); text-decoration: underline; text-underline-offset: 3px; }
+.cdc-r4 .cdc-links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+@media (min-width: 520px) { .cdc-escolhas { grid-template-columns: 1fr 1fr; } .cdc-op-sec { grid-column: 1 / -1; } }
+
+/* decisão: os botões ficam logo depois da consequência, sem cobrir o texto (nada de faixa grudada por cima) */
+.ap3 .ap3-botoes { position: static; margin: 4px 0 0; padding: 0; background: none !important; box-shadow: none; }
+.ap3-num { color: var(--fraco); }
+.pp .pp-prox-bt .btn { min-height: 46px; padding: 0 16px; font: 600 20px var(--titulo); }
+.pp .pp-prox-bt .btn { font: 600 20px var(--titulo) !important; }
+@media (max-width: 760px) { .av-item.principal .av-acao { font-size: 16px; padding: 0 7px; } }
+
+/* ======================= rodada 4 · ajustes do juiz (1) ======================= */
+/* entregas para leigo: o que mudou, com os nomes técnicos recolhidos */
+.pp-mudou { display: grid; gap: 8px; padding: 12px; background: var(--papel-claro); box-shadow: var(--cartao); }
+.pp-mudou-tit { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
+.pp-mudou-tit .pxi { width: 16px; height: 16px; color: var(--madeira); }
+.pp-tipos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pp-tipos li { display: grid; padding-left: 12px; box-shadow: inset 3px 0 0 var(--madeira-clara); line-height: 1.3; }
+.pp-tipos b { font: 600 16px var(--ui); }
+.pp-tipos small { font: 600 13px var(--ui); color: var(--fraco); }
+.pp-tipos span { font: 15px/1.35 var(--ui); color: var(--fraco); }
+.pp-tec summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font: 600 15px var(--ui); color: var(--madeira-escura); text-decoration: underline; text-underline-offset: 3px; }
+.pp-tec .pp-arqs { box-shadow: inset 0 0 0 1px var(--borda); }
+/* textos menores ficam maiores; fonte pixel só nos títulos curtos */
+.pp-tempo { padding: 10px 4px 8px; }
+.pp-tempo li { font-size: 14px; }
+.pp-tempo li small { font-size: 13px; }
+.pp-meta, .pp-pedido { font-size: 15px; }
+.ap3 .ap3-tit b { font: 600 18px/1.25 var(--ui) !important; letter-spacing: 0; }
+.ap3-dest { font-size: 15px !important; }
+.pp-prox.alerta { padding-bottom: 12px; }
+/* topo: aviso importante pode ocupar duas linhas em vez de ser cortado */
+@media (max-width: 760px) {
+  .av-item .av-txt b { white-space: normal; font-size: 15px; line-height: 1.12; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}
+/* PC: os números do dia moram no "Resumo" do topo; o canto do mapa fica livre */
+@media (min-width: 761px) { body[data-vista=mapa] .resumo-pc { display: none !important; } }
+/* conflito: divisão concreta */
+.cdc-dividir { display: grid; gap: 10px; margin-top: 8px; padding: 12px; background: #fffbef; box-shadow: inset 0 0 0 2px var(--alerta-borda); }
+.cdc-dividir p { margin: 0; font-size: 15px; }
+.cdc-dividir label { display: grid; gap: 4px; font: 600 14px var(--ui); color: var(--fraco); }
+.cdc-dividir input { min-height: 44px; padding: 0 10px; font: 16px var(--ui); color: var(--tinta); background: #fff; border: 0; box-shadow: inset 0 0 0 2px var(--borda-clara); }
+.cdc-dividir input:focus { outline: 3px solid var(--acao); outline-offset: 0; }
+.cdc-dividir-nota { color: var(--fraco); }
+.cdc-dividir-bt { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.cdc-dividir-bt .btn { min-height: 44px; }
+@media (max-width: 760px) { #gaveta:not(.folha) { top: 0; } }
+
+/* ======================= rodada 4 · ajustes do juiz (2) ======================= */
+/* pedido esperando você: cabeçalho, linha do tempo e próximo passo enxutos; a 1ª decisão sobe */
+.pp-pedido { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pp-tempo li:not(.atual) small { display: none; }
+.pp-tempo { padding: 9px 4px 7px; }
+.pp-prox.compacto { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 10px 12px; }
+.pp-prox.compacto .pp-prox-ic { width: 32px; height: 32px; }
+.pp-prox.compacto .pp-prox-ic .pxi { width: 18px; height: 18px; }
+.pp-prox.compacto b { font-size: 21px; }
+.pp-prox.compacto p { margin-top: 2px; font-size: 15px; }
+.pp-prox.compacto + .pp-decisoes { margin-top: -6px; }
+/* ações: responder é a principal; ver/parar/refazer viram links discretos */
+.pp-outras { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
+.pp-outras-rot { font: 600 14px var(--ui); color: var(--fraco); }
+.pp-lk { min-height: 40px; padding: 0; border: 0; background: none; cursor: pointer; font: 600 15px var(--ui); color: var(--madeira-escura); text-decoration: underline; text-underline-offset: 3px; }
+.pp-lk.pp-parar { color: var(--erro-cor); }
+.pp-risco { padding-top: 6px; border-top: 1px dashed var(--borda-clara); }
+.pp-form .btn { min-width: 120px; }
+/* topo durante uma tela aberta (pedido, atividade…): o aviso global fica mais baixo e discreto */
+@media (max-width: 760px) {
+  body.gaveta-aberta #topo { grid-template-rows: 44px 36px; }
+  body.gaveta-aberta .av-item, body.gaveta-aberta .av-resumo { min-height: 36px; }
+  body.gaveta-aberta .av-item .av-ic { width: 22px; height: 22px; }
+  body.gaveta-aberta .av-item .av-txt b { font-size: 14px; -webkit-line-clamp: 1; white-space: nowrap; text-overflow: ellipsis; display: block; }
+  body.gaveta-aberta .av-item.principal .av-acao { font-size: 14px; min-height: 26px; }
+  body.gaveta-aberta #area { inset: calc(94px + env(safe-area-inset-top)) 0 calc(64px + env(safe-area-inset-bottom)) 0; }
+  /* chip do pedido no mapa: a ação inteira, em até duas linhas */
+  .cp-chip-mapa small { white-space: normal !important; display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+}
+.pp-prox-bt .btn.forte { flex: 1 1 100%; }
+.pp-prox-bt .btn:not(.forte) { flex: 1 1 0; min-width: 0; padding: 0 8px; font-size: 18px !important; }
+.cp-chip-mapa small { white-space: normal !important; display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
