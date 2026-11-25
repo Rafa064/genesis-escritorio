@@ -205,10 +205,11 @@ export async function novaConversa({ titulo, alvo, projeto, marco_id }) {
 export const renomearConversa = (id, titulo) => sb.from('conversas').update({ titulo: titulo.slice(0, 120) }).eq('id', id);
 export const apagarConversa = (id) => sb.from('conversas').delete().eq('id', id);
 export async function carregarChat(conversa_id) {
-  const q = sb.from('chat').select('*').order('id', { ascending: true }).limit(400);
+  // As 400 MAIS RECENTES (em ordem): com ascending + limit, uma conversa longa parava nas antigas.
+  const q = sb.from('chat').select('*').order('id', { ascending: false }).limit(400);
   const { data, error } = conversa_id ? await q.eq('conversa_id', conversa_id) : await q.is('conversa_id', null);
   if (error) throw error;
-  return data;
+  return (data || []).reverse();
 }
 // Só decide o que ainda está pendente (se a ponte já deu por vencido, avisa em vez de fingir que valeu).
 // detalhe (opcional): o questionário grava as respostas no mesmo campo (a ponte lê de lá).
