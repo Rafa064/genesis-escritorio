@@ -22,6 +22,7 @@ import { plural, icoDeEmoji, icoPx, nomeProjeto, seloEstado } from './leitura.js
 import * as CT from './comando-topo.js';
 import * as NP from './comando-pedido.js';
 import * as PP from './pedido-pagina.js';
+import * as A from './anexos.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -748,6 +749,16 @@ function montarInterface() {
   $('#btnIrAte').onclick = () => irAtePessoa(outraPessoa());
   $('#formChat').onsubmit = (e) => { e.preventDefault(); enviarChat(); };
   $('#entrada').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarChat(); } };
+  // Anexos: 📎, colar um print (Ctrl+V) ou arrastar o arquivo para a conversa.
+  const avisoAnexo = (texto) => toast({ titulo: 'Anexo', texto, cor: '#ef6a55' });
+  const pegarAnexos = (fs) => { if (fs?.length) { A.adicionar([...fs], avisoAnexo); A.desenharPendentes($('#anexosPend')); marcarTexto(); } };
+  $('#btnAnexo').onclick = () => $('#arqAnexo').click();
+  $('#arqAnexo').onchange = (e) => { pegarAnexos(e.target.files); e.target.value = ''; };
+  $('#entrada').addEventListener('paste', (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); pegarAnexos(fs); } });
+  $('#formChat').addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); $('#formChat').classList.add('soltar'); } });
+  $('#formChat').addEventListener('dragleave', () => $('#formChat').classList.remove('soltar'));
+  $('#formChat').addEventListener('drop', (e) => { $('#formChat').classList.remove('soltar'); if (e.dataTransfer?.files?.length) { e.preventDefault(); pegarAnexos(e.dataTransfer.files); } });
+  $('#anexosPend').onclick = (e) => { const b = e.target.closest('[data-tirar-anexo]'); if (b) { A.tirar(Number(b.dataset.tirarAnexo)); A.desenharPendentes($('#anexosPend')); marcarTexto(); } };
   // O Enviar só fica laranja com texto escrito: antes disso a ação principal da tela pode ser outra (ex.: Decidir).
   $('#entrada').addEventListener('input', marcarTexto);
   $('#cmpFila').onclick = async (e) => {
@@ -2040,7 +2051,7 @@ function desenharChat() {
   let html = '', rodada = [];
   const fechar = () => { if (rodada.length) html += htmlRodada(rodada, gpt); rodada = []; };
   for (const c of mensagens) {
-    if (c.de === 'eu') { fechar(); html += `<div class="msg eu">${esc(c.texto)}</div>`; continue; }
+    if (c.de === 'eu') { fechar(); const s = A.separar(c.texto); html += `<div class="msg eu">${esc(s.texto)}${A.htmlAnexos(s.anexos)}</div>`; continue; }
     rodada.push(c);
   }
   fechar();
@@ -2048,7 +2059,7 @@ function desenharChat() {
   const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && (!conv || a.conversa_id === conv.id || !a.conversa_id));
   html += pend.map(cartaoAprovacao).join('');
   msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Escreva abaixo o que você quer fazer.` : `Oi, ${esc(EU.pessoa)}! Escreva abaixo o que você quer fazer. Cada assunto vira uma conversa; várias podem rodar ao mesmo tempo.`}</div>`;
-  ligarAprovacoes(msgs); CE.decorarErros(msgs);
+  ligarAprovacoes(msgs); CE.decorarErros(msgs); if (!DEMO) A.preencher(msgs, R.sb).catch(() => {});
   if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { msgs.scrollTop = rolarPendente < 0 ? msgs.scrollHeight : rolarPendente; rolarPendente = null; }
   else if (noFim) msgs.scrollTop = msgs.scrollHeight;
   $('#estadoPonte').hidden = !$('#estadoPonte').innerHTML.trim();
@@ -2067,16 +2078,25 @@ async function pararConversa(id) {
   if (DEMO) { for (const [k, v] of comandosAbertos) if (v === id) comandosAbertos.delete(k); return; }
   const { error } = await R.parar(temSql2 ? id : null); if (error) throw error;
 }
-const marcarTexto = () => $('#formChat').classList.toggle('tem-texto', !!$('#entrada').value.trim());
+const marcarTexto = () => $('#formChat').classList.toggle('tem-texto', !!$('#entrada').value.trim() || A.temPendentes());
 // Passo 2 do percurso: "Pedido recebido" (e se ele foi para a fila).
 const avisarRecebido = (naFila) => toast({ titulo: 'Pedido recebido', texto: naFila ? 'Ela termina o pedido atual e começa o seu em seguida. Acompanhe no cartão do pedido.' : 'Acompanhe as etapas no cartão do pedido, no alto da conversa.', cor: '#4fbf82' });
 // Marca a aba como ocupada assim que o pedido é aceito (antes do aviso do banco chegar).
 const pedidoEnviado = (cmd, destino) => { if (cmd?.id) comandosAbertos.set(cmd.id, destino ?? null); versaoMundo = -1; sincronizarMundo(); desenharSeletorConversas(); };
 async function enviarChat() {
-  const t = $('#entrada').value.trim();
-  if (!t) return;
+  let t = $('#entrada').value.trim();
+  if (!t && !A.temPendentes()) return;
+  if (A.temPendentes()) {
+    if (DEMO) { A.limpar(); A.desenharPendentes($('#anexosPend')); toast({ titulo: 'Anexo', texto: 'No modo demonstração o anexo não sobe.', cor: '#ef6a55' }); if (!t) return; }
+    else {
+      $('#btnEnviar').disabled = true;
+      try { const marcas = await A.subirPendentes(R.sb); t = `${t || 'Veja o anexo.'}\n\n${marcas}`; A.limpar(); A.desenharPendentes($('#anexosPend')); }
+      catch (e) { toast({ titulo: 'Não consegui subir o anexo', texto: e.message, cor: '#ef6a55' }); return; }
+      finally { $('#btnEnviar').disabled = false; }
+    }
+  }
   if (temSql2 && !conversaAtual && !DEMO) {
-    const c = await R.novaConversa({ titulo: primeiraFrase(t, 60), alvo: alvoBarra, projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome }).catch(() => null);
+    const c = await R.novaConversa({ titulo: primeiraFrase(A.separar(t).texto, 60), alvo: alvoBarra, projeto: estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome }).catch(() => null);
     if (c) { conversas = [c, ...conversas]; conversaAtual = c.id; chatCarregadoDe = c.id; mensagens = []; cacheMsgs.set(c.id, mensagens); guarda('conversa', c.id); desenharSeletorConversas(); }
   }
   const destino = conversaAtual, lista = mensagens;

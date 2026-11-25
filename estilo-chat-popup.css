@@ -38,3 +38,17 @@
   #gaveta.min .painel-chat { padding-top: 6px; overflow: visible; }
   #gaveta.min #hudChat { position: static; margin: 0; }
 }
+
+/* ---------- anexos (📎, colar print, arrastar) ---------- */
+#formChat .linha { gap: 8px; }
+#formChat .btn-anexo { flex: none; min-width: 52px; font-size: 22px !important; }
+#formChat.soltar { outline: 3px dashed var(--laranja, #e8913a); outline-offset: 2px; }
+.anexos-pend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.anexo-pend { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 4px 6px; background: var(--papel-claro, #fff8e8); box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .3); font-size: 13px; }
+.anexo-pend img { width: 40px; height: 40px; object-fit: cover; }
+.anexo-pend small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anexo-pend button { border: 0; background: none; font-size: 18px; cursor: pointer; padding: 0 4px; color: inherit; }
+.anexos-msg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.anexo-img img { display: block; max-width: 240px; max-height: 180px; object-fit: contain; background: rgba(0, 0, 0, .08); min-width: 60px; min-height: 40px; }
+.anexo-arq { display: inline-block; padding: 6px 10px; box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .35); }
+.anexos-pend[hidden] { display: none; }
