@@ -110,11 +110,21 @@ function montarZoom() {
   if ($('#zoomCel')) return;
   const el = document.createElement('div');
   el.id = 'zoomCel'; el.className = 'zoom-cel'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Zoom do mapa');
-  el.innerHTML = `<button type="button" data-zc="mais" aria-label="Aproximar"><i class="zc-mais" aria-hidden="true"></i></button>
+  // Recolhido: um botão só (lupa). Tocar abre +, − e "Ver tudo"; fecha sozinho depois de uns segundos.
+  el.innerHTML = `<button type="button" data-zc="abrir" class="zc-abrir" aria-expanded="false" aria-label="Zoom do mapa"><i class="zc-lupa" aria-hidden="true"></i></button>
+    <button type="button" data-zc="mais" aria-label="Aproximar"><i class="zc-mais" aria-hidden="true"></i></button>
     <button type="button" data-zc="menos" aria-label="Afastar"><i class="zc-menos" aria-hidden="true"></i></button>
-    <button type="button" data-zc="tudo" class="zc-tudo"><i class="zc-grade" aria-hidden="true"></i><span>Ver tudo</span></button>`;
+    <button type="button" data-zc="tudo" class="zc-tudo" aria-label="Ver o andar inteiro"><i class="zc-grade" aria-hidden="true"></i></button>`;
   $('#palco').appendChild(el);
-  el.onclick = (e) => { const b = e.target.closest('[data-zc]'); if (b) mudarZoomCel(b.dataset.zc); };
+  let tempo = 0;
+  const recolher = () => { el.classList.remove('aberto'); el.querySelector('.zc-abrir').setAttribute('aria-expanded', 'false'); };
+  el.onclick = (e) => {
+    const b = e.target.closest('[data-zc]'); if (!b) return;
+    clearTimeout(tempo);
+    if (b.dataset.zc === 'abrir') { const ab = el.classList.toggle('aberto'); b.setAttribute('aria-expanded', String(ab)); }
+    else mudarZoomCel(b.dataset.zc);
+    if (el.classList.contains('aberto')) tempo = setTimeout(recolher, 5000);
+  };
 }
 function mudarZoomCel(q) {
   fecharFicha();
@@ -247,6 +257,7 @@ function montarFicha() {
       const chip = [...document.querySelectorAll('[data-pedido-abrir]')].find((x) => x.dataset.pedidoAbrir === ac.dataset.mid);
       if (chip) chip.click(); else ctx.abrirAgente(b);
     } else if (q === 'detalhes') ctx.abrirAgente(b);
+    else if (q === 'cargo' && b.cargo) ctx.abrirCargo?.(b.cargo.id);
     else if (q === 'decidir') ctx.abrirAba('atencao');
     else if (q === 'conversar') ctx.abrirChat(b.lugar?.codex ? 'codex' : 'claude');
     else if (q === 'pedir') ctx.pedir();
@@ -301,7 +312,7 @@ export async function abrirFicha(b, centrar = false) {
   const quandoTxt = quando ? (quando === 'agora' ? 'agora' : 'há ' + quando) : '';
   const precisa = g === 'esperando' && b.pessoa === ctx.eu()?.pessoa; // a decisão pendente vem logo depois do nome
   const quem = b.pessoa === ctx.eu()?.pessoa || g !== 'esperando' ? estado : 'Esperando o ' + esc(b.pessoa);
-  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x))}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${quem}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}</span></div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
+  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x))}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${quem}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}${b.visitante ? ' · visitante' : ''}</span>${b.cargo ? `<button type="button" class="fm-ficha" data-ficha="cargo">Ficha do ${esc(rotuloDe(b))} ›</button>` : ''}</div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
     <dl class="fm-corpo r4">
       ${precisa ? `<div class="fm-precisa"><dt>Precisa de você</dt><dd><b>${esc(tarefa)}</b><span>${esc(px.texto)}</span></dd></div>` : ''}
       <div class="fm-pedido"><dt>Pedido</dt><dd class="${missao ? '' : 'fm-nada'}">${missao ? esc(missao) : g === 'livre' ? 'Nenhum agora' : 'Tarefa avulsa (sem pedido)'}${etapaHtml}</dd></div>
@@ -314,7 +325,7 @@ export async function abrirFicha(b, centrar = false) {
   document.body.classList.add('ficha-aberta');
   cacheMg.t = 0;
   // a ficha cobre o pé da tela: a câmera leva o boneco para a faixa que sobra (da lista, aproxima também)
-  if (centrar || ctx.zoom() >= 1) { const z = centrar ? Math.max(ctx.zoom(), 1.5) : ctx.zoom(); if (z !== ctx.zoom() || setorAtual === 'geral') setorAtual = ''; ctx.vista(z, [b.x, b.y - 24]); desenharBarra(); }
+  if (cel() && (centrar || ctx.zoom() >= 1)) { const z = centrar ? Math.max(ctx.zoom(), 1.5) : ctx.zoom(); if (z !== ctx.zoom() || setorAtual === 'geral') setorAtual = ''; ctx.vista(z, [b.x, b.y - 24]); desenharBarra(); }
   return true;
 }
 export function fecharFicha() { if (!fichaDe) return; fichaDe = null; const el = $('#fichaMapa'); if (el) el.hidden = true; document.body.classList.remove('ficha-aberta'); }
@@ -344,7 +355,30 @@ function desenharFoco(mundo, z, c, w) {
   const txt = `${S[id].nome === 'Sala' ? 'Sua sala' : S[id].nome}${partes.length ? ' · ' + partes.join(' · ') : ' · vazia'}`;
   if (nome.textContent !== txt) nome.textContent = txt;
   nome.classList.toggle('espera', conta.esperando > 0);
-  nome.style.transform = `translate(8px, ${Math.round(h - mg.baixo - 42)}px)`;
+  // Com o cartão do pedido aberto, a faixa da sala vira a "aba" em cima dele (um bloco só, sem roubar
+  // uma linha do mapa); sem cartão, fica no pé da faixa útil.
+  const hud = $('#hudMapa'), palco = $('#palco')?.getBoundingClientRect();
+  const r = hud && !hud.hidden && hud.offsetParent ? hud.getBoundingClientRect() : null;
+  const junto = !!(r && r.height && palco);
+  document.body.classList.toggle('setor-no-pedido', junto);
+  nome.style.transform = junto ? `translate(${Math.round(r.left - palco.left + 10)}px, ${Math.round(r.top - palco.top - 13)}px)` : `translate(8px, ${Math.round(h - mg.baixo - 42)}px)`;
+}
+
+// Etiqueta de cada boneco: nome curto do cargo + estado (trabalhando, precisa de você, pronto, na copa).
+// Só quem precisa de VOCÊ ganha o destaque forte (amarelo, pulando); o resto fica discreto.
+export function rotuloDe(b) {
+  const eu = ctx.eu()?.pessoa;
+  if (b.cargo) return b.cargo.curto || String(b.cargo.nome || b.cargo.id).split(' ')[0];
+  if (b.lugar?.assistente) return b.pessoa === eu ? 'Sua assistente' : `Assistente · ${b.pessoa}`;
+  if (b.visitante) return 'Visitante';
+  return (ctx.nome(b) || '').replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x).split(' ').slice(0, 2).join(' ');
+}
+function estadoEtiqueta(b) {
+  const s = b.status, meu = b.pessoa === ctx.eu()?.pessoa;
+  if (s === 'alerta' || s === 'erro') return meu ? ['precisa', s === 'erro' ? 'deu erro' : 'precisa de você'] : ['outro', ''];
+  if (s === 'trab' || s === 'semsinal') return ['trab', ''];
+  if (s === 'fim') return ['pronto', ''];
+  return [b.lugar?.copa ? 'copa' : 'livre', ''];
 }
 
 // ======================= indicadores pixel (por quadro) =======================
@@ -360,30 +394,36 @@ function quadro() {
   else if (setorAtual && setorAtual !== 'geral' && !c.alvo) { setorAtual = ''; desenharBarra(); } // andou/arrastou: a câmera saiu do setor
   document.body.classList.toggle('mapa-geral', z < 1);
   desenharFoco(mundo, z, c, w);
-  const usar = cel() || mundo.indicadoresDom;
-  mundo.semIcones = !!usar;
+  // PC e celular: etiquetas em DOM (texto nítido em qualquer zoom); o canvas não desenha os ícones antigos.
+  mundo.semIcones = true;
+  if (!lay.dataset.ligado) { // tocar na etiqueta = tocar no boneco
+    lay.dataset.ligado = '1';
+    lay.addEventListener('click', (e) => { const t = e.target.closest('[data-etq]'); const b = t && ctx.mundo()?.agentes.get(t.dataset.etq); if (b) { e.stopPropagation(); abrirFicha(b); } });
+  }
+  const mini = z < 1; // visão geral do celular: só o quadradinho (sem texto), senão vira sopa de letras
   for (const el of pool.values()) el.dataset.v = '';
-  if (usar) for (const b of mundo.agentes.values()) {
-    const x = (b.x - c.x) * z, topo = (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? 22 : 4);
+  const postas = [];
+  for (const b of mundo.agentes.values()) {
+    const x = (b.x - c.x) * z, topo = (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? -2 : -7); // colada na cabeça (o quadro do boneco tem folga em cima)
     const y = (topo - c.y) * z;
-    if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
-    let el = pool.get(b.id); const g = grupoDe(b), sel = fichaDe === b;
-    if (!el) { el = document.createElement('i'); lay.appendChild(el); pool.set(b.id, el); }
-    const cls = `ind ${g}${sel ? ' sel' : ''}`;
+    if (x < -60 || x > w + 60 || y < -20 || y > h + 20) continue;
+    let el = pool.get(b.id); const sel = fichaDe === b;
+    if (!el) { el = document.createElement('span'); el.dataset.etq = b.id; lay.appendChild(el); pool.set(b.id, el); }
+    const [tipo, extra] = estadoEtiqueta(b), txt = rotuloDe(b);
+    const cls = `etq e-${tipo}${sel ? ' sel' : ''}${mini ? ' mini' : ''}${b.cargo ? ' e-cargo' : ''}`;
     if (el.className !== cls) el.className = cls;
-    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    const chave = `${txt}|${extra}`;
+    if (el.dataset.k !== chave) { el.dataset.k = chave; el.innerHTML = `<i aria-hidden="true"></i><b>${esc(txt)}</b>${extra ? `<small>${esc(extra)}</small>` : ''}`; el.title = `${txt}${extra ? ' · ' + extra : ''}`; el._w = 0; }
+    if (!el._w || el.className !== el._cls) { el._w = el.offsetWidth; el._cls = el.className; }
+    const hw = el._w / 2, xe = mini ? x : Math.max(hw + 4, Math.min(w - hw - 4, x)); // perto da borda, a etiqueta entra na tela
+    // duas etiquetas no mesmo lugar (roda de conversa na copa): a de baixo sobe uma linha
+    let ye = y;
+    if (!mini) for (let k = 0; k < 3; k++) { const bate = postas.find((p) => Math.abs(p.y - ye) < 17 && p.x0 < xe + hw && p.x1 > xe - hw); if (!bate) break; ye = bate.y - 18; }
+    postas.push({ x0: xe - hw, x1: xe + hw, y: ye });
+    el.style.transform = `translate(${Math.round(xe)}px, ${Math.round(ye)}px) translate(-50%, -100%)`;
     el.dataset.v = '1';
   }
   for (const [id, el] of pool) if (!el.dataset.v) { el.remove(); pool.delete(id); }
-  // quem está na ficha ganha o nome em cima do indicador (fica claro de quem é a ficha)
-  let tag = $('#indNome');
-  if (!tag) { tag = document.createElement('b'); tag.id = 'indNome'; tag.className = 'ind-nome'; lay.appendChild(tag); }
-  const selEl = fichaDe && usar ? pool.get(fichaDe.id) : null;
-  if (selEl?.dataset.v) {
-    const nm = (ctx.nome(fichaDe) || '').replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x);
-    if (tag.textContent !== nm) tag.textContent = nm;
-    tag.style.transform = selEl.style.transform; tag.hidden = false;
-  } else tag.hidden = true;
   // a ficha segue o boneco: se ele sumir (mudou de estado e de lugar), fecha
   if (fichaDe && !mundo.agentes.has(fichaDe.id)) fecharFicha();
 }

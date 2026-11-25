@@ -8,6 +8,7 @@ import * as D from './dados.js';
 import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
 import * as Rot from './hoje-rotinas.js';
+import { cargoDe } from './equipe.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -54,7 +55,7 @@ export async function desenhar(forcar = false) {
   const abas = [['sugestoes', icoPx('sol'), 'Sugestões'], ['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Custo']];
   const topo = `<div class="hj-abas" role="tablist">${abas.map(([id, ic, t]) => `<button role="tab" data-hsub="${id}" class="${sub === id ? 'on' : ''}" aria-selected="${sub === id}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>`;
   let corpo = '';
-  try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : htmlSugestoes(); }
+  try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : await htmlSugestoes(); }
   catch (e) { console.warn('hoje:', e); corpo = `<p class="hj-vazio">Não consegui montar esta parte agora (${ctx.esc(e.message)}).</p>`; }
   let cab = '';
   try { cab = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
@@ -68,6 +69,14 @@ export async function desenhar(forcar = false) {
 
 // ======================= resumo do dia: fila, andamento, o que espera você e o custo =======================
 // Uma conta só, usada no Escritório (painel de baixo do mapa), na Atividade e no topo do Hoje.
+// Abre o Hoje com um pedido pronto no editor (ex.: "Ensinar" da Equipe). Nada é enviado antes de "Enviar pedido".
+export async function preparar({ titulo, texto, alvo = 'claude', projeto = 'genesis-game' }) {
+  sub = 'sugestoes'; guarda('hojeSub', sub); confirmar = null;
+  editando = { livre: true, titulo, texto, alvo, projeto };
+  ctx?.abrir(); await desenhar(true);
+  const ta = document.getElementById('hjEditor'); if (!ta) return;
+  ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; ta.closest('.hj-sug')?.scrollIntoView({ block: 'nearest' });
+}
 export function abrirEm(s) { if (s) { sub = s; guarda('hojeSub', sub); } editando = confirmar = null; ctx?.abrir(); return desenhar(true); }
 export async function resumoDoDia() {
   if (!ctx?.eu()) return null;
@@ -117,7 +126,7 @@ function htmlCabecaDia(r) {
 async function clique(e) {
   const mo = e.target.closest('[data-motivo]'); if (mo) { const ab = mo.classList.toggle('todo'); mo.setAttribute('aria-expanded', ab); return; }
   const rd = e.target.closest('[data-rd]'); if (rd) { ctx.resumoIr?.(rd.dataset.rd); return; }
-  const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo],[data-post-preparar]');
+  const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo],[data-post-preparar],[data-teste-preparar]');
   if (!t) return;
   if (t.dataset.hsub) { sub = t.dataset.hsub; guarda('hojeSub', sub); editando = confirmar = null; return desenhar(true); }
   if (t.dataset.hproj !== undefined) { projetoSel = t.dataset.hproj; guarda('hojeProjeto', projetoSel); editando = confirmar = null; return desenhar(true); }
@@ -126,6 +135,14 @@ async function clique(e) {
   const s = minhasSugestoes(), proj = s && projetoAtual(s);
   // Ideias de posts (Estrategista): o pedido vai para o projeto do jogo, numa conversa nova.
   if (t.dataset.postPreparar !== undefined) { const x = Rot.dados(ctx).conteudo?.ideias?.[Number(t.dataset.postPreparar)]; if (x) { editando = { post: Number(t.dataset.postPreparar), texto: Rot.pedidoDaIdeia(x), alvo: 'claude' }; confirmar = null; await desenhar(true); document.getElementById('hjEditor')?.focus(); } return; }
+  // Teste da manhã quebrou: pedido pronto para o Programador consertar (abre o editor, não manda).
+  if (t.dataset.testePreparar !== undefined) { const te = Rot.dados(ctx).teste; editando = { livre: true, titulo: 'Consertar o teste da manhã', alvo: 'claude', projeto: 'genesis-game', texto: pedidoDoTeste(te) }; confirmar = null; await desenhar(true); document.getElementById('hjEditor')?.focus(); return; }
+  if (t.dataset.enviarEd !== undefined && editando?.livre) {
+    const texto = document.getElementById('hjEditor')?.value.trim(); if (!texto) return;
+    const { alvo, projeto } = editando; editando = null;
+    try { await ctx.mandar(texto, { alvo, projeto }); } catch (e) { ctx.toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); }
+    return desenhar(true);
+  }
   if (t.dataset.enviarEd !== undefined && editando?.post != null) {
     const texto = document.getElementById('hjEditor')?.value.trim(); if (!texto) return;
     const c = Rot.dados(ctx).conteudo, x = c?.ideias?.[editando.post], alvo = editando.alvo;
@@ -193,45 +210,80 @@ function textoParaMandar(x) {
   return x.prompt + (dica && !x.prompt.includes(x.agente || x.skill) ? `\n\n(Sugestão do escritório: use ${dica}.)` : '');
 }
 
-function htmlSugestoes() {
+const pedidoDoTeste = (te) => `O teste automático da manhã quebrou na ${te?.branch || 'main'}${te?.commit ? ` (${te.commit})` : ''}. Reproduza rodando o teste, ache a causa, corrija e prove com ALL OK e sem SCRIPT ERROR.${te?.erros?.length ? `\n\nErros:\n${te.erros.slice(0, 6).join('\n')}` : ''}`;
+// Quem do time faz uma sugestão: o cargo (pelo agente sugerido), o Crítico quando vai ao Codex, senão a sua assistente.
+function quemFaz(agente, alvo) {
+  const c = agente ? cargoDe(agente) : alvo === 'codex' ? cargoDe('critico') : null;
+  if (c) return { id: c.id, nome: c.nome + (alvo === 'codex' && agente ? ' · Codex' : '') };
+  if (agente) return { id: agente, nome: ctx.nomeAgente(agente) };
+  return { id: 'Orquestrador', nome: 'Sua assistente' };
+}
+// Uma linha do Hoje: rostinho de quem faz, o quê, e UM botão direto.
+async function linhaHoje({ quem, titulo, sub = '', botao = '', cls = '' }) {
   const { esc } = ctx;
-  const s = minhasSugestoes();
+  return `<article class="hj-item ${cls}"><img class="hj-rosto" src="${await ctx.retratoDe(quem.id)}" alt="" title="${esc(quem.nome)}">
+    <div class="hj-item-txt"><b>${esc(titulo)}</b><small><span class="hj-it-quem">${esc(quem.nome)}</span>${sub ? ` · ${sub}` : ''}</small></div>${botao}</article>`;
+}
+const grupoHoje = (cls, titulo, itens, vazio) => `<section class="hj-grupo ${cls}"><h3><span>${titulo}</span>${itens.length ? `<i>${itens.length}</i>` : ''}</h3>${itens.length ? itens.join('') : `<p class="hj-grupo-vazio">${vazio}</p>`}</section>`;
+
+// Sugestões em três grupos: o que precisa de você, o que está andando e o que ficou pronto hoje.
+async function htmlSugestoes() {
+  const { esc } = ctx;
+  const s = minhasSugestoes(), eu = ctx.eu().pessoa;
   const editor = (titulo, n, rows, extra = '') => `<article class="hj-sug editando"><header><span class="hj-n">${n}</span><b>${esc(titulo)}</b></header>
       <label class="hj-rot" for="hjEditor">Revise o pedido. Nada é enviado até você tocar em “Enviar pedido”.</label><textarea id="hjEditor" rows="${rows}">${esc(editando.texto)}</textarea>
       <div class="hj-alvo"><span>Vai para</span><button data-ed-alvo="claude" class="${editando.alvo !== 'codex' ? 'on' : ''}">👑 Claude</button><button data-ed-alvo="codex" class="${editando.alvo === 'codex' ? 'on' : ''}">🧠 Codex</button></div>
       <div class="hj-acoes"><button class="btn" data-cancelar${extra}>Cancelar</button><button class="btn forte" data-enviar-ed${extra}>Enviar pedido ▶</button></div></article>`;
-  if (!s) return Rot.htmlTeste(ctx) + `<div class="hj-vazio"><b>Ainda não tem sugestões hoje.</b><p>Toda manhã (depois das 7h) a sua ponte lê os agentes, as skills, o quadro de marcos, os últimos commits e as pendências e escreve de 3 a 5 pedidos prontos para mandar.</p><button class="btn forte" data-gerar>Gerar agora</button><p class="hj-nota">Precisa da ponte ligada e atualizada.</p></div>` + Rot.htmlIdeias(ctx, editando, editor);
-  const p = projetoAtual(s);
-  const velho = (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
+  // Pedido preparado de fora (ex.: "Ensinar" na Equipe): o editor fica no topo.
+  const livre = editando?.livre ? editor(editando.titulo, '✎', 7) : '';
+  const p = s ? projetoAtual(s) : null;
+  const velho = s && (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
-  const projs = s.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
-  const cab = `<div class="hj-cab"><div><b>Sugestões para hoje</b><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`;
-  const destino = (x) => `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
-  const cartoes = p.prompts.map((x, i) => {
-    const enviada = foiEnviada(s, p, x), tam = TAMANHO[x.tamanho] || TAMANHO.M, mc = x.marco && marcos.get(x.marco);
-    if (editando && editando.i === i) return editor(x.titulo, i + 1, 8, `="${i}"`);
-    const quemCurto = x.agente ? esc(ctx.nomeAgente(x.agente)) : x.alvo === 'codex' ? 'Codex' : 'Sua assistente';
-    const quem = x.agente ? `${esc(ctx.nomeAgente(x.agente))} <small>com ${x.alvo === 'codex' ? 'o Codex' : 'o Claude'}</small>` : x.alvo === 'codex' ? 'Codex <small>(segunda opinião)</small>' : 'Sua assistente <small>(Claude)</small>';
-    const conf = confirmar === i;
-    // Fechado: cartão curto (título, motivo em 1 linha, duração, "Revisar pedido"). Aberto: tudo, antes de enviar.
-    if (!conf) return `<article class="hj-sug compacta ${enviada ? 'enviada' : ''}" style="--atraso:${i * 60}ms">
-      <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
-      ${x.por ? `<button type="button" class="hj-motivo" data-motivo aria-expanded="false" title="Tocar para ler o motivo inteiro"><span>${esc(x.por)}</span></button>` : ''}
-      <div class="hj-rodape"><span class="hj-meta">${icoPx('relogio')} ${tam[2]} · ${quemCurto}</span>${enviada ? '<span class="hj-ok">Enviado ✓</span>' : ''}<button class="btn hj-revisar" data-mandar="${i}" aria-expanded="false">${enviada ? 'Ver de novo' : 'Revisar pedido'}</button></div>
-    </article>`;
-    return `<article class="hj-sug aberta ${enviada ? 'enviada' : ''}" style="--atraso:0ms">
-      <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
-      ${x.por ? `<p class="hj-motivo-todo"><b>Por quê:</b> ${esc(x.por)}</p>` : ''}
-      <dl class="hj-ficha"><dt>Quem faz</dt><dd>${quem}</dd><dt>Duração</dt><dd>${tam[1]}</dd>${mc || x.marco ? `<dt>Marco</dt><dd>${esc(mc ? mc.titulo : 'marco #' + x.marco)}</dd>` : ''}<dt>Vai para</dt><dd>${destino(x)}${x.skill ? ` · receita “${esc(x.skill)}”` : ''}</dd></dl>
-      <p class="hj-rot">O pedido que será enviado:</p>
-      <p class="hj-texto">${esc(textoParaMandar(x))}</p>
-      <div class="hj-acoes"><button class="btn" data-cancelar="${i}">Fechar</button><button class="btn" data-editar="${i}">Editar</button><button class="btn forte" data-mandar="${i}">Enviar pedido ▶</button></div>
-    </article>`;
-  }).join('');
-  const melhorias = (p.melhorias || []).length ? `<h3 class="hj-sec">${icoPx('engrenagem')} Ideias de melhoria</h3>${p.melhorias.map((m, i) => editando && editando.melhoria === i
-    ? editor(m.titulo, '★', 5)
-    : `<div class="hj-melhoria"><div><b>${esc(m.titulo)}</b><p>${esc(m.texto)}</p></div><button class="btn mini" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button></div>`).join('')}` : '';
-  return Rot.htmlTeste(ctx) + projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + Rot.htmlIdeias(ctx, editando, editor) + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
+  const precisa = [], andando = [], pronto = [], depois = [];
+  // 1. Decisões que só você pode dar.
+  const nDec = ctx.contagens?.().esperando || 0;
+  if (nDec) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: `${nDec} ${nDec === 1 ? 'decisão espera' : 'decisões esperam'} você`, sub: 'os agentes param até você responder', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
+  // 2. Teste da manhã (Programador): quebrou = precisa de você; passou = pronto hoje.
+  const t = Rot.dados(ctx).teste, prog = quemFaz('programador');
+  if (t && !t.ok) precisa.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã quebrou', sub: esc(String(t.erros?.[0] || 'veja o registro').slice(0, 80)), botao: '<button class="btn forte hj-item-btn" data-teste-preparar>Preparar pedido</button>', cls: 'urgente' }));
+  if (t?.ok) pronto.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã passou', sub: `${esc(t.branch || 'main')} · ${D.hora(new Date(t.quando).getTime())}`, botao: '<span class="hj-selo-ok">ALL OK</span>' }));
+  // 3. Sugestões do dia: as não enviadas precisam de você; as enviadas estão em andamento.
+  for (const [i, x] of (p?.prompts || []).entries()) {
+    const enviada = foiEnviada(s, p, x), tam = TAMANHO[x.tamanho] || TAMANHO.M, mc = x.marco && marcos.get(x.marco), quem = quemFaz(x.agente, x.alvo);
+    if (editando && editando.i === i) { precisa.push(editor(x.titulo, i + 1, 8, `="${i}"`)); continue; }
+    if (confirmar === i) {
+      const destino = `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
+      (enviada ? andando : precisa).push(`<article class="hj-sug aberta ${enviada ? 'enviada' : ''}">
+        <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
+        ${x.por ? `<p class="hj-motivo-todo"><b>Por quê:</b> ${esc(x.por)}</p>` : ''}
+        <dl class="hj-ficha"><dt>Quem faz</dt><dd>${esc(quem.nome)}</dd><dt>Duração</dt><dd>${tam[1]}</dd>${mc || x.marco ? `<dt>Marco</dt><dd>${esc(mc ? mc.titulo : 'marco #' + x.marco)}</dd>` : ''}<dt>Vai para</dt><dd>${destino}${x.skill ? ` · receita “${esc(x.skill)}”` : ''}</dd></dl>
+        <p class="hj-rot">O pedido que será enviado:</p>
+        <p class="hj-texto">${esc(textoParaMandar(x))}</p>
+        <div class="hj-acoes"><button class="btn" data-cancelar="${i}">Fechar</button><button class="btn" data-editar="${i}">Editar</button><button class="btn forte" data-mandar="${i}">Enviar pedido ▶</button></div>
+      </article>`);
+      continue;
+    }
+    if (enviada) andando.push(await linhaHoje({ quem, titulo: x.titulo, sub: 'pedido enviado', botao: `<button class="btn hj-item-btn" data-mandar="${i}">Ver</button>`, cls: 'feito' }));
+    else precisa.push(await linhaHoje({ quem, titulo: x.titulo, sub: `${tam[2]}${mc ? ` · ${esc(mc.titulo)}` : ''}`, botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
+  }
+  // 4. Quem está trabalhando agora e o que já entregou hoje (da fila do dia, só a sua equipe).
+  try {
+    const linhas = [...((await filaDoDia()).get(eu)?.values() || [])];
+    for (const l of linhas.filter((x) => x.agora.length)) andando.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora[0].t, sub: l.agora.some((x) => x.alerta) ? '<b class="hj-alerta">precisa de você</b>' : 'trabalhando agora', botao: '<button class="btn hj-item-btn" data-rd="fazendo">Ver</button>' }));
+    for (const l of linhas.filter((x) => x.feitos && x.ultimoFeito && x.nome !== 'Orquestrador')) pronto.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: primeiraFrase(l.ultimoFeito.texto || 'Entrega', 80), sub: `${plural(l.feitos, 'entrega')} hoje`, botao: '<button class="btn hj-item-btn" data-hsub="fila">Ver</button>', cls: 'feito' }));
+  } catch (e) { console.warn('hoje (fila):', e); }
+  // 5. Ideias para preparar quando der: melhorias (Gerente) e posts (Estrategista).
+  for (const [i, m] of (p?.melhorias || []).entries()) depois.push(editando?.melhoria === i ? editor(m.titulo, '★', 5) : await linhaHoje({ quem: quemFaz('gerente'), titulo: m.titulo, sub: 'melhoria do escritório', botao: `<button class="btn hj-item-btn" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button>` }));
+  depois.push(...await Rot.linhasIdeias(ctx, editando, editor, linhaHoje, quemFaz('estrategista')));
+  const cab = s ? `<div class="hj-cab"><div><b>Seu dia</b><small>${esc(nomeProjeto(p.projeto))} · sugestões ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`
+    : `<div class="hj-cab"><div><b>Seu dia</b><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
+  const projs = s?.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
+  return livre + projs + cab
+    + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.')
+    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão acima.')
+    + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.')
+    + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '') : '')
+    + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Mandar</b> para ler o pedido inteiro antes de enviar; só “Enviar pedido” manda, numa conversa nova com a sua assistente. <b>Preparar pedido</b> abre o texto para você editar. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
 }
 
 // ======================= 📋 fila do dia =======================

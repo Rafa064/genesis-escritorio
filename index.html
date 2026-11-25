@@ -21,7 +21,7 @@
 <link rel="modulepreload" href="js/config.js"><link rel="modulepreload" href="js/mapa.js"><link rel="modulepreload" href="js/mundo.js"><link rel="modulepreload" href="js/arte.js">
 <link rel="modulepreload" href="js/personagens.js"><link rel="modulepreload" href="js/humano.js"><link rel="modulepreload" href="js/frentes.js"><link rel="modulepreload" href="js/tipos.js">
 <link rel="modulepreload" href="js/dados.js"><link rel="modulepreload" href="js/rede.js"><link rel="modulepreload" href="js/funcoes-hoje.js"><link rel="modulepreload" href="js/comando-ctx.js">
-<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js"><link rel="modulepreload" href="js/comando-topo.js"><link rel="modulepreload" href="js/comando-pedido.js"><link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js"><link rel="modulepreload" href="js/mapa-cel.js"><link rel="modulepreload" href="js/pedido-pagina.js">
+<link rel="modulepreload" href="js/comando-erros.js"><link rel="modulepreload" href="js/comando-progresso.js"><link rel="modulepreload" href="js/comando-dupla.js"><link rel="modulepreload" href="js/comando-barra.js"><link rel="modulepreload" href="js/comando-icones.js"><link rel="modulepreload" href="js/comando-aprovacao.js"><link rel="modulepreload" href="js/comando-topo.js"><link rel="modulepreload" href="js/comando-pedido.js"><link rel="modulepreload" href="js/bonecos.js"><link rel="modulepreload" href="js/vida.js"><link rel="modulepreload" href="js/som-ambiente.js"><link rel="modulepreload" href="js/mapa-cel.js"><link rel="modulepreload" href="js/pedido-pagina.js"><link rel="modulepreload" href="js/chat-cel.js">
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm" crossorigin>
 <link rel="stylesheet" href="estilo.css">
 <link rel="stylesheet" href="estilo-extra.css">
@@ -39,6 +39,7 @@
 <link rel="stylesheet" href="estilo-chat-popup.css">
 <link rel="stylesheet" href="estilo-equipe.css">
 <link rel="stylesheet" href="estilo-questionario.css">
+<link rel="stylesheet" href="estilo-chat-cel.css">
 </head>
 <body>
 <header id="topo">
@@ -127,13 +128,15 @@
     <section data-painel="pedido" class="painel painel-pedido" hidden><div id="pedidoPagina" class="pp"></div></section>
     <section data-painel="galeria" class="painel" hidden><div class="filtros" id="filtroGaleria"></div><div id="gradeGaleria" class="grade-galeria"></div></section>
     <section data-painel="chat" class="painel painel-chat" hidden>
-      <div class="seg-conversas com-novo"><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
+      <div class="seg-conversas com-novo"><button type="button" class="seg-voltar" data-voltar-cel title="Voltar ao escritório" aria-label="Voltar ao escritório"><span aria-hidden="true">‹</span> Voltar</button><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
       <div class="conversa-topo">
         <div id="abasConversa" class="abas-conversa" role="tablist" aria-label="Conversas abertas"></div>
         <button class="btn mini" id="btnNovaConversa" title="Aba nova (conversa nova)">＋</button>
         <button class="btn mini" id="btnAbasFechadas" title="Abas fechadas / histórico">🕘</button>
         <button class="btn mini" id="btnMaisConversa" title="Renomear ou apagar a aba aberta">⋯</button>
       </div>
+      <!-- No celular as abas viram este seletor (nome inteiro + estado); toque abre a lista de conversas. -->
+      <button type="button" id="seletorConvCel" class="seletor-conv-cel" aria-haspopup="true" aria-controls="listaAbasFechadas"></button>
       <div id="listaAbasFechadas" class="abas-fechadas" hidden></div>
       <form id="formNovaConversa" class="nova-conversa" hidden>
         <input id="tituloConversa" maxlength="120" placeholder="Sobre o quê? (ex.: Short Raio + Fogo)" required>
@@ -145,15 +148,17 @@
       <div id="hudChat" class="hud-chat" hidden></div>
       <div id="msgs"></div>
       <form id="formChat" class="compositor">
+        <!-- No celular o compositor começa recolhido neste botão (a decisão fica inteira na tela). -->
+        <button type="button" class="btn cmp-abrir" data-cmp-abrir>✎ Responder</button>
         <div class="cmp-sobre" id="cmpSobre"></div>
         <div id="anexosPend" class="anexos-pend" hidden></div>
         <textarea id="entrada" rows="3" placeholder="Responder ou continuar esta conversa…" aria-label="Responder ou continuar esta conversa"></textarea>
         <p id="cmpFila" class="bc-estado" hidden></p>
-        <div class="linha"><button type="button" class="btn mini btn-anexo" id="btnAnexo" title="Anexar imagem ou PDF (ou cole um print com Ctrl+V)" aria-label="Anexar imagem ou PDF">📎</button><input type="file" id="arqAnexo" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple hidden><span id="alvoAtual" class="alvo claude" hidden>Claude</span><button class="btn forte" id="btnEnviar">Enviar</button></div>
+        <div class="linha"><button type="button" class="btn mini btn-anexo" id="btnAnexo" title="Anexar imagem ou PDF (ou cole um print com Ctrl+V)" aria-label="Anexar imagem ou PDF">📎</button><input type="file" id="arqAnexo" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple hidden><span id="alvoAtual" class="alvo claude" hidden>Claude</span><button type="button" class="btn mini cmp-recolher" data-cmp-recolher title="Recolher a caixa" aria-label="Recolher a caixa de resposta">⌄</button><button class="btn forte" id="btnEnviar">Enviar</button></div>
       </form>
     </section>
     <section data-painel="dupla" class="painel painel-chat" hidden>
-      <div class="seg-conversas com-novo"><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="outro" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
+      <div class="seg-conversas com-novo"><button type="button" class="seg-voltar" data-voltar-cel title="Voltar ao escritório" aria-label="Voltar ao escritório"><span aria-hidden="true">‹</span> Voltar</button><button data-seg="dupla" class="on">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="outro" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
       <div id="coordDupla"></div>
       <div id="fixados"></div>
       <div id="msgsDupla"></div>

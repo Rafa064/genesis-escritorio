@@ -1,15 +1,10 @@
 // Rotinas da equipe no painel "Hoje" (a ponte roda: escritorio/rotinas.mjs).
-//   Teste da manhã · Programador: o teste automático do Genesis passou (verde) ou quebrou (vermelho).
+//   Teste da manhã · Programador: passou (vai para "Pronto hoje") ou quebrou ("Precisa de você", com o pedido de conserto).
 //   Ideias de posts · Estrategista: 3 próximos posts a partir dos números públicos do canal,
-//   cada um com "Preparar pedido" (abre o editor do Hoje com o pedido pronto para o editor de vídeo).
+//   cada uma uma linha com "Preparar pedido" (abre o editor do Hoje com o pedido pronto para o editor de vídeo).
 // Fontes: estado.info.testeManha e estado.info.conteudo; no ?demo, os exemplos daqui.
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const guarda = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
-const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const quandoFoi = (iso) => {
-  const d = new Date(iso), hoje = new Date().toDateString() === d.toDateString();
-  return hoje ? `hoje às ${hora(iso)}` : `${d.toLocaleDateString('pt-BR', { weekday: 'long' })} às ${hora(iso)}`;
-};
 
 export function dados(ctx) {
   const info = ctx.estados().get(ctx.eu()?.pessoa)?.info || {};
@@ -17,39 +12,21 @@ export function dados(ctx) {
   return { teste: info.testeManha || demo.teste || null, conteudo: info.conteudo?.ideias?.length ? info.conteudo : demo.conteudo || null };
 }
 
-// Linha curta no topo: verde ou vermelho, com o que quebrou recolhido.
-export function htmlTeste(ctx) {
-  const { esc } = ctx, t = dados(ctx).teste;
-  if (!t) return '';
-  const min = t.segundos >= 90 ? `${Math.round(t.segundos / 60)} min` : `${t.segundos} s`;
-  const onde = `${esc(t.branch || '?')} · ${quandoFoi(t.quando)} · ${min}`;
-  if (t.ok) return `<section class="hj-rot-teste ok" aria-label="Teste da manhã"><span class="hj-rot-luz" aria-hidden="true"></span><div><b>Teste da manhã passou</b><small>Programador · ${onde}</small></div><span class="hj-rot-selo">ALL OK</span></section>`;
-  const linhas = [...(t.erros || []), ...(t.erros?.length ? [] : t.fim || [])].slice(0, 8);
-  return `<section class="hj-rot-teste quebrou" aria-label="Teste da manhã"><span class="hj-rot-luz" aria-hidden="true"></span><div><b>Teste da manhã quebrou</b><small>Programador · ${onde}</small>
-    ${linhas.length ? `<details><summary>${esc(linhas[0]).slice(0, 90)}${linhas.length > 1 ? ` (+${linhas.length - 1})` : ''}</summary><pre>${linhas.map(esc).join('\n')}</pre></details>` : ''}</div></section>`;
-}
-
 const chaveIdeia = (c, x) => `hojePost|${String(c.quando).slice(0, 10)}|${x.titulo}`;
 export const ideiaEnviada = (c, x) => !!guardado(chaveIdeia(c, x), '');
 export const marcarIdeia = (c, x) => guarda(chaveIdeia(c, x), String(Date.now()));
 
-// Seção das ideias. "editor(titulo, n, linhas)" é o editor do Hoje (o mesmo das sugestões).
-export function htmlIdeias(ctx, editando, editor) {
+// Ideias de posts como linhas do Hoje (grupo "Ideias para depois"). "editor" e "linha" são os do Hoje.
+export async function linhasIdeias(ctx, editando, editor, linha, quem) {
   const { esc } = ctx, c = dados(ctx).conteudo;
-  if (!c) return '';
-  const total = (c.videos || []).reduce((s, v) => s + (v.views || 0), 0);
-  const cab = `<h3 class="hj-sec hj-sec-posts">🎬 Ideias de posts <small>Estrategista · ${quandoFoi(c.quando)} · ${c.videos?.length || 0} vídeos do canal, ${total} views</small></h3>`;
-  const cartoes = c.ideias.map((x, i) => {
+  if (!c) return [];
+  return Promise.all(c.ideias.map((x, i) => {
     if (editando?.post === i) return editor(x.titulo, '🎬', 7);
     const env = ideiaEnviada(c, x);
-    return `<article class="hj-post ${env ? 'enviada' : ''}">
-      <header><span class="hj-post-fmt ${x.formato}">${x.formato === 'longo' ? 'Vídeo' : 'Short'} · ${esc(x.duracao)}</span><b>${esc(x.titulo)}</b></header>
-      <p class="hj-post-gancho"><b>Gancho (2 s):</b> ${esc(x.gancho)}</p>
-      <p class="hj-post-por"><b>Por quê:</b> ${esc(x.porque)}</p>
-      <div class="hj-rodape"><span class="hj-meta"></span>${env ? '<span class="hj-ok">Enviado ✓</span>' : ''}<button class="btn hj-revisar" data-post-preparar="${i}" title="Abre o pedido para o editor de vídeo; nada é enviado ainda">Preparar pedido</button></div>
-    </article>`;
-  }).join('');
-  return cab + `<div class="hj-lista hj-posts">${cartoes}</div>`;
+    return linha({ quem, titulo: x.titulo, cls: env ? 'feito' : '',
+      sub: `<span title="${esc(`Gancho: ${x.gancho}\nPor quê: ${x.porque}`)}">${x.formato === 'longo' ? 'vídeo' : 'Short'} de ${esc(x.duracao)}</span>`,
+      botao: `<button class="btn hj-item-btn" data-post-preparar="${i}" title="Abre o pedido para o editor de vídeo; nada é enviado ainda">${env ? 'Ver de novo' : 'Preparar pedido'}</button>` });
+  }));
 }
 export const pedidoDaIdeia = (x) => `${x.pedido}\n\n(Ideia do Estrategista: "${x.titulo}" · gancho: ${x.gancho})`;
 

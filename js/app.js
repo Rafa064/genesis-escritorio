@@ -25,6 +25,7 @@ import * as NP from './comando-pedido.js';
 import * as PP from './pedido-pagina.js';
 import * as A from './anexos.js';
 import * as EQ from './equipe.js';
+import * as CC from './chat-cel.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -170,6 +171,13 @@ function estadoDoCargo(c) {
   const { m, st } = mesaDoCargo(c), vivo = TRABALHANDO.includes(st.cls);
   return { st, vivo, pessoa: vivo ? m.pessoa : '', acao: vivo && m.ult ? primeiraFrase(frase(m.ult), 80) : '' };
 }
+// "Ensinar" (Equipe): o pedido para a assistente criar a próxima skill do cargo abre no editor do Hoje (não sai sozinho).
+function ensinarCargo(id) {
+  const c = cargosAgora().find((x) => x.id === id); if (!c) return;
+  const t = EQ.proximaDaTrilha(c);
+  if (innerWidth <= 760) fecharEquipeVista();
+  Hoje.preparar({ titulo: t ? `Ensinar ${EQ.nomeSkill(t.nome)} · ${c.nome}` : `Próxima skill · ${c.nome}`, texto: EQ.pedidoEnsinar(c, t) });
+}
 function localizarCargo(id) {
   const b = mundo?.agentes.get(`cargo|${id}`);
   if (!b) return;
@@ -206,9 +214,9 @@ function mesasDoMundo() {
     const l = naMesa(`cargo|${c.id}`, c.setor || fr.setor, fr);
     if (l) lista.push({ id: `cargo|${c.id}`, nome: c.id, cargo: c, lugar: l, status: st.cls, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor });
   }
-  // Visitantes (sub-agente fora da equipe) e as outras abas da assistente: só enquanto trabalham.
-  const outrasAbas = ps.flatMap((p) => D.abas().filter((a) => a.pessoa === p).slice(1));
-  const visitas = [...mesas.filter((m) => !ehFerramenta(m.nome) && !EQ.cargoDe(m.nome, cargosAgora()) && !EQ.daAssistente(m.nome)), ...outrasAbas]
+  // Visitantes (sub-agente fora da equipe): só enquanto trabalham. As outras abas da assistente não viram
+  // bonecos: no mapa ficam só os 6 cargos, os devs, uma assistente por dev e os visitantes.
+  const visitas = mesas.filter((m) => !ehFerramenta(m.nome) && !EQ.cargoDe(m.nome, cargosAgora()) && !EQ.daAssistente(m.nome))
     .map((m) => ({ m, st: D.estadoDe(m).cls })).filter((x) => TRABALHANDO.includes(x.st)).sort((a, b) => (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
   for (const { m, st } of visitas) {
     const fr = D.frenteDaMesa(m) || frente('genesis', 'criacao');
@@ -456,7 +464,7 @@ tela.addEventListener('pointercancel', soltar);
 function tocarMapa(ev) {
   const [x, y] = telaParaMundo(ev);
   const b = boneconoPonto(x, y) || (innerWidth <= 760 ? MC.agenteNoToque(x, y) : null);
-  if (b) { if (innerWidth <= 760) MC.abrirFicha(b); else abrirAgente(b); return; }
+  if (b) { MC.abrirFicha(b); return; } // cartão do boneco (cargo, pedido, última ação); "Ver detalhes" abre o painel
   if (innerWidth <= 760 && MC.tocarGeral(x, y)) return;
   if (mundo.tocarItem?.(x, y)) return; // ferramenta (item) no mapa: cartão do que está fazendo
   const ponto = PONTOS.find((p) => Math.hypot(p.x - x, p.y - y) < 18);
@@ -569,17 +577,19 @@ function rotulos(c) {
   // Um balão aberto por vez: o boneco selecionado; senão o que está sob o mouse; senão o mais perto de você.
   // Os outros mostram só o ícone de estado (desenhado no canvas), sem nome nem fala.
   const todosB = [...mundo.agentes.values()];
-  const focoB = todosB.find((b) => b.m?.k === selecionado && visivel(b.x, b.y)) || todosB.find((b) => hoverId === b.id) || (perto && todosB.includes(perto) ? perto : null);
+  const focoB = todosB.find((b) => b.m?.k === selecionado && visivel(b.x, b.y)) || todosB.find((b) => hoverId === b.id) || (perto && !mundo.semIcones && todosB.includes(perto) ? perto : null); // com etiquetas, o balão só sai no mouse
   let balaoAberto = false;
   for (const b of mundo.agentes.values()) {
     if (!visivel(b.x, b.y)) continue;
     const sel = b.m?.k === selecionado, foco = b === focoB;
     const cel = innerWidth <= 760;
     const minhaAssist = b.lugar.assistente && b.pessoa === EU.pessoa;
+    const etq = mundo.semIcones; // com as etiquetas (mapa-cel.js), cargo e estado já estão em cima de cada boneco
+    if (etq && !foco) continue;
     if (!(foco || (minhaAssist && !focoB && algumaOcupada('claude'))) && zoom < 3) continue;
     const fam = modelo(b.m?.nome || b.nome, b.pessoa).familia;
     const cracha = corCracha(b);
-    if (foco || !cel || zoom >= 3) { // no celular, a assistente "pensando" mostra só o balãozinho (sem crachá por cima das placas)
+    if (!etq && (foco || !cel || zoom >= 3)) { // no celular, a assistente "pensando" mostra só o balãozinho (sem crachá por cima das placas)
       const el = rotulo(b.id + 'n', `nome${b === perto || hoverId === b.id ? ' perto' : ''}${sel ? ' sel' : ''}${fam === 'gpt' ? ' gpt' : ''}${b.lugar.assistente ? ' claude-assist' : ''}${foraDoFiltro(b) && !foco ? ' fora' : ''}${cracha ? ' cracha' : ''}`);
       if (cracha && el.style.getPropertyValue('--cracha') !== cracha) el.style.setProperty('--cracha', cracha);
       const nome = nomeNoMapa(b);
@@ -599,7 +609,7 @@ function rotulos(c) {
       if (!curta) balaoAberto = true;
       const f = rotulo(b.id + 'f', `fala ${b.status}${curta ? ' curta' : ''}`);
       if (f.textContent !== fala) f.textContent = fala;
-      colocar(f, curta ? b.x : xb, (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar.dir === 'cima' ? 30 : 14), c, true);
+      colocar(f, curta ? b.x : xb, (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar.dir === 'cima' ? 30 : 14) - (mundo.semIcones ? 18 : 0), c, true); // acima da etiqueta
     }
   }
   mundo.calado = balaoAberto; // com um balão aberto, as conversas de corredor (vida.js) esperam
@@ -797,6 +807,10 @@ function montarInterface() {
     try { await pararConversa(conversaAtual); await enviarChat(); } catch (err) { toast({ titulo: 'Não consegui interromper', texto: err.message, cor: '#ef6a55' }); }
   };
   // "Sobre: X · Alterar" (no compositor da conversa) abre a lista de conversas; o perfil abre perfil e ajustes.
+  // Celular: "Responder" abre o compositor; o seletor troca de conversa; "‹ Voltar" volta ao escritório.
+  CC.ligarCompositor($('#formChat'), $('#entrada'));
+  $('#seletorConvCel').onclick = () => { const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) desenharAbasFechadas(); desenharSeletorConversas(); };
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-voltar-cel]')) irPara('mapa'); });
   $('#cmpSobre').onclick = (e) => { if (!e.target.closest('[data-cmp-alterar]')) return; const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) { desenharAbasFechadas(); el.scrollIntoView({ block: 'nearest' }); } };
   $('#perfilTopo').onclick = () => { if (aba === 'ajustes' && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba('ajustes'); };
   $('#btnNovaConversa').onclick = () => mostrarNovaConversa();
@@ -840,6 +854,8 @@ function montarInterface() {
     const ir = e.target.closest('[data-eqaba-ir]'); if (ir) { abaEq = ir.dataset.eqabaIr; guarda('abaEq2', abaEq); desenharEquipeVista(); return; }
     if (e.target.closest('[data-revisar-permissao]')) { abrirAba('atencao'); return; }
     const ag = e.target.closest('.eqa-card[data-k]'); if (ag) { fecharEquipeVista(); localizar(ag.dataset.k); return; }
+    const en = e.target.closest('[data-ensinar]'); if (en) { ensinarCargo(en.dataset.ensinar); return; }
+    if (e.target.closest('.cg-det')) return; // abrir os detalhes do cartão não leva ao mapa
     const cg = e.target.closest('[data-cargo]'); if (cg) { fecharEquipeVista(); localizarCargo(cg.dataset.cargo); return; }
     const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
@@ -917,7 +933,7 @@ function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ?
   ultPend = { ...ultPend, alertas, recados: novos };
   const naoVistasN = naoVistas.size + novos;
   const outro = outraPessoa() || 'a dupla', itens = [];
-  if (alertas && !emAtividade()) itens.push({ k: 'atencao', nivel: 'urgente', ic: 'mao', txt: aba === 'pedido' && innerWidth <= 760 && !$('#gaveta').classList.contains('fechada') ? `${alertas} ${alertas > 1 ? 'decisões' : 'decisão'} no estúdio` : `${alertas} ${alertas > 1 ? 'decisões suas' : 'decisão sua'}`, sub: 'Autorize para seguirem', acao: 'Resolver' });
+  if (alertas && !emAtividade()) itens.push({ k: 'atencao', nivel: 'urgente', ic: 'mao', txt: `${alertas} ${alertas > 1 ? 'decisões' : 'decisão'} no estúdio`, sub: alertas > 1 ? 'Esperam você para seguir' : 'Espera você para seguir', acao: 'Resolver' });
   for (const c of CDu.conflitosAbertos()) itens.push({ k: 'conflito', nivel: 'aviso', ic: 'alerta', txt: c.arq ? `Conflito com o ${outro}` : 'Combine com ' + outro, sub: c.arq ? c.arqNome : c.curto, acao: 'Combinar' });
   const bolas = CDu.bolasParaMim();
   if (bolas) itens.push({ k: 'bola', nivel: 'aviso', ic: 'seta', txt: `${outro} mandou ${bolas > 1 ? `${bolas} pedidos` : 'um pedido'} para você`, sub: 'Assuma ou encaminhe à sua assistente', acao: 'Ver' });
@@ -1202,7 +1218,7 @@ function ligarAprovacoes(el) {
       if (dec.dataset.apMudar != null) { delete esc0[i]; escolhasAprov.set(id, esc0); return redesenharAprovacoes(); }
       esc0[i] = dec.dataset.apDec; escolhasAprov.set(id, esc0);
       const total = CA.nDecisoes(a), feitas = Object.values(esc0);
-      if (feitas.length < total) { redesenharAprovacoes(); return toast({ titulo: dec.dataset.apDec === 'sim' ? 'Anotado: autorizado' : 'Anotado: recusado', texto: `Falta${total - feitas.length > 1 ? 'm' : ''} ${total - feitas.length} decis${total - feitas.length > 1 ? 'ões' : 'ão'} deste pedido. Ela só segue depois.`, cor: '#f4ecd8' }); }
+      if (feitas.length < total) { redesenharAprovacoes(); if (dec.dataset.apDec) CC.irProximaDecisao(el); return toast({ titulo: dec.dataset.apDec === 'sim' ? 'Anotado: autorizado' : 'Anotado: recusado', texto: `Falta${total - feitas.length > 1 ? 'm' : ''} ${total - feitas.length} decis${total - feitas.length > 1 ? 'ões' : 'ão'} neste pedido: veja a próxima logo abaixo.`, cor: '#f4ecd8' }); }
       const tudoSim = feitas.every((v) => v === 'sim'), tudoNao = feitas.every((v) => v === 'nao');
       try {
         if (!DEMO) await R.decidir(id, tudoSim ? 'permitido' : 'negado');
@@ -1258,7 +1274,9 @@ async function mandarNaConversa(texto, convId) {
 function abrirAutorizacoes() {
   const folha = $('#folhaAprov'), lista = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && a.conversa_id === conversaAtual);
   if (!lista.length) { folha.hidden = true; return; }
-  $('#tituloFolhaAprov').textContent = lista.length > 1 ? `${lista.length} autorizações esperando você` : 'Precisa da sua autorização';
+  // Mesma contagem do cartão do pedido: decisões (uma por ação) que ainda faltam neste pedido; questionário = perguntas.
+  const soPerguntas = lista.every(Q.ehQuestionario), nDec = lista.reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0);
+  $('#tituloFolhaAprov').textContent = soPerguntas ? 'Sua assistente tem perguntas' : !nDec ? 'Tudo decidido neste pedido' : `${nDec > 1 ? `${nDec} decisões` : 'Uma decisão'} neste pedido`;
   $('#listaFolhaAprov').innerHTML = lista.map(cartaoAprovacao).join('');
   ligarAprovacoes($('#listaFolhaAprov'));
   folha.hidden = false;
@@ -1928,7 +1946,7 @@ function desenharSeletorConversas() {
   const lista = abasVisiveis();
   faixa.innerHTML = lista.length ? lista.map((c) => {
     const v = visualAba(c), selo = seloAba(c.id), on = c.id === conversaAtual;
-    return `<button type="button" role="tab" aria-selected="${on}" class="aba-conv${on ? ' on' : ''}${c.alvo === 'codex' ? ' gpt' : ''}" data-conv="${c.id}" style="--cor:${v.cor}" title="${esc(c.titulo)} · ${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''}${selo ? ' · ' + selo[1] : ''} (duplo clique renomeia)"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}</span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}<span class="x" data-fechar="${c.id}" title="Fechar aba (a conversa continua no histórico)">×</span></button>`;
+    return `<button type="button" role="tab" aria-selected="${on}" class="aba-conv${on ? ' on' : ''}${c.alvo === 'codex' ? ' gpt' : ''}" data-conv="${c.id}" style="--cor:${v.cor}" title="${esc(v.nome || c.titulo)} · ${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''}${selo ? ' · ' + selo[1] : ''} (duplo clique renomeia)"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}</span>${selo ? `<span class="selo">${selo[0]}</span>` : ''}<span class="x" data-fechar="${c.id}" title="Fechar aba (a conversa continua no histórico)">×</span></button>`;
   }).join('') : '<span class="vazio-abas">Nenhuma aba aberta: crie com o + ou reabra pelo 🕘</span>';
   // O 🕘 avisa se alguma aba fechada precisa de você.
   const fechadas = conversas.filter((c) => !abasAbertas.includes(c.id));
@@ -1938,6 +1956,9 @@ function desenharSeletorConversas() {
   const on = faixa.querySelector('.aba-conv.on');
   if (on) { const fr = faixa.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8; else if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; }
   if (!$('#listaAbasFechadas').hidden) desenharAbasFechadas();
+  // Celular: no lugar das abas, um seletor com o nome inteiro e o estado da conversa aberta.
+  const atual = conversas.find((c) => c.id === conversaAtual);
+  CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: atual ? seloAba(atual.id) : null, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
 }
 function desenharAbasFechadas() {
   const el = $('#listaAbasFechadas');
@@ -1945,7 +1966,7 @@ function desenharAbasFechadas() {
   el.innerHTML = `<div class="af-topo"><b>Em qual conversa?</b><button type="button" class="btn mini" data-af-fechar title="Fechar" aria-label="Fechar">×</button></div>
     <div class="af-acoes"><button type="button" class="btn" data-af-nova>＋ Conversa nova</button>${conversaAtual ? '<button type="button" class="btn" data-af-renomear>Renomear ou apagar esta</button>' : ''}</div>` + (lista.length ? lista.map((c) => {
     const v = visualAba(c), selo = seloAba(c.id), atual = c.id === conversaAtual;
-    return `<button type="button" class="af-item${atual ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}${atual ? ' · esta' : ''}${selo ? ' · ' + selo[1] : ''}</small></span></button>`;
+    return `<button type="button" class="af-item${atual ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${selo ? `<b class="af-est">${selo[0]} ${selo[1]}</b> · ` : ''}${atual ? 'aberta agora · ' : ''}${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}</small></span></button>`;
   }).join('') : '<p class="sub">Nenhuma conversa ainda.</p>');
 }
 function fecharAbaConversa(id) {
@@ -2096,8 +2117,10 @@ function desenharChat() {
   html += pend.map(cartaoAprovacao).join('');
   msgs.innerHTML = html || `<div class="vazio">${conv ? `Conversa “${esc(conv.titulo)}” com ${gpt ? 'o Codex (GPT)' : 'a sua assistente (Claude)'}. Escreva abaixo o que você quer fazer.` : `Oi, ${esc(EU.pessoa)}! Escreva abaixo o que você quer fazer. Cada assunto vira uma conversa; várias podem rodar ao mesmo tempo.`}</div>`;
   ligarAprovacoes(msgs); CE.decorarErros(msgs); if (!DEMO) A.preencher(msgs, R.sb).catch(() => {});
-  if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { msgs.scrollTop = rolarPendente < 0 ? msgs.scrollHeight : rolarPendente; rolarPendente = null; }
-  else if (noFim) msgs.scrollTop = msgs.scrollHeight;
+  // "Ir ao fim" com decisões abertas = ir à primeira delas ("Decisão 1 de 4"), não à última.
+  const aoFim = () => { const d = msgs.querySelector('.aprovacao:not(.decidida)'); msgs.scrollTop = d ? msgs.scrollTop + d.getBoundingClientRect().top - msgs.getBoundingClientRect().top - 6 : msgs.scrollHeight; };
+  if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { if (rolarPendente < 0) aoFim(); else msgs.scrollTop = rolarPendente; rolarPendente = null; }
+  else if (noFim) aoFim();
   $('#estadoPonte').hidden = !$('#estadoPonte').innerHTML.trim();
   // Compositor: "Sobre: X · Alterar" + caixa + Enviar pedido (ou Enviar para a fila, quando ela está ocupada).
   $('#btnEnviar').textContent = ocupada ? 'Enviar para a fila' : 'Enviar';
@@ -2137,12 +2160,13 @@ async function enviarChat() {
   }
   const destino = conversaAtual, lista = mensagens;
   $('#entrada').value = '';
+  if (CC.ehCel()) CC.recolher($('#formChat'), $('#entrada'));
   lista.push({ de: 'eu', texto: t, conversa_id: destino });
   const naFila = convOcupada(destino);
   rolarPendente = -1; desenharChat();
   if (DEMO) { comandosAbertos.set(-Date.now(), destino); avisarRecebido(naFila); desenharChat(); desenharSeletorConversas(); return; }
   try { const cmd = await R.pedir(t, temSql2 ? destino : null); pedidoEnviado(cmd, destino); avisarRecebido(naFila); desenharChat(); }
-  catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; const i = lista.findIndex((m) => m.de === 'eu' && m.texto === t && !m.id); if (i >= 0) lista.splice(i, 1); desenharChat(); }
+  catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; $('#formChat').classList.add('aberto'); const i = lista.findIndex((m) => m.de === 'eu' && m.texto === t && !m.id); if (i >= 0) lista.splice(i, 1); desenharChat(); }
 }
 
 // ---------- conversa da dupla (usa a tabela de recados: msg, recado fixado, missão compartilhada, reação) ----------
@@ -2363,7 +2387,7 @@ function ligarComandoNoApp() {
     ultimoPedido: () => mensagens.filter((m) => m.de === 'eu').at(-1)?.texto || '',
     enviarNoChat: (t) => { $('#entrada').value = t; return enviarChat(); },
     // Fora da conversa aberta, "preencher" abre o mesmo painel Novo pedido já com o texto.
-    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'); if (!chat) return NP.abrirNovoPedido({ texto: t }); const cx = $('#entrada'); cx.value = t; cx.focus(); cx.dispatchEvent(new Event('input')); },
+    preencher: (t) => { const chat = aba === 'chat' && !$('#gaveta').classList.contains('fechada'); if (!chat) return NP.abrirNovoPedido({ texto: t }); const cx = $('#entrada'); cx.value = t; CC.abrir($('#formChat'), cx); cx.focus(); cx.dispatchEvent(new Event('input')); },
     novoPedido: (o) => NP.abrirNovoPedido(o), criarPedido, acompanharPedido, estadoPedido, conversas: () => conversas,
     projetoPadrao: () => CB.projetoNovo(), redesenharTopo: () => desenharTopo(),
     // Pede pela barra: alvo (claude/codex), conversa nova (com projeto) ou a do alvo.
@@ -2441,10 +2465,12 @@ async function desenharHudChat() {
   desenharJanelaChat();
   const conv = conversas.find((c) => c.id === conversaAtual), m = missaoDaConversa(conv), ocupada = convOcupada(conversaAtual);
   // Pendências desta conversa entram no mesmo cartão (com um resumo humano do que ela quer fazer).
-  const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id).flatMap((a) => { const ja = escolhasAprov.get(a.id) || {}; return CA.explicar(a, infoAprovacao(a)).acoes.map((y, i) => ({ id: a.id, titulo: y.t, i })).filter((x) => ja[x.i] == null); });
+  const daConv = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id);
+  const pend = daConv.flatMap((a) => { const ja = escolhasAprov.get(a.id) || {}; return CA.explicar(a, infoAprovacao(a)).acoes.map((y, i) => ({ id: a.id, titulo: y.t, i, q: Q.ehQuestionario(a) })).filter((x) => ja[x.i] == null); });
+  const totalDec = daConv.reduce((s, a) => s + CA.nDecisoes(a), 0);
   const fila = Math.max(0, [...comandosAbertos.values()].filter((id) => id === conversaAtual).length - 1);
   const pedido = mensagens.filter((x) => x.de === 'eu').at(-1)?.texto || '';
-  const html = CP.htmlAgora({ m, conv, ocupada, pend, fila, pedido, titulo: conv ? visualAba(conv).nome : '', escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
+  const html = CP.htmlAgora({ m, conv, ocupada, pend, totalDec, fila, pedido, titulo: conv ? visualAba(conv).nome : '', escalacaoHtml: m && (ocupada || !m.fim) ? await htmlEscalacao(m, { compacto: true }) : '' });
   if (!html) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false; el.innerHTML = html;
 }
@@ -2688,8 +2714,21 @@ function ligarHoje() {
 // Escritório no celular (mapa-cel.js): visão geral, setores, indicadores e ficha de quem você toca.
 function ligarMapaCel() {
   MC.ligar({ mundo: () => mundo, cam: () => cam, zoom: () => zoom, vista: vistaMapa, eu: () => EU, pessoas, retratoDe, nome: nomeBase,
-    nomeAgente: (m) => CURTO[m.nome] || tituloAgente(m), quemTrabalha, localizar, abrirAgente, abrirAba,
-    abrirChat: (alvo) => abrirChatCom(alvo), pedir: () => abrirBarraCel(true) });
+    nomeAgente: (m) => EQ.cargoDe(m.nome, cargosAgora())?.nome || CURTO[m.nome] || tituloAgente(m), quemTrabalha, localizar, abrirAgente, abrirAba,
+    abrirChat: (alvo) => abrirChatCom(alvo), pedir: () => abrirBarraCel(true), abrirCargo: abrirCargoNaEquipe });
+}
+// "Ficha do cargo" (cartão do mapa): abre o painel Equipe e leva até o cartão desse cargo.
+function abrirCargoNaEquipe(id) {
+  if (abaEq !== 'cargos') { abaEq = 'cargos'; guarda('abaEq2', abaEq); }
+  abrirEquipeVista();
+  let n = 0;
+  const achar = () => {
+    const el = [...document.querySelectorAll('#equipeVista [data-cargo]')].find((x) => x.dataset.cargo === id);
+    if (!el) { if (++n < 30) setTimeout(achar, 100); return; }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('cg-foco'); el.focus({ preventScroll: true });
+    setTimeout(() => el.classList.remove('cg-foco'), 2600);
+  };
+  achar();
 }
 
 // ---------- jornal ----------

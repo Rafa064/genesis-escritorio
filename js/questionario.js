@@ -34,6 +34,7 @@ export function html(a, info = {}) {
   }).join('');
   const quem = info.quem || 'A assistente';
   return `<div class="aprovacao ap3 qz" data-ap="${a.id}" data-ap-i="0" data-q="${a.id}">
+    ${info.numeroHtml || ''}
     <div class="ap3-cab"><span class="ap-ic">${ico('ajuda')}</span><div class="ap3-tit"><b>${pergs.length > 1 ? 'Perguntas antes de começar' : 'Uma pergunta antes de começar'}</b><small class="ap3-dest">${esc(quem)} quer acertar o pedido${info.pedido ? ` “${esc(info.pedido)}”` : ''} antes de gastar tempo.</small></div></div>
     ${pergs.length ? blocos : '<p class="ap-nota">As perguntas não vieram. Toque em Pular e responda na conversa.</p>'}
     <div class="qz-botoes"><button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(bt.txt)}</button><button type="button" class="btn ap3-recusar" data-q-pular>Pular</button></div>

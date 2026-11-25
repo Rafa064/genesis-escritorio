@@ -128,7 +128,7 @@ export const nDecisoes = (a) => explicar(a).acoes.length;
 // Um comando com várias ações vira vários cartões ("1 de 2"); a resposta vai à ponte quando todos forem decididos.
 // info: { quem, projeto, dentroHtml, origemTxt, quando }. escolhas: { [i]: 'sim' | 'nao' } já marcadas aqui.
 export function html(a, info, escolhas = {}) {
-  if (Q.ehQuestionario(a)) return Q.html(a, info);
+  if (Q.ehQuestionario(a)) return Q.html(a, { ...info, numeroHtml: numero(info, 1, 0) });
   const x = explicar(a, info), n = x.acoes.length;
   const lista = Array.isArray(x.campos.arquivos) ? x.campos.arquivos.map(String) : null;
   const decididas = Object.keys(escolhas).length;

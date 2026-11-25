@@ -1,0 +1,79 @@
+/* Conversa: espaço para decidir (js/chat-cel.js).
+   Celular: topo global some com a conversa aberta, "‹ Voltar" na faixa Dupla/Assistente, seletor de conversa
+   no lugar das abas, cartão do pedido em uma linha e compositor recolhido em "Responder".
+   PC: abas mais largas (nome inteiro no title) e o Decidir com a conta das decisões do pedido. */
+
+/* Decidir: a ação e, embaixo, quantas decisões há NESTE pedido ("4 neste pedido" / "faltam 3 de 4") */
+.cp-decidir { display: inline-grid; justify-items: center; align-content: center; gap: 1px; line-height: 1.05; padding: 4px 14px; }
+.cp-decidir small { font: 600 12px/1.1 var(--ui) !important; letter-spacing: 0; opacity: .85; white-space: nowrap; }
+
+.af-est { font-weight: 700; color: var(--tinta); }
+
+/* só no celular */
+.seg-conversas .seg-voltar, #seletorConvCel, #formChat .cmp-abrir, #formChat .cmp-recolher { display: none; }
+
+@media (min-width: 761px) {
+  /* abas: cabem nomes inteiros; o × só aparece na aba aberta (ou ao passar o mouse) */
+  .aba-conv { max-width: 260px; }
+  /* "5 decisões no estúdio" inteiro no topo */
+  #statusTopo { flex-basis: 480px; }
+  #statusTopo .av-item.principal .av-txt b { white-space: nowrap; overflow: visible; }
+  .aba-conv:not(.on):not(:hover) .x { display: none; }
+  .aba-conv:not(.on):not(:hover) { padding-right: 10px; }
+}
+
+@media (max-width: 760px) {
+  /* ---------- topo global some enquanto a conversa está aberta (a barra de baixo fica) ---------- */
+  body:has(#gaveta.conversa:not(.fechada)) #topo > :not(.nav) { display: none !important; }
+  body:has(#gaveta.conversa:not(.fechada)) #topo { height: 0; min-height: 0; padding: 0; gap: 0; grid-template-rows: 0; box-shadow: none; overflow: visible; }
+  body:has(#gaveta.conversa:not(.fechada)) #area { inset: env(safe-area-inset-top) 0 calc(64px + env(safe-area-inset-bottom)) 0; }
+  body:has(#gaveta.conversa:not(.fechada)) .av-lista { display: none; }
+
+  /* ---------- faixa de cima: ‹ Voltar · Dupla · Assistente · ＋ Novo ---------- */
+  .seg-conversas.com-novo { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .seg-conversas .seg-voltar { display: flex; align-items: center; justify-content: center; gap: 2px; min-height: 44px; padding: 0 12px 0 8px; font: 600 16px var(--ui) !important; color: var(--tinta) !important; background: var(--papel-claro) !important; box-shadow: inset -2px 0 0 rgba(90, 58, 34, .3) !important; }
+  .seg-conversas .seg-voltar span { font-size: 26px; line-height: .8; margin-top: -3px; }
+  .seg-conversas.com-novo button[data-seg] { font-size: 16px !important; padding: 0 4px; }
+  .seg-conversas.com-novo .seg-novo { font-size: 0 !important; padding: 0 12px; }
+  .seg-conversas.com-novo .seg-novo::after { content: '＋ Novo'; font: 600 18px var(--titulo); }
+
+  /* ---------- seletor da conversa (no lugar das abas): nome inteiro + estado ---------- */
+  #seletorConvCel {
+    --cor: var(--borda-clara);
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 12px 6px 14px;
+    border: 0; cursor: pointer; text-align: left; color: var(--tinta); background: var(--papel-claro);
+    box-shadow: inset 0 0 0 2px var(--contorno), inset 6px 0 0 var(--cor), inset 0 -3px 0 var(--papel-sombra);
+  }
+  .seletor-conv-cel .sc-ic { font-size: 20px; flex: none; }
+  .seletor-conv-cel .sc-txt { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .seletor-conv-cel .sc-txt b { font: 600 17px/1.2 var(--ui); overflow-wrap: anywhere; }
+  .seletor-conv-cel .sc-txt small { font: 500 13px/1.2 var(--ui); color: var(--meta); }
+  .seletor-conv-cel .sc-seta { flex: none; font-size: 18px; color: var(--madeira-escura); }
+  #listaAbasFechadas .af-item .nm { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  #listaAbasFechadas .af-acoes { flex-wrap: nowrap; margin: 0 0 6px; }
+  #listaAbasFechadas .af-acoes .btn { flex: 1 1 0; min-width: 0; padding: 0 6px; font-size: 14px; white-space: normal; line-height: 1.1; }
+  #listaAbasFechadas .af-item.aberta { opacity: 1; box-shadow: inset 0 0 0 2px var(--contorno); }
+  #listaAbasFechadas .af-topo { padding-bottom: 2px; }
+  #formChat.aberto #cmpFila { font-size: 14px; padding: 6px 10px; }
+
+  /* ---------- cartão do pedido: uma linha (o nome já está no seletor) ---------- */
+  #hudChat .cp-rodando:not(.aberto) { padding: 6px 8px 6px 10px; }
+  #hudChat .cp-rodando:not(.aberto) .cp-tit b,
+  #hudChat .cp-rodando:not(.aberto) .cp-mini,
+  #hudChat .cp-rodando:not(.aberto) .cp-depois { display: none; }
+  #hudChat .cp-rodando:not(.aberto) .cp-tit small { font: 600 15px/1.25 var(--ui); color: var(--tinta); }
+  #hudChat .cp-rodando:not(.aberto) .cp-agora-curta { margin: 4px 0 0; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  #hudChat .cp-rodando:not(.aberto) .cp-menu-btn { margin: 0; width: 40px; height: 40px; }
+  .cp-decidir { min-height: 46px; padding: 3px 12px; font-size: 18px; }
+
+  /* ---------- decisão: título, consequência e os dois botões juntos, lado a lado, inteiros ---------- */
+  .ap3 .ap3-botoes { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 8px; }
+  .ap3 .ap3-botoes .btn { min-width: 0; min-height: 48px; padding: 4px 8px; white-space: normal; line-height: 1.1; }
+
+  /* ---------- compositor recolhido em "Responder"; abre com 📎, caixa e Enviar ---------- */
+  #formChat:not(.aberto) > :not(.cmp-abrir) { display: none !important; }
+  #formChat:not(.aberto) { padding-top: 6px; }
+  #formChat:not(.aberto) .cmp-abrir { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; font-size: 18px; }
+  #formChat .cmp-sobre { display: none; } /* o seletor de cima já diz em qual conversa */
+  #formChat.aberto .cmp-recolher { display: inline-grid; place-items: center; flex: none; min-width: 48px; font-size: 20px !important; }
+}

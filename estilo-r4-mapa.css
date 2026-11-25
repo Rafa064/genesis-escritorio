@@ -78,3 +78,67 @@
   /* placa da sala de reunião: some na visão geral (lá ela encostava na placa da Criação) */
   body.mapa-geral #camada .placa.reuniao { display: none !important; }
 }
+
+/* ======================= Noite 2 · etiqueta de cada boneco (cargo + estado) ======================= */
+/* Um boneco = uma etiqueta: nome curto do cargo e um ícone de estado. Discreta para "trabalhando",
+   "pronto" e "na copa"; só "precisa de você" ganha amarelo forte, maior e pulando. */
+body:not([data-vista=mapa]) .ind-mapa { display: none; }
+.ind-mapa .etq {
+  position: absolute; left: 0; top: 0; z-index: 1; display: inline-flex; align-items: center; gap: 4px;
+  margin-top: -4px; padding: 1px 6px 1px 3px; white-space: nowrap; pointer-events: auto; cursor: pointer; will-change: transform;
+  font: 600 11px/14px var(--ui, system-ui, sans-serif); color: #fff6dc; background: rgba(27, 22, 34, .86);
+  box-shadow: 0 0 0 1px rgba(10, 6, 14, .9);
+}
+.etq > b { font-weight: 600; }
+.etq > i { flex: none; width: 10px; height: 10px; background: var(--st-fazendo, #f0973d) var(--ind-fazendo) center / 100% 100%; image-rendering: pixelated; box-shadow: 0 0 0 1px #1b1a26; }
+.etq.e-trab > i { animation: etq-pisca 1.2s steps(2) infinite; }
+.etq.e-outro > i { background: #c9a43a var(--ind-esperando) center / 100% 100%; }
+.etq.e-pronto > i { background: #4fbf82 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23fffaf0' d='M1 3h1v1H1zM2 4h1v1H2zM3 3h1v1H3zM4 2h1v1H4zM5 1h1v1H5z'/%3E%3C/svg%3E") center / 100% 100%; }
+.etq.e-copa, .etq.e-livre { color: #d9cfbd; background: rgba(27, 22, 34, .62); }
+.etq.e-copa > i { background: #8a7f6c var(--ind-livre) center / 100% 100%; }
+.etq.e-livre > i { display: none; }
+.etq.e-livre { padding-left: 6px; }
+.etq.e-precisa {
+  z-index: 3; padding: 3px 8px 3px 4px; gap: 6px; color: var(--tinta, #2a1d12); background: #ffd23f; font-size: 12px;
+  box-shadow: 0 0 0 2px #2a1a10, 0 0 0 4px rgba(255, 210, 63, .45), 2px 4px 0 2px rgba(20, 12, 6, .35);
+  animation: etq-pula 1s steps(2) infinite;
+}
+.etq.e-precisa > i { width: 14px; height: 14px; background: #2a1a10 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffd23f' d='M3 1h1v3H3zM3 5h1v1H3z'/%3E%3C/svg%3E") center / 100% 100%; box-shadow: none; }
+.etq.e-precisa > small { font: 700 12px/14px var(--ui, system-ui, sans-serif); }
+.etq.e-precisa > small::before { content: "· "; }
+.etq:not(.e-precisa) > small { display: none; }
+.etq.sel { z-index: 4; box-shadow: 0 0 0 2px #fffaf0, 0 0 0 4px #2a1a10; }
+.etq:hover { z-index: 5; }
+@keyframes etq-pula { 50% { margin-top: -7px; } }
+@keyframes etq-pisca { 50% { filter: brightness(1.35); } }
+/* visão geral do celular: só o quadradinho; "precisa de você" continua com o "!" */
+.etq.mini { padding: 0; gap: 0; background: none; box-shadow: none; }
+.etq.mini > b, .etq.mini > small { display: none; }
+.etq.mini.e-copa, .etq.mini.e-livre { display: none; }
+.etq.mini.e-precisa > i { box-shadow: 0 0 0 2px #2a1a10, 0 0 0 4px rgba(255, 210, 63, .5); background-color: #ffd23f; background-image: var(--ind-esperando); }
+@media (min-width: 761px) {
+  .ind-mapa .etq { font-size: 12px; line-height: 15px; }
+  .etq.e-precisa, .etq.e-precisa > small { font-size: 13px; line-height: 16px; }
+  /* o cartão do boneco fica acima do "Novo pedido" */
+  .ficha-mapa { bottom: 92px; }
+}
+@media (prefers-reduced-motion: reduce) { .etq.e-precisa, .etq.e-trab > i { animation: none; } }
+
+/* link "Ficha do X" no cartão do boneco (abre o painel Equipe nele) */
+.fm-ficha { justify-self: start; padding: 0; border: 0; background: none; cursor: pointer; color: var(--acao-escura, #a4541a); font: 600 14px/1.4 var(--ui, system-ui, sans-serif); text-decoration: underline; text-underline-offset: 3px; }
+.fm-ficha:hover { color: var(--tinta, #2a1d12); }
+/* cartão do cargo destacado ao chegar pelo mapa */
+.cg-card.cg-foco { outline: 3px solid #ffd23f; outline-offset: 2px; }
+
+/* ---------- celular: zoom num botão só (lupa) que abre +, − e "ver tudo" ---------- */
+@media (max-width: 760px) {
+  .zoom-cel:not(.aberto) button:not(.zc-abrir) { display: none; }
+  .zoom-cel.aberto .zc-abrir { background: var(--papel-escuro, #d9c8a4); }
+  .zoom-cel .zc-tudo { min-height: 44px; padding: 0; }
+  .zc-lupa { position: relative; display: block; width: 18px; height: 18px; }
+  .zc-lupa::before { content: ""; position: absolute; left: 0; top: 0; width: 8px; height: 8px; border: 3px solid currentColor; }
+  .zc-lupa::after { content: ""; position: absolute; left: 12px; top: 12px; width: 6px; height: 4px; background: currentColor; transform: rotate(45deg); transform-origin: 0 0; }
+  /* a faixa da sala vira a "aba" do cartão do pedido (um bloco só) */
+  body.setor-no-pedido .fs-nome { font-size: 13px; padding: 2px 8px; max-width: calc(100vw - 48px); }
+  body.setor-no-pedido .hud-mapa.pedido .cp-chip-mapa { padding-top: 12px; }
+}

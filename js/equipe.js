@@ -76,32 +76,67 @@ export function equipeDemo(skillsDoPc = []) {
 
 const MODELOS = { haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', fable: 'Fable' };
 const quandoRotina = (q) => String(q || '').replace(/^diaria\s*/i, 'todo dia às ').replace(/^semanal\s*/i, 'toda semana ');
-// Painel "Equipe": um cartão por cargo. ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas }
+// Nome legível de uma skill (o id cru, como "wiki-genesis", só aparece no detalhe).
+const NOMES_SKILL = { orquestrar: 'Orquestrar pedidos', 'wiki-genesis': 'Wiki do Genesis', 'kit-de-classe': 'Kit de classe', 'cartas-de-classe': 'Cartas de classe',
+  'hud-em-jogo': 'HUD da partida', 'tela-e-momento-maquete': 'Telas no estilo maquete', 'balanceamento-com-bots': 'Balancear com bots', 'idiomas-do-jogo': 'Traduções do jogo',
+  'arte-de-menu': 'Arte de menu', 'efeito-em-monstro': 'Efeito em monstro', 'video-do-jogo': 'Vídeo do jogo', 'remotion-best-practices': 'Boas práticas do Remotion',
+  'salvar-vitoria': 'Salvar vitória', 'resumo-da-semana': 'Resumo da semana', 'corrigir-bug-com-teste': 'Corrigir bug com teste', 'monstro-novo': 'Monstro novo',
+  'thumbnail-do-short': 'Capa do Short', 'pauta-da-semana': 'Pauta da semana' };
+export function nomeSkill(id) {
+  const s = String(id || '');
+  if (NOMES_SKILL[s]) return NOMES_SKILL[s];
+  const t = s.split(':').pop().replace(/[-_]+/g, ' ').replace(/\bgenesis\b/gi, 'Genesis').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+const frase1 = (s) => { const t = String(s || '').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).replace(/[.\s]*$/, '.') : ''; };
+// "Ensinar": o pedido que a assistente recebe para criar a próxima skill do cargo (vai para o editor, não sai sozinho).
+export function pedidoEnsinar(c, t) {
+  if (!t) return `Proponha a próxima skill da trilha do cargo ${c.nome}: olhe o que ele mais repetiu nos últimos pedidos e o que deu certo, e sugira 1 skill com id, nome e o benefício em uma frase. Depois acrescente em "trilha" do cargo "${c.id}" no escritorio/equipe.json do genesis-estudio. Não crie a skill ainda.`;
+  const id = t.nome || t.skill;
+  return `Crie a skill \`${id}\` para o cargo ${c.nome} em \`.claude/skills/${id}/SKILL.md\` do genesis-game, seguindo superpowers:writing-skills, a partir do que já funcionou (${t.porque || 'os últimos pedidos desse cargo'}). Depois atualize a trilha dele no escritorio/equipe.json do genesis-estudio (tire "${id}" de "trilha" e ponha em "skills" do cargo "${c.id}").`;
+}
+export const proximaDaTrilha = (c) => c.trilha.find((t) => !t.em.length) || null;
+// Painel "Equipe": um cartão por cargo, todos da mesma altura; a trilha (nível, próxima skill e "Ensinar") é o centro.
+// ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas }
 export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas }) {
-  const chip = (s, extra = '') => {
+  const chip = (s) => {
     const tem = s.em.length > 0, dica = !s.sabido ? 'nenhum PC informou ainda (ponte desligada ou antiga)' : tem ? `instalada no PC de ${s.em.join(' e ')}` : 'ainda não existe em nenhum PC';
-    return `<span class="cg-skill ${tem ? 'tem' : s.sabido ? 'falta' : ''} ${extra}" title="${esc(dica)}">${tem ? '✓' : '○'} ${esc(s.nome)}</span>`;
+    return `<span class="cg-skill ${tem ? 'tem' : s.sabido ? 'falta' : ''}" title="${esc(dica)}">${tem ? '✓' : '○'} ${esc(nomeSkill(s.nome))} <code>${esc(s.nome)}</code></span>`;
   };
   const vivos = lista.filter((c) => estado(c)?.vivo).length;
   const totSk = lista.reduce((n, c) => n + c.skills.length, 0), temSk = lista.reduce((n, c) => n + c.skills.filter((s) => s.em.length).length, 0);
   const algumSabido = lista.some((c) => c.skills.some((s) => s.sabido));
   const cartao = async (c) => {
-    const e = estado(c), set = setorPorId(c.setor), nivel = c.skills.filter((s) => s.em.length).length;
+    const e = estado(c), set = setorPorId(c.setor);
+    // Nível = skills dele que existem (sem nenhum PC informando, conta as da lista). A barra vai até o fim da trilha.
+    const nivel = algumSabido ? c.skills.filter((s) => s.em.length).length : c.skills.length;
+    const prox = proximaDaTrilha(c), total = Math.max(nivel, c.skills.length) + c.trilha.filter((t) => !t.em.length).length;
+    const pct = total ? Math.round((nivel / total) * 100) : 100;
+    const est = e?.vivo ? `${e.st.rot}${e.pessoa ? ' · para ' + e.pessoa : ''}` : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
+    const rotina = c.rotinas[0];
     return `<article class="cg-card ${e?.vivo ? 'vivo' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa">
-      <img src="${await retratoDe(c.id)}" alt="">
-      <div class="cg-txt">
-        <div class="cg-nome"><b>${esc(c.nome)}</b>${c.modelo ? `<span class="modelo claude">${esc(MODELOS[baixo(c.modelo)] || c.modelo)}</span>` : ''}<span class="cg-setor">${set.icone} ${esc(set.nome)}</span>${algumSabido ? `<span class="cg-nivel" title="Nível = quantas skills dele existem">nível ${nivel}</span>` : ''}</div>
-        <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i>${esc(e?.vivo ? `${e.st.rot}${e.pessoa ? ' · para ' + e.pessoa : ''}` : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa')}${e?.acao ? ` <span>${esc(e.acao)}</span>` : ''}</div>
-        <p class="cg-papel">${esc(c.papel || '')}</p>
-        <div class="cg-linha"><span class="cg-rot">Skills</span><div>${c.skills.length ? c.skills.map((s) => chip(s)).join('') : '<i class="cg-nada">nenhuma ainda</i>'}</div></div>
-        ${c.trilha.length ? `<div class="cg-linha"><span class="cg-rot">Próxima</span><div>${c.trilha.map((t) => `${chip(t, 'trilha')}<span class="cg-pq">${esc(t.porque || '')}</span>`).join('')}</div></div>` : ''}
-        ${c.apelidos.length ? `<div class="cg-linha"><span class="cg-rot">Também atende por</span><div>${c.apelidos.map((a) => `<code class="cg-apelido">${esc(a.nome)}</code>`).join('')}</div></div>` : ''}
-        ${c.rotinas.length ? `<div class="cg-linha"><span class="cg-rot">Faz sozinho</span><div>${c.rotinas.map((r) => `<span class="cg-rotina">⏰ ${esc(quandoRotina(r.quando))}: ${esc(r.o_que)}</span>`).join('')}</div></div>` : ''}
-      </div></article>`;
+      <header class="cg-cab"><img src="${await retratoDe(c.id)}" alt="">
+        <div class="cg-txt"><b class="cg-nm">${esc(c.nome)}</b>
+          <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i><span>${esc(est)}${e?.acao ? ` · ${esc(e.acao)}` : ''}</span></div></div></header>
+      <p class="cg-papel">${esc(c.papel || '')}</p>
+      ${rotina ? `<p class="cg-rotina" title="${esc(c.rotinas.map((r) => `${quandoRotina(r.quando)}: ${r.o_que}`).join('\n'))}">⏰ Sozinho, ${esc(quandoRotina(rotina.quando))}: ${esc(String(rotina.o_que).replace(/\s*\(.*\)\s*$/, '').split(':')[0])}</p>` : ''}
+      <div class="cg-trilha">
+        <div class="cg-niv"><b>Nível ${nivel}${prox ? ` <span>→ ${nivel + 1}</span>` : ''}</b><small>${nivel} de ${total} skills da trilha</small></div>
+        <div class="cg-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${nivel}" aria-label="Trilha de ${esc(c.nome)}"><i style="width:${pct}%"></i></div>
+        ${prox ? `<div class="cg-prox"><div><small>Próxima skill</small><b>${esc(nomeSkill(prox.nome))}</b><p>${esc(frase1(prox.porque))}</p></div><button type="button" class="btn forte cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara o pedido para a assistente criar esta skill. Nada é enviado antes de você revisar.">Ensinar</button></div>`
+          : `<div class="cg-prox fim"><div><small>Próxima skill</small><p>Trilha completa por enquanto.</p></div><button type="button" class="btn cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara um pedido para a assistente propor a próxima skill deste cargo">Sugerir próxima</button></div>`}
+      </div>
+      <details class="cg-det"><summary>${c.skills.length ? `${c.skills.length} ${c.skills.length === 1 ? 'skill' : 'skills'}` : 'Nenhuma skill ainda'} · detalhes</summary>
+        ${c.skills.length ? `<div class="cg-chips">${c.skills.map(chip).join('')}</div>` : ''}
+        ${prox ? `<p class="cg-ficha">Próxima: <code>${esc(prox.nome)}</code></p>` : ''}
+        ${c.apelidos.length ? `<p class="cg-ficha">Também atende por ${c.apelidos.map((a) => `<code>${esc(a.nome)}</code>`).join(' ')}</p>` : ''}
+        ${c.modelo ? `<p class="cg-ficha">Modelo: ${esc(MODELOS[baixo(c.modelo)] || c.modelo)}</p>` : ''}
+      </details>
+    </article>`;
   };
   const grupos = ['criacao', 'marketing'].map((s) => [setorPorId(s), lista.filter((c) => (c.setor || 'criacao') === s)]).filter(([, l]) => l.length);
-  let html = `<p class="eq-resumo"><b>${lista.length} cargos</b>, um boneco cada, dos dois devs${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} skills instaladas` : ''}</p>`;
-  for (const [set, l] of grupos) html += `<section class="eq-sec cg-sec" style="--cor:${set.cor}"><h3>${set.icone} ${esc(set.nome)} <small>${l.length}</small></h3><div class="cg-grade">${(await Promise.all(l.map(cartao))).join('')}</div></section>`;
+  let html = `<p class="eq-resumo"><b>${lista.length} cargos</b>, um boneco cada, dos dois devs${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} skills instaladas` : ''} · <b>Ensinar</b> sobe o cargo de nível</p>`;
+  for (const [set, l] of grupos) html += `<section class="eq-sec cg-sec" style="--cor:${set.cor}"><h3>${set.icone} ${esc(set.nome)} <small>${l.length} ${l.length === 1 ? 'cargo' : 'cargos'}</small></h3><div class="cg-grade">${(await Promise.all(l.map(cartao))).join('')}</div></section>`;
   const assist = await retratoDe('Orquestrador');
   html += `<section class="eq-sec cg-sec cg-extra"><h3>Também no escritório</h3><div class="cg-mais">
     <div class="cg-mini"><img src="${assist}" alt=""><div><b>Assistente de cada dev</b>${pessoas().map((p) => ` <span class="eq-dono" style="--cor:${corPessoa(p)}">${esc(p)}</span>`).join('')}<p>É a sessão do Claude de cada um, na recepção da sala. Quando ela chama <code>general-purpose</code>, <code>Explore</code> ou <code>Plan</code>, quem trabalha é ela mesma.</p></div></div>
