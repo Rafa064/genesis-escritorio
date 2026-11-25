@@ -176,3 +176,30 @@
   .cg-mapa { display: block; width: 100%; min-height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) { .cg-abre { transition: none; } }
+
+/* ======================= Noite 2 · rodada 5: "Agora: …" no cartão e corpo de 16 px no PC ======================= */
+#equipeVista .cg-acao b { color: var(--tinta, var(--texto)); font-weight: 700; }
+#equipeVista .cg-acao span { font-weight: 600; }
+#equipeVista .cg-card.vivo:not(.precisa) .cg-acao { padding: 6px 8px; background: rgba(90, 58, 34, .07); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--cor) 55%, #8a7a66); }
+@media (min-width: 761px) {
+  /* frases de papel e rotina inteiras (sem cortar no meio) */
+  #equipeVista .cg-card { font-size: 16px; }
+  #equipeVista .cg-papel { font-size: 16px; line-height: 1.45; display: block; -webkit-line-clamp: unset; overflow: visible; }
+  #equipeVista .cg-rotina { font-size: 15px; white-space: normal; overflow: visible; text-overflow: clip; }
+  #equipeVista .cg-acao { font-size: 16px; }
+  #equipeVista .cg-sabe { font-size: 15px; }
+  #equipeVista .cg-est { font-size: 14px; }
+  #equipeVista .cg-prox p { font-size: 15px; }
+  #equipeVista .cg-prox small { font-size: 12px; }
+  #equipeVista .cg-ficha, #equipeVista .cg-det { font-size: 15px; }
+  #equipeVista .cg-det > summary { font-size: 15px; }
+  #equipeVista .eq-resumo { font-size: 15px; }
+  .cg-mini, .cg-mini p { font-size: 15px; }
+}
+@media (max-width: 760px) {
+  /* celular fechado: rosto, nome, estado e "Agora: o que está fazendo"; habilidades e nível só ao abrir */
+  #equipeVista .cg-card:not(.precisa) .cg-acao { display: block; }
+  #equipeVista .cg-acao { font-size: 14px; line-height: 1.4; }
+  #equipeVista .cg-sabe { display: none; }
+  #equipeVista .cg-card.aberto .cg-sabe { display: block; }
+}

@@ -173,6 +173,11 @@ function estadoDoCargo(c) {
   const { m, st } = mesaDoCargo(c), vivo = TRABALHANDO.includes(st.cls);
   return { st, vivo, pessoa: vivo ? m.pessoa : '', acao: vivo && m.ult ? primeiraFrase(frase(m.ult), 80) : '' };
 }
+// Em andamento (uma definição só, contagem.js): tarefas = passos/pedidos sendo feitos; agentes = cargos trabalhando.
+// Quem espera você ou travou fica fora (está em "Precisa de você").
+function andamento() {
+  return { tarefas: quemTrabalha().filter((a) => CTG.trabalhando(a.cls)).length, agentes: cargosAgora().filter((c) => CTG.trabalhando(estadoDoCargo(c).st.cls)).length };
+}
 // "Ensinar" (Equipe): o pedido para a assistente criar a próxima skill do cargo abre no editor do Hoje (não sai sozinho).
 function ensinarCargo(id) {
   const c = cargosAgora().find((x) => x.id === id); if (!c) return;
@@ -370,8 +375,8 @@ async function toast({ titulo, texto, cor, agente, acao }) {
 const tela = $('#tela'), g = tela.getContext('2d');
 let zoom = innerWidth <= 760 ? 0 : Number(guardado('zoom', '0')) || 0, VW = 480, VH = 270; // no celular sempre abre na visão geral
 const cam = { x: 0, y: 0, alvo: null };
-// Celular em pé: a visão geral põe o andar inteiro na largura (zoom < 1; mapa-cel.js monta o resto).
-const zoomGeral = (w, h) => (w <= 760 && h > w ? Math.min(1, w / (MW * T)) : 1);
+// Celular em pé: a visão geral mostra o andar quase inteiro (zoom < 1; mapa-cel.js calcula e monta o resto).
+const zoomGeral = (w, h) => (w <= 760 && h > w ? MC.zoomGeral(w, h) : 1);
 // Mudar zoom e câmera de fora (chips de setor e ficha do mapa-cel.js). z = 0: visão geral.
 function vistaMapa(z, alvo) { zoom = z; dimensionar(); cam.alvo = alvo || null; }
 function dimensionar() {
@@ -513,7 +518,7 @@ function laco(agora) {
     mundo.atualizar(dt, { dx, dy, skate: teclas.has('shift') });
     const p = posAtual(), assinatura = `${p.x},${p.y},${p.dir},${p.skate},${p.andando}`;
     if (assinatura !== ultimaPosEnviada) { ultimaPosEnviada = assinatura; R.enviarPos(p); }
-    const [ax, ay] = cam.alvo || [mundo.eu.x, mundo.eu.y - 10];
+    const [ax, ay] = cam.alvo || (zoom < 1 ? MC.centroGeral(VW) : [mundo.eu.x, mundo.eu.y - 10]); // visão geral: onde estão os bonecos
     const meioX = (MW * T - VW) / 2, meioY = (MH * T - VH) / 2;
     const tx = Math.max(Math.min(0, meioX), Math.min(Math.max(MW * T - VW, meioX), ax - VW / 2));
     // No celular a barra de setores (em cima) e o pedido (embaixo) cobrem o mapa: a câmera usa só a faixa útil.
@@ -709,7 +714,8 @@ function desenharJanelaChat() {
   const m = aba === 'chat' && conv ? missaoDaConversa(conv) : null;
   el.innerHTML = min
     ? `<b class="jc-tit">${aba === 'dupla' ? '✉ Dupla' : '✦ Assistente'}</b><span class="espaco"></span><button type="button" class="btn mini" data-jc="abrir">Abrir conversa</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar" aria-label="Fechar">×</button>`
-    : `${m ? '<button type="button" class="btn mini" data-jc="detalhes">Detalhes do pedido</button>' : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório">▁ Minimizar</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
+    : `${aba === 'chat' ? CC.botaoDupla() : ''}${m ? '<button type="button" class="btn mini" data-jc="detalhes" title="Etapa, página e opções do pedido">Detalhes</button>' : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório" aria-label="Minimizar">▁</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
+  CC.medirJanela(el);
 }
 $('#janelaChat').onclick = (e) => {
   const k = e.target.closest('[data-jc]')?.dataset.jc; if (!k) return;
@@ -917,7 +923,7 @@ async function desenharTopo() {
   const dp = decisoesPendentes(), nDec = dp.n, erros = todos.filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'erro').length;
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
   for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = `${novosRecados} nova${novosRecados > 1 ? 's' : ''}`; }
-  ultPend.erros = erros; ultPend.contagem = dp.contagem;
+  ultPend.erros = erros; ultPend.contagem = dp.contagem; ultPend.lista = dp.lista;
   desenharPendencias(nDec, novosRecados);
   await desenharPerfil();
   document.title = nDec ? `(${nDec}) Estúdio Genesis` : 'Estúdio Genesis';
@@ -946,8 +952,8 @@ function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ?
   if (bolas) itens.push({ k: 'bola', nivel: 'aviso', ic: 'seta', txt: `${outro} mandou ${bolas > 1 ? `${bolas} pedidos` : 'um pedido'} para você`, sub: 'Assuma ou encaminhe à sua assistente', acao: 'Ver' });
   if (ultPend.erros) itens.push({ k: 'atencao', nivel: 'aviso', ic: 'alerta', txt: `${ultPend.erros > 1 ? `${ultPend.erros} pedidos seus travaram` : 'Um pedido seu travou'}`, sub: 'Veja o que houve e tente de novo', acao: 'Ver' });
   // Uma faixa só; fila, fazendo e custo ficam no "Resumo" recolhido (o mapa começa mais alto).
-  const nTrab = quemTrabalha().length;
-  CT.desenharAviso($('#statusTopo'), itens, { calmo: `Nada esperando você${nTrab ? ` · ${nTrab} trabalhando` : ''}`, numerosHtml: () => { const r = MC.resumoAtual(); return r ? Hoje.htmlNumerosDia(r, { custo: true }) : ''; }, aoNumero: (q) => MC.irResumo(q) });
+  const and = andamento();
+  CT.desenharAviso($('#statusTopo'), itens, { calmo: `Nada esperando você${and.tarefas || and.agentes ? ` · ${CTG.textoAndamento(and)}` : ''}`, numerosHtml: () => { const r = MC.resumoAtual(); return r ? Hoje.htmlNumerosDia(r, { custo: true }) : ''; }, aoNumero: (q) => MC.irResumo(q) });
   document.body.classList.toggle('sem-aviso', false);
   const pc = $('#pontoConversas'); if (pc) { pc.hidden = !naoVistasN; pc.title = `${naoVistasN} resposta(s) que você ainda não viu`; }
   $('#statusTopo').onclick = (e) => {
@@ -1125,11 +1131,19 @@ function decisoesPendentes() {
   const alertas = meus.filter((a) => !comAprov.has(a.m.nome));
   // A conta em si fica em contagem.js (fonte única do topo e do Hoje). Pedido = a conversa; do terminal, o agente.
   const pedidoDe = (a) => { if (a.conversa_id != null) return 'c' + a.conversa_id; const j = lerJson(a.detalhe); return 't' + (j.origem?.agente || j.pedidoDe?.agente || a.id); };
-  const contagem = CTG.contarPendencias({ decisoes: [
-    ...aprovacoes.map((a) => ({ pedido: pedidoDe(a), n: CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length })),
-    ...alertas.map((a) => ({ pedido: 'a' + (a.m.sessao || a.m.nome), n: 1 })),
-  ] });
-  return { n: contagem.decisoes, alertas, contagem };
+  // Para o Hoje listar os pedidos: nome do pedido, a próxima decisão (a 1ª que falta) e quem espera.
+  const semHtml = (s) => { const t = document.createElement('textarea'); t.innerHTML = String(s || ''); return t.value; };
+  const daAprov = (a) => {
+    const info = infoAprovacao(a), x = CA.explicar(a, info), feitas = escolhasAprov.get(a.id) || {};
+    const prox = x.acoes.find((_, i) => !(i in feitas)), j = lerJson(a.detalhe), quem = j.origem?.agente || j.pedidoDe?.agente || 'Orquestrador';
+    return { titulo: info.pedido || `${tituloDe(quem)} no terminal`, proxima: semHtml(prox?.t), quem };
+  };
+  const decisoes = [
+    ...aprovacoes.map((a) => ({ pedido: pedidoDe(a), n: CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, ...daAprov(a) })),
+    ...alertas.map((a) => ({ pedido: 'a' + (a.m.sessao || a.m.nome), n: 1, titulo: a.m.ult?._m?.titulo ? primeiraFrase(a.m.ult._m.titulo, 70) : tituloDe(a.m.nome), proxima: a.m.ult ? primeiraFrase(frase(a.m.ult), 90) : 'Responder ao agente', quem: a.m.nome })),
+  ];
+  const contagem = CTG.contarPendencias({ decisoes });
+  return { n: contagem.decisoes, alertas, contagem, lista: CTG.listarPedidos(decisoes) };
 }
 
 // ---------- notificações no aparelho (Web Push mandado pela ponte do PC) ----------
@@ -2627,7 +2641,7 @@ async function htmlEquipeAgora() {
   };
   if (!ativos.length) return '<div class="eqa-vazio"><b>Ninguém trabalhando agora.</b><p>Quando você pedir algo, a assistente chama os agentes e eles aparecem aqui.</p></div>';
   const resto = ativos.filter((a) => a.cls !== 'alerta');
-  return `<p class="eqa-resumo"><b>${ativos.length}</b> trabalhando agora${alertas.length ? ` · <span class="bloq">${alertas.length} precisa${alertas.length > 1 ? 'm' : ''} de você</span>` : ''}</p>
+  return `<p class="eqa-resumo"><b>${esc(CTG.textoAndamento(andamento()))}</b> em andamento${alertas.length ? ` · <span class="bloq">${alertas.length} precisa${alertas.length > 1 ? 'm' : ''} de você</span>` : ''}</p>
     ${alertas.length ? `<h3 class="eqa-sec">Precisa de você</h3><div class="eqa-lista">${(await Promise.all(alertas.map(linha))).join('')}</div>` : ''}
     <h3 class="eqa-sec">Trabalhando</h3><div class="eqa-lista">${(await Promise.all(resto.map(linha))).join('')}</div>
     <p class="eqa-nota">Toque num cartão para ver o agente no mapa. Agentes, skills e conectores ficam em <button type="button" class="link" data-eqaba-ir="catalogo">Catálogo e ajustes</button>.</p>`;
@@ -2647,7 +2661,7 @@ async function desenharEquipeVista() {
     abasEq.innerHTML = [['cargos', 'Quem é quem'], ['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo<span class="so-pc"> e ajustes</span>']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
     $('#equipeVista').dataset.aba = abaEq;
     if (abaEq === 'agora') { $('#equipeCorpo').innerHTML = await htmlEquipeAgora(); return; }
-    if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas }); return; }
+    if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas, andamento: andamento() }); return; }
     const pes = ['', ...pessoas()];
     $('#filtrosEquipe').innerHTML = `<div class="eq-grupo">${pes.map((p) => `<button data-fpes="${esc(p)}" class="${p === filtroPesEq ? 'on' : ''}">${p ? esc(p) : 'Os dois'}</button>`).join('')}</div><div class="eq-grupo">${FILTROS_TIPO_EQ.map(([t, r]) => `<button data-ftipo="${t}" class="${t === filtroTipoEq ? 'on' : ''}">${r}</button>`).join('')}</div>`;
     const q = buscaEq.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2723,7 +2737,7 @@ async function mandarPronto(texto, { alvo, projeto } = {}) {
 }
 function ligarHoje() {
   Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto, resumoIr: (q) => MC.irResumo(q),
-    contagens: () => ({ fazendo: quemTrabalha().filter((a) => !CTG.esperaVoce(a.cls)).length, esperando: ultPend.alertas, pendencias: ultPend.contagem }),
+    contagens: () => { const and = andamento(); return { ...and, fazendo: and.tarefas, esperando: ultPend.alertas, pendencias: ultPend.contagem, pedidos: ultPend.lista || [] }; },
     eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
     abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
 }
@@ -2732,7 +2746,7 @@ function ligarHoje() {
 function ligarMapaCel() {
   MC.ligar({ mundo: () => mundo, cam: () => cam, zoom: () => zoom, vista: vistaMapa, eu: () => EU, pessoas, retratoDe, nome: nomeBase,
     nomeAgente: (m) => EQ.cargoDe(m.nome, cargosAgora())?.nome || CURTO[m.nome] || tituloAgente(m), quemTrabalha, localizar, abrirAgente, abrirAba,
-    abrirChat: (alvo) => abrirChatCom(alvo), pedir: () => abrirBarraCel(true), abrirCargo: abrirCargoNaEquipe });
+    abrirChat: (alvo) => abrirChatCom(alvo), pedir: () => abrirBarraCel(true), abrirCargo: abrirCargoNaEquipe, contagens: () => andamento() });
 }
 // "Ficha do cargo" (cartão do mapa): abre o painel Equipe e leva até o cartão desse cargo.
 function abrirCargoNaEquipe(id) {
@@ -2970,7 +2984,7 @@ async function iniciarDemo() {
     { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];
   mundo = await criarMundo();
-  await mundo.criarEu('Rafael', [8.5, 12.6]);
+  await mundo.criarEu('Rafael', [6.5, 6.4]); // na própria sala, como no app de verdade (no corredor ele colava na placa da Criação)
   await sincronizarMundo();
   presentes.set('Kenny', { status: 'disponivel' });
   await mundo.atualizarPessoa('Kenny', { x: 33.5 * T, y: 6.4 * T, dir: 'baixo' });

@@ -9,7 +9,7 @@ import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
 import * as Rot from './hoje-rotinas.js';
 import { cargoDe } from './equipe.js';
-import { contarPendencias, comAvisos, textoDecisoes, textoPendencias, separarAndamento } from './contagem.js';
+import { contarPendencias, comAvisos, textoPendencias, separarAndamento, textoAndamento } from './contagem.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -92,7 +92,7 @@ export async function resumoDoDia() {
   const pedSemana = dias.reduce((s, _, i) => s + soma(i, 'pedidos'), 0), custoSemana = dias.reduce((s, _, i) => s + soma(i, 'custo'), 0);
   const porPedido = pedSemana ? custoSemana / pedSemana : 0;
   const c = ctx.contagens?.() || {};
-  return { fila, fazendo: c.fazendo ?? 0, esperando: c.esperando ?? 0, livres: c.livres ?? 0, hoje, ontem, media, diasMedia: ant.length, porPedido, estimativaFila: fila * porPedido, temCusto: pessoas.some((p) => porPessoa[p]?.fonte) };
+  return { fila, fazendo: c.fazendo ?? 0, tarefas: c.tarefas ?? c.fazendo ?? 0, agentes: c.agentes ?? 0, esperando: c.esperando ?? 0, livres: c.livres ?? 0, hoje, ontem, media, diasMedia: ant.length, porPedido, estimativaFila: fila * porPedido, temCusto: pessoas.some((p) => porPessoa[p]?.fonte) };
 }
 export const dinheiroCurto = dinheiro;
 export function comparacao(r) {
@@ -101,14 +101,16 @@ export function comparacao(r) {
   const pct = Math.round(((r.hoje - r.media) / r.media) * 100);
   return pct > 5 ? `${pct}% acima da média` : pct < -5 ? `${-pct}% abaixo da média` : 'na média dos últimos dias';
 }
+// "11" + "tarefas · 3 agentes": o mesmo texto do Hoje e da Equipe (contagem.js), com o primeiro número em destaque.
+const rotuloAndamento = (r) => textoAndamento({ tarefas: r.tarefas ?? r.fazendo, agentes: r.agentes }).replace(/^d+s/, '').replace(/^Nada em andamento$/, 'tarefas · 0 agentes');
 // Os três números do dia (mesma cor e ícone dos indicadores do mapa). Toque abre a lista.
 export function htmlNumerosDia(r, { custo = false, curto = false } = {}) {
   if (curto) { // faixa fina de uma linha (mapa aproximado no celular)
     const c = (v, rot, cls, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
-    return `<div class="rd-linha rd-fino">${c(r.fila, 'na fila', 'fila', 'Ver a fila do dia')}${c(r.fazendo, 'fazendo', 'fazendo', 'Quem está trabalhando agora')}${c(r.esperando, 'decisões', 'esperando', 'Decisões que só você pode dar')}${c('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA', 'custo', 'Gasto estimado de IA hoje (US$)')}</div>`;
+    return `<div class="rd-linha rd-fino">${c(r.fila, 'na fila', 'fila', 'Ver a fila do dia')}${c(r.tarefas ?? r.fazendo, rotuloAndamento(r), 'fazendo', 'Em andamento: tarefas sendo feitas e agentes trabalhando')}${c(r.esperando, 'decisões', 'esperando', 'Decisões que só você pode dar')}${c('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA', 'custo', 'Gasto estimado de IA hoje (US$)')}</div>`;
   }
   const n = (v, rot, cls, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
-  return `<div class="rd-linha${custo ? ' com-custo' : ''}">${n(r.fila, 'Na fila', 'fila', 'Pedidos esperando a vez: ver a fila do dia')}${n(r.fazendo, 'Fazendo', 'fazendo', 'Quem está trabalhando agora')}${n(r.esperando, r.esperando === 1 ? 'Decisão sua' : 'Decisões suas', 'esperando', 'Decisões e autorizações que só você pode dar')}${custo ? n('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA hoje', 'custo', 'Gasto estimado de IA hoje: ver o custo') : ''}</div>`;
+  return `<div class="rd-linha${custo ? ' com-custo' : ''}">${n(r.fila, 'Na fila', 'fila', 'Pedidos esperando a vez: ver a fila do dia')}${n(r.tarefas ?? r.fazendo, rotuloAndamento(r), 'fazendo', 'Em andamento: tarefas sendo feitas e agentes trabalhando')}${n(r.esperando, r.esperando === 1 ? 'Decisão sua' : 'Decisões suas', 'esperando', 'Decisões e autorizações que só você pode dar')}${custo ? n('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA hoje', 'custo', 'Gasto estimado de IA hoje: ver o custo') : ''}</div>`;
 }
 // Fim do Hoje: uma linha recolhida com o gasto de IA; tocar abre média, ontem, fila e os números do dia.
 function htmlCabecaDia(r) {
@@ -227,6 +229,18 @@ async function linhaHoje({ quem, titulo, sub = '', botao = '', cls = '' }) {
 // selo: o número do grupo, sempre com unidade (ex.: "5 decisões · 1 aviso"); sem ele, "N itens".
 const grupoHoje = (cls, titulo, itens, vazio, selo = '', topo = '') => { const n = selo || (itens.length ? plural(itens.length, 'item', 'itens') : ''); return `<section class="hj-grupo ${cls}"><h3><span>${titulo}</span>${n ? `<i>${n}</i>` : ''}</h3>${topo}${itens.length ? itens.join('') : `<p class="hj-grupo-vazio">${vazio}</p>`}</section>`; };
 
+// "Precisa de você": os pedidos que esperam decisão, cada um com o nome e a próxima decisão em linguagem simples,
+// e UM botão "Revisar decisões" (abre a lista de decisões, a mesma do aviso do topo).
+async function htmlPedidosEsperando(pedidos) {
+  const { esc } = ctx;
+  const minus = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+  const itens = await Promise.all(pedidos.map(async (p) => {
+    const quem = quemFaz(p.quem === 'Orquestrador' ? '' : p.quem);
+    const prox = !p.proxima ? '' : /^aguarda /i.test(p.proxima) ? `${esc(quem.nome)}: ${esc(minus(p.proxima))}` : `Próxima: ${esc(minus(p.proxima))}`;
+    return `<li class="hj-ped"><img class="hj-rosto" src="${await ctx.retratoDe(quem.id)}" alt="" title="${esc(quem.nome)}"><div class="hj-ped-txt"><b>${esc(p.titulo || 'Pedido sem nome')}</b><small><span class="hj-ped-n">${plural(p.n, 'decisão', 'decisões')}</span>${prox ? ` · ${prox}` : ''}</small></div></li>`;
+  }));
+  return `<article class="hj-item urgente hj-peds"><ul class="hj-ped-lista">${itens.join('')}</ul><button class="btn forte hj-item-btn hj-rever-dec" data-rd="esperando">Revisar decisões</button></article>`;
+}
 // Sugestões em três grupos: o que precisa de você, o que está andando e o que ficou pronto hoje.
 async function htmlSugestoes() {
   const { esc } = ctx;
@@ -241,12 +255,12 @@ async function htmlSugestoes() {
   const velho = s && (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
   const precisa = [], andando = [], pronto = [], sugeridas = [], depois = [];
-  let nAgora = 0; // "agora" só conta quem continua trabalhando (não quem espera você nem pedido só enviado)
   // 1. Decisões que só você pode dar: a MESMA conta do aviso do topo (contagem.js).
   const t = Rot.dados(ctx).teste, prog = quemFaz('programador');
   const dec = ctx.contagens?.().pendencias || contarPendencias();
   const cont = comAvisos(dec, t && !t.ok ? 1 : 0);
-  if (dec.decisoes) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: textoDecisoes(dec), sub: 'os agentes esperam você', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
+  //    Um item por PEDIDO (nome + a próxima decisão), sem repetir o agente parado: ele já está no pedido dele.
+  if (dec.decisoes) precisa.push(await htmlPedidosEsperando(ctx.contagens?.().pedidos || []));
   // 2. Teste da manhã (Programador): quebrou = um aviso em "Precisa de você"; passou = pronto hoje.
   if (t && !t.ok) precisa.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã quebrou', sub: esc(String(t.erros?.[0] || 'veja o registro').slice(0, 80)), botao: '<button class="btn forte hj-item-btn" data-teste-preparar>Preparar pedido</button>', cls: 'urgente' }));
   if (t?.ok) pronto.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã passou', sub: `às ${D.hora(new Date(t.quando).getTime())}`, botao: '<span class="hj-selo-ok">ALL OK</span>' }));
@@ -273,10 +287,8 @@ async function htmlSugestoes() {
   // 4. Quem está trabalhando agora e o que já entregou hoje (da fila do dia, só a sua equipe).
   try {
     const linhas = [...((await filaDoDia()).get(eu)?.values() || [])];
-    const { andando: continuam, esperando } = separarAndamento(linhas.filter((x) => x.agora.length), (l) => l.agora.some((x) => x.alerta));
-    for (const l of esperando) precisa.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora.find((x) => x.alerta).t, sub: '<b class="hj-alerta">parado, esperando você</b>', botao: '<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>', cls: 'urgente espera' }));
+    const { andando: continuam } = separarAndamento(linhas.filter((x) => x.agora.length), (l) => l.agora.some((x) => x.alerta));
     for (const l of continuam) andando.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora[0].t, sub: 'trabalhando', botao: '<button class="btn hj-item-btn" data-rd="fazendo">Ver</button>' }));
-    nAgora = continuam.length;
     for (const l of linhas.filter((x) => x.feitos && x.ultimoFeito && x.nome !== 'Orquestrador')) pronto.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: primeiraFrase(l.ultimoFeito.texto || 'Entrega', 80), sub: `${plural(l.feitos, 'entrega')} hoje`, botao: '<button class="btn hj-item-btn" data-hsub="fila">Ver</button>', cls: 'feito' }));
   } catch (e) { console.warn('hoje (fila):', e); }
   // 5. Ideias para preparar quando der: melhorias (Gerente) e posts (Estrategista).
@@ -285,10 +297,11 @@ async function htmlSugestoes() {
   const cab = s ? `<div class="hj-cab sub"><div><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'escritas ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : ((h) => h === 'agora' ? 'escritas agora' : 'escritas há ' + h)(D.ha(new Date(p.gerado || s.gerado).getTime()))}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`
     : `<div class="hj-cab sub"><div><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
   const projs = s?.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
+  const and = { tarefas: ctx.contagens?.().tarefas ?? 0, agentes: ctx.contagens?.().agentes ?? 0 }; // a mesma conta do mapa e da Equipe
   // Ordem fixa: Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois.
   return livre
     + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.', textoPendencias(cont))
-    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', nAgora ? `${nAgora} agora` : andando.length ? plural(andando.length, 'item', 'itens') : '')
+    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', and.tarefas || and.agentes ? textoAndamento(and) : andando.length ? plural(andando.length, 'item', 'itens') : '', and.tarefas > andando.length ? '<p class="hj-grupo-nota">Abaixo, só os da sua equipe.</p>' : '')
     + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.', pronto.length ? plural(pronto.length, 'entrega') : '')
     + grupoHoje('g-sugestoes', 'Sugestões para mandar', sugeridas, 'Todas as sugestões de hoje já foram mandadas.', sugeridas.length ? plural(sugeridas.length, 'sugestão', 'sugestões') : '', projs + cab)
     + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia')) : '')
@@ -353,7 +366,7 @@ async function htmlFila() {
   for (const p of ordem) {
     const linhas = [...(por.get(p)?.values() || [])].filter((l) => l.agora.length || l.depois.length || l.feitos);
     const ag = linhas.reduce((n, l) => n + l.agora.length, 0), dp = linhas.reduce((n, l) => n + l.depois.length, 0), ft = linhas.reduce((n, l) => n + l.feitos, 0);
-    html += `<section class="hj-pessoa" style="--cor:${ctx.corPessoa(p)}"><h3><span>${esc(p === eu ? 'Sua equipe' : 'Equipe de ' + p)}</span><small>${ag} trabalhando · ${dp} na fila · ${plural(ft, 'entrega')} hoje</small></h3>`;
+    html += `<section class="hj-pessoa" style="--cor:${ctx.corPessoa(p)}"><h3><span>${esc(p === eu ? 'Sua equipe' : 'Equipe de ' + p)}</span><small>${plural(ag, 'tarefa')} agora · ${dp} na fila · ${plural(ft, 'entrega')} hoje</small></h3>`;
     if (!linhas.length) { html += '<p class="hj-vazio mini">Ninguém trabalhando nem na fila. Que tal uma sugestão do dia?</p></section>'; continue; }
     linhas.sort((a, b) => (b.agora.length - a.agora.length) || (b.depois.length - a.depois.length) || (b.feitos - a.feitos));
     for (const l of linhas) {

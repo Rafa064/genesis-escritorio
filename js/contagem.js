@@ -39,3 +39,32 @@ export function separarAndamento(lista = [], ehAlerta = esperaVoce) {
   for (const x of lista) (ehAlerta(x) ? esperando : andando).push(x);
   return { andando, esperando };
 }
+
+// ---------- Em andamento: UMA definição com unidade explícita (mapa, Hoje e Equipe usam a mesma) ----------
+// Tarefa = cada passo ou pedido sendo feito agora (um agente pode tocar mais de um).
+// Agente = cada cargo da equipe trabalhando agora. Quem espera você (alerta) ou travou (erro) não entra:
+// está em "Precisa de você".
+export const trabalhando = (cls) => cls === 'trab' || cls === 'semsinal';
+// "11 tarefas · 3 agentes" · "1 tarefa · 1 agente" · "Nada em andamento". Nome estável: a frente do mapa usa.
+export function textoAndamento({ tarefas = 0, agentes = 0 } = {}) {
+  const t = Math.max(0, tarefas | 0), a = Math.max(0, agentes | 0);
+  if (!t && !a) return 'Nada em andamento';
+  return `${um(t, 'tarefa', 'tarefas')} · ${um(a, 'agente', 'agentes')}`;
+}
+
+// Os pedidos que esperam você, um por linha: nome do pedido, quantas decisões e a próxima (a primeira que falta).
+// decisoes: os mesmos itens de contarPendencias, com { titulo, proxima, quem } (opcionais).
+export function listarPedidos(decisoes = []) {
+  const por = new Map();
+  for (const d of decisoes) {
+    if (!d || !(d.n > 0)) continue;
+    const k = String(d.pedido ?? '?');
+    const p = por.get(k) || { pedido: k, titulo: '', n: 0, proxima: '', quem: '' };
+    p.n += d.n;
+    if (!p.titulo && d.titulo) p.titulo = d.titulo;
+    if (!p.proxima && d.proxima) { p.proxima = d.proxima; p.quem = d.quem || p.quem; }
+    if (!p.quem && d.quem) p.quem = d.quem;
+    por.set(k, p);
+  }
+  return [...por.values()];
+}

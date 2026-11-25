@@ -29,11 +29,12 @@ function rotuloBotao(a) {
 // Voltar / Próxima (ou Enviar na última) do modo uma-por-vez.
 function navHtml(a) {
   const k = passoDe(a), n = perguntasDe(a).length, ult = k === n - 1, bt = rotuloBotao(a);
-  // Na última: "Enviar respostas" (desligado até marcar); só muda o texto se faltar uma pergunta de antes.
-  const falta = faltam(perguntasDe(a), escolhasDe(a.id)), txt = falta <= (respondida(a, k) ? 0 : 1) ? 'Enviar respostas' : bt.txt;
+  // Desligado, o botão diz o que fazer ("Escolha uma opção acima"); marcado, diz o próximo passo
+  // ("Próxima pergunta ›" e, na última, "Enviar respostas"; se faltar uma de antes, "Falta 1 pergunta").
+  const fazer = 'Escolha uma opção acima', ok = respondida(a, k);
   return `<div class="qz-nav"><button type="button" class="btn qz-voltar" data-q-nav="-1"${k ? '' : ' disabled'}>‹ Voltar</button>${ult
-    ? `<button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(txt)}</button>`
-    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${respondida(a, k) ? '' : ' disabled'}>${respondida(a, k) ? 'Próxima pergunta ›' : 'Escolha para seguir'}</button>`}</div>`;
+    ? `<button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(!ok ? fazer : bt.off ? bt.txt : 'Enviar respostas')}</button>`
+    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${ok ? '' : ' disabled'}>${ok ? 'Próxima pergunta ›' : fazer}</button>`}</div>`;
 }
 
 export function html(a, info = {}) {

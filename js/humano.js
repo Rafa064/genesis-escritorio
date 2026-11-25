@@ -148,12 +148,14 @@ function acaoMcp(acao) {
   for (const tabela of Object.values(MCP)) if (tabela[acao]) return tabela[acao];
   return null;
 }
+// "gerando um modelo 3D" -> "gerar um modelo 3D": o gerúndio vira o que você vai autorizar.
+const infinitivo = (f) => f.replace(/^(\p{L}+?)ndo\b/u, '$1r');
 export function alertaHumano(t) {
   const m = /^pediu permissão: (\S+)\s*(.*)$/.exec(t);
-  if (!m) return t === 'precisa de você' ? 'Precisa de você' : t.replace(/^Claude needs your permission to use /i, 'Quer permissão para usar ');
+  if (!m) return t === 'precisa de você' ? 'Precisa de você' : t.replace(/^Claude needs your permission to use /i, 'Aguarda autorização para usar ');
   const [, ferr, resto] = m;
   const f = acaoMcp(ferr) || (/^(Bash|PowerShell)$/.test(ferr) ? comandoHumano(resto) : /^[A-Z]/.test(ferr) ? passo(ferr, resto) : `usar ${ferr.replace(/_/g, ' ')}`);
-  return `Quer permissão para: ${f.charAt(0).toLowerCase() + f.slice(1)}`;
+  return `Aguarda autorização para ${infinitivo(f.charAt(0).toLowerCase() + f.slice(1))}`;
 }
 
 // Classe de cada passo: para juntar passos parecidos.

@@ -289,3 +289,27 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
 .hoje .hj-item.espera .hj-item-txt > b { color: var(--tinta); }
 /* o título de quem espera É o motivo da espera: aparece inteiro (cabe em 2 ou 3 linhas curtas) */
 .hoje .hj-item.espera .hj-item-txt > b { display: block; -webkit-line-clamp: unset; overflow: visible; }
+
+/* ======================= Noite 2 · rodada 5: "Precisa de você" por pedido e corpo maior no PC ======================= */
+/* Um cartão com os pedidos que esperam você (nome + próxima decisão) e UM botão "Revisar decisões". */
+.hoje .hj-item.hj-peds { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px 12px 12px; }
+.hoje .hj-ped-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.hoje .hj-ped { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.hoje .hj-ped + .hj-ped { padding-top: 10px; border-top: 1px dashed rgba(90, 58, 34, .35); }
+.hoje .hj-ped .hj-rosto { width: 36px; height: 36px; }
+.hoje .hj-ped-txt { display: grid; gap: 2px; min-width: 0; }
+.hoje .hj-ped-txt > b { font: 600 15px/1.3 var(--ui); color: var(--tinta); overflow-wrap: anywhere; }
+.hoje .hj-ped-txt small { font: 13.5px/1.4 var(--ui); color: var(--meta, #5b3f26); overflow-wrap: anywhere; }
+.hoje .hj-ped-n { font-weight: 700; color: #8a4b00; }
+.hoje .hj-peds .hj-item-btn.hj-rever-dec { width: 100%; min-height: 44px; font: 600 21px var(--titulo, var(--ui)); }
+.hoje .hj-grupo-nota { margin: -2px 0 2px; font: 13.5px/1.4 var(--ui); color: var(--meta, #5b3f26); }
+/* PC: corpo de 16 px e frases inteiras (nada de "avisa só se…") */
+@media (min-width: 761px) {
+  .hoje .hj-item-txt > b, .hoje .hj-ped-txt > b { font-size: 16px; }
+  .hoje .hj-item-txt small, .hoje .hj-ped-txt small, .hoje .hj-grupo-nota { font-size: 15px; }
+  .hoje .hj-grupo-vazio, .hoje .hj-intro { font-size: 16px; }
+  .hoje .hj-nota, .hoje .hj-nota-det summary { font-size: 15px; }
+  .hoje .hj-item-btn { font-size: 15px; }
+  .hoje .hj-ped .hj-rosto, .hoje .hj-ped { grid-template-columns: 40px minmax(0, 1fr); }
+  .hoje .hj-ped .hj-rosto { width: 40px; height: 40px; }
+}

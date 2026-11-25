@@ -38,6 +38,24 @@ export function irProximaDecisao(caixa) {
   return !!prox;
 }
 
+// ---------- Chat no PC: um cabeçalho só ----------
+// As abas de conversa e os botões da janela (✉ Dupla · Detalhes · ▁ · ×) dividem a mesma faixa:
+// a barra da janela fica no canto direito (CSS em estilo-chat-popup.css) e as abas guardam o espaço dela (--jc-w).
+// A faixa Dupla/Assistente/Novo pedido some; a Dupla vira o botão ✉ (com o aviso de recados novos).
+export function botaoDupla() {
+  const bd = document.querySelector('.painel-chat [data-badge-dupla]');
+  return `<button type="button" class="btn mini jc-dupla" data-seg="dupla" title="Conversa da dupla">✉ Dupla<b class="badge" data-badge-dupla${bd && !bd.hidden ? '' : ' hidden'}>${esc(bd?.textContent || '')}</b></button>`;
+}
+export function medirJanela(el) {
+  requestAnimationFrame(() => {
+    el.closest('#gaveta')?.style.setProperty('--jc-w', `${Math.ceil(el.offsetWidth)}px`);
+    // a faixa das abas encolheu: a aba aberta volta a ficar inteira à vista
+    const faixa = document.querySelector('#abasConversa'), on = faixa?.querySelector('.aba-conv.on'); if (!on) return;
+    const fr = faixa.getBoundingClientRect(), r = on.getBoundingClientRect();
+    if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; else if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8;
+  });
+}
+
 // ---------- Rodapé da decisão (celular) ----------
 // Com uma pergunta ou decisão aberta na conversa, o rodapé fixo mostra a AÇÃO PRINCIPAL dela
 // ("Próxima pergunta ›" e, na última, "Enviar respostas"); "Escrever na conversa" vira um link pequeno.
@@ -53,12 +71,43 @@ function acaoDoRodape(msgs) {
   const n = msgs.querySelectorAll('.aprovacao:not(.decidida)').length;
   return { card, txt: n > 1 ? `Ver a próxima decisão ↓` : 'Ver a decisão ↓', off: false, rolar: true };
 }
+// Celular: só a decisão da vez fica aberta; as próximas recolhem e o rodapé mostra "＋ mais N decisões depois desta"
+// (fica no rodapé fixo para nunca aparecer cortado). Tocar abre todas até a decisão da vez mudar. Devolve N.
+function recolherProximas(msgs) {
+  const pend = [...msgs.querySelectorAll('.aprovacao:not(.decidida)')], id = pend[0]?.dataset.ap || '';
+  if (msgs.dataset.verDe !== id) { delete msgs.dataset.verTodas; msgs.dataset.verDe = id; }
+  const recolher = ehCel() && !msgs.dataset.verTodas;
+  pend.forEach((c, i) => { if (c.classList.contains('cel-recolhida') !== (recolher && i > 0)) c.classList.toggle('cel-recolhida'); });
+  return recolher ? pend.length - 1 : 0;
+}
+// PC: com pergunta ou decisão aberta, o botão principal do compositor vira "Responder ↑" (leva até ela);
+// "Enviar" (texto na conversa ou para a fila) continua ao lado, como secundário.
+function desenharResponder(form, msgs) {
+  const card = ehCel() ? null : msgs.querySelector('.aprovacao:not(.decidida)');
+  if (form.classList.contains('com-pend') !== !!card) form.classList.toggle('com-pend', !!card);
+  let bt = form.querySelector('.cmp-responder');
+  if (!card) { bt?.remove(); return; }
+  if (!bt) {
+    bt = document.createElement('button'); bt.type = 'button'; bt.className = 'btn forte cmp-responder';
+    bt.title = 'Ir até a pergunta ou decisão aberta';
+    form.querySelector('#btnEnviar')?.before(bt);
+  }
+  const txt = card.matches('[data-q]') ? 'Responder ↑' : 'Decidir ↑';
+  if (bt.textContent !== txt) bt.textContent = txt;
+}
+function irParaDecisao(msgs) {
+  const card = msgs?.querySelector('.aprovacao:not(.decidida)'); if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  card.classList.add('piscar'); setTimeout(() => card.classList.remove('piscar'), 1600);
+  card.querySelector('.qz-op, .ap3-botoes .btn, .ap-botoes .btn')?.focus({ preventScroll: true });
+}
 function desenharRodape(form, msgs) {
+  const resto = recolherProximas(msgs); desenharResponder(form, msgs);
   const box = form.querySelector('.cmp-acao'); if (!box) return;
   const a = ehCel() ? acaoDoRodape(msgs) : null;
   form.classList.toggle('com-acao', !!a);
   box.hidden = !a; if (!a) return;
-  const html = `${a.voltar ? '<button type="button" class="btn cmp-acao-voltar" data-acao-voltar aria-label="Pergunta anterior">‹</button>' : ''}<button type="button" class="btn forte cmp-acao-ir" data-acao-ir${a.off ? ' disabled' : ''}>${esc(a.txt)}</button>`;
+  const html = `${a.voltar ? '<button type="button" class="btn cmp-acao-voltar" data-acao-voltar aria-label="Pergunta anterior">‹</button>' : ''}<button type="button" class="btn forte cmp-acao-ir" data-acao-ir${a.off ? ' disabled' : ''}>${esc(a.txt)}</button>${resto > 0 ? `<button type="button" class="cmp-mais" data-mais-dec>＋ mais ${resto} ${resto === 1 ? 'decisão' : 'decisões'} depois desta</button>` : ''}`;
   if (box.dataset.h !== html) { box.innerHTML = html; box.dataset.h = html; }
 }
 // Cabeçalho do celular numa faixa só: ‹ Voltar · conversa (nome + estado, toque troca) · Detalhes.
@@ -79,6 +128,7 @@ export function ligarCabecalhoERodape(form, msgs, hud, seletor) {
   form.prepend(box);
   box.addEventListener('click', (e) => {
     const a = acaoDoRodape(msgs); if (!a) return;
+    if (e.target.closest('[data-mais-dec]')) { msgs.dataset.verTodas = '1'; agendar(); requestAnimationFrame(() => requestAnimationFrame(() => msgs.querySelectorAll('.aprovacao:not(.decidida)')[1]?.scrollIntoView({ behavior: 'smooth', block: 'start' }))); return; }
     if (e.target.closest('[data-acao-voltar]')) { a.voltar?.click(); return; }
     if (!e.target.closest('[data-acao-ir]')) return;
     if (a.rolar) { a.card.scrollIntoView({ behavior: 'smooth', block: 'start' }); a.card.classList.add('piscar'); setTimeout(() => a.card.classList.remove('piscar'), 1600); return; }
@@ -93,6 +143,7 @@ export function ligarCabecalhoERodape(form, msgs, hud, seletor) {
   det.addEventListener('click', () => hud?.querySelector('.cp-menu-btn')?.click());
   let fila = 0;
   const agendar = () => { if (fila) return; fila = requestAnimationFrame(() => { fila = 0; desenharRodape(form, msgs); desenharDetalhes(hud, det); }); };
+  form.addEventListener('click', (e) => { if (e.target.closest('.cmp-responder')) irParaDecisao(msgs); });
   new MutationObserver(agendar).observe(msgs, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'class', 'hidden'] });
   if (hud) new MutationObserver(agendar).observe(hud, { childList: true, subtree: true });
   addEventListener('resize', agendar);

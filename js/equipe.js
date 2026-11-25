@@ -5,6 +5,7 @@
 // e Plan contam como a assistente de quem pediu. Qualquer outro sub-agente vira visitante.
 import { TITULOS } from './config.js';
 import { setorPorId } from './frentes.js';
+import { trabalhando, textoAndamento } from './contagem.js';
 
 export const CARGOS_PADRAO = [
   { id: 'gerente', nome: 'Gerente do estúdio', setor: 'criacao', modelo: 'haiku', apelidos: [], skills: ['orquestrar', 'wiki-genesis'],
@@ -99,6 +100,8 @@ export function pedidoEnsinar(c, t) {
 let filtroCargos = 'todos';
 const VAZIO = { vivo: 'Ninguém trabalhando agora.', precisa: 'Ninguém precisa de você agora.' };
 const precisa = (e) => ['alerta', 'erro'].includes(e?.st?.cls);
+// "Trabalhando" = a mesma definição de "agentes" do mapa e do Hoje (contagem.js): quem espera você não entra.
+const anda = (e) => !!e?.vivo && trabalhando(e.st?.cls);
 if (typeof document !== 'undefined') document.addEventListener('change', (ev) => {
   const r = ev.target; if (r?.name !== 'cgFiltro') return;
   filtroCargos = r.value;
@@ -123,13 +126,13 @@ export function alternarCargo(alvo, celular) {
 export const abrirCartao = (id) => cartoesAbertos.add(id);
 export const proximaDaTrilha = (c) => c.trilha.find((t) => !t.em.length) || null;
 // Painel "Equipe": um cartão por cargo; a trilha (nível, próxima habilidade e "Ensinar habilidade") é o centro.
-// ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas }
-export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas }) {
+// ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas, andamento: { tarefas, agentes } }
+export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas, andamento = null }) {
   const chip = (s) => {
     const tem = s.em.length > 0, dica = !s.sabido ? 'nenhum PC informou ainda (ponte desligada ou antiga)' : tem ? `instalada no PC de ${s.em.join(' e ')}` : 'ainda não existe em nenhum PC';
     return `<span class="cg-skill ${tem ? 'tem' : s.sabido ? 'falta' : ''}" title="${esc(dica)}">${tem ? '✓' : '○'} ${esc(nomeSkill(s.nome))} <code>${esc(s.nome)}</code></span>`;
   };
-  const vivos = lista.filter((c) => estado(c)?.vivo).length;
+  const vivos = lista.filter((c) => anda(estado(c))).length;
   const totSk = lista.reduce((n, c) => n + c.skills.length, 0), temSk = lista.reduce((n, c) => n + c.skills.filter((s) => s.em.length).length, 0);
   const algumSabido = lista.some((c) => c.skills.some((s) => s.sabido));
   const cartao = async (c) => {
@@ -138,12 +141,13 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
     const nivel = algumSabido ? c.skills.filter((s) => s.em.length).length : c.skills.length;
     const prox = proximaDaTrilha(c), total = Math.max(nivel, c.skills.length) + c.trilha.filter((t) => !t.em.length).length;
     const pct = total ? Math.round((nivel / total) * 100) : 100;
-    // Estado numa linha (sem a ação); o motivo/ação vem embaixo, inteiro, em até 2 linhas.
+    // Estado numa linha (sem a ação); embaixo, "Agora: o que está fazendo", inteiro, em até 2 linhas (também no celular fechado).
     const est = e?.vivo ? e.st.rot : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
-    const acao = e?.vivo && e.acao ? `<p class="cg-acao" title="${esc(e.acao)}">${e.pessoa ? `<span>para ${esc(e.pessoa)}:</span> ` : ''}${esc(e.acao)}</p>` : '';
+    const fazendo = e?.vivo ? e.acao || (precisa(e) ? 'Esperando você para seguir' : 'Começando um pedido') : '';
+    const acao = fazendo ? `<p class="cg-acao" title="${esc(fazendo)}"><b>Agora:</b> ${esc(fazendo)}${e.pessoa ? ` <span>· para ${esc(e.pessoa)}</span>` : ''}</p>` : '';
     const rotina = c.rotinas[0], aberto = cartoesAbertos.has(c.id);
     const rotinas = c.rotinas.map((r) => `<li>${esc(quandoRotina(r.quando))}: ${esc(r.o_que)}</li>`).join('');
-    return `<article class="cg-card${e?.vivo ? ' vivo' : ''}${precisa(e) ? ' precisa' : ''}${aberto ? ' aberto' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa" aria-expanded="${aberto}">
+    return `<article class="cg-card${anda(e) ? ' vivo' : ''}${precisa(e) ? ' precisa' : ''}${aberto ? ' aberto' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa" aria-expanded="${aberto}">
       <header class="cg-cab"><img src="${await retratoDe(c.id)}" alt="">
         <div class="cg-txt"><b class="cg-nm">${esc(c.nome)}</b>
           <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i><span>${esc(est)}</span></div></div><i class="cg-abre" aria-hidden="true">▾</i></header>
@@ -171,7 +175,8 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
   };
   const grupos = ['criacao', 'marketing'].map((s) => [setorPorId(s), lista.filter((c) => (c.setor || 'criacao') === s)]).filter(([, l]) => l.length);
   const nPrecisa = lista.filter((c) => precisa(estado(c))).length;
-  const resumo = `<b>${lista.length} cargos</b>, um boneco cada, dos dois devs${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} habilidades instaladas` : ''} · <b>Ensinar habilidade</b> sobe o cargo de nível`;
+  const and = andamento || { tarefas: vivos, agentes: vivos };
+  const resumo = `<b>${lista.length} cargos</b>, um boneco cada, dos dois devs${and.tarefas || and.agentes ? ` · em andamento: <b>${textoAndamento(and)}</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} habilidades instaladas` : ''} · <b>Ensinar habilidade</b> sobe o cargo de nível`;
   // Filtro (Todos / Trabalhando / Precisam de você) e a frase de resumo atrás do "i" (no celular).
   const filtros = [['todos', 'Todos', lista.length], ['vivo', 'Trabalhando', vivos], ['precisa', 'Precisam de você', nPrecisa]];
   let html = `<div class="cg-lista" data-filtro="${filtroCargos}"><div class="cg-topo"><div class="cg-filtro" role="radiogroup" aria-label="Mostrar">${filtros.map(([id, t, n]) => `<label class="${id === filtroCargos ? 'on' : ''}${id === 'precisa' && n ? ' alerta' : ''}"><input type="radio" name="cgFiltro" value="${id}"${id === filtroCargos ? ' checked' : ''}>${t} <small>${n}</small></label>`).join('')}</div>

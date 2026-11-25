@@ -192,3 +192,30 @@ body:not([data-vista=mapa]) .ind-mapa { display: none; }
   body:has(#hudMapa.pedido:not([hidden])) .painel-geral { padding-bottom: 96px; }
   .painel-geral .pg-legenda { flex-wrap: nowrap; gap: 4px 12px; white-space: nowrap; }
 }
+
+/* ---------- Noite 2 · rodada 5: no celular o mapa é o protagonista da visão geral ---------- */
+/* O mapa enche a altura que sobra (mapa-cel.js calcula o zoom e põe --mapa-geral-h no #palco); embaixo,
+   os 4 números numa linha só (cada um com a sua unidade) e a lista de quem faz o quê recolhida. */
+@media (max-width: 760px) {
+  .painel-geral { top: calc(52px + var(--mapa-geral-h, 70vw)); gap: 6px; padding-top: 8px; }
+  body.mapa-geral[data-vista=mapa] .dica-geral { top: calc(52px + var(--mapa-geral-h, 70vw) - 24px); }
+  .pg-numeros { display: grid; grid-template-columns: .8fr 1.55fr 1.2fr 1.05fr; gap: 4px; }
+  .pg-numeros .rd-n { min-height: 46px; padding: 5px 6px 4px; column-gap: 4px; row-gap: 2px; align-content: center; min-width: 0; }
+  .pg-numeros .rd-n b { font-size: 20px; }
+  .pg-numeros .rd-n b small { font-size: 11px; margin-right: 1px; }
+  .pg-numeros .rd-n .rd-ind { width: 11px; height: 11px; }
+  .pg-numeros .rd-n span { font: 600 12px/1.15 var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pg-numeros .rd-n.esperando { background: #fff1c2; }
+  .pg-ver {
+    align-self: stretch; min-height: 40px; padding: 0 12px; border: 0; cursor: pointer; text-align: left;
+    background: transparent; color: var(--acao-escura, #a4541a); font: 700 15px var(--ui);
+    box-shadow: inset 0 1px 0 var(--linha-fina), inset 0 -1px 0 var(--linha-fina);
+  }
+  .pg-ver:active { background: var(--papel-claro); }
+  /* recolhida: só a primeira linha (quem espera você vem antes); o resto abre no botão */
+  .painel-geral:not(.lista-aberta) .pg-lista { flex: none; }
+  .painel-geral:not(.lista-aberta) .pg-lista > :not(:first-child) { display: none !important; }
+  /* lista aberta: o painel sobe por cima do pé do mapa (o mapa continua visível em cima) */
+  .painel-geral.lista-aberta { top: calc(52px + var(--mapa-geral-h, 70vw) * .45); }
+  body.mapa-geral[data-vista=mapa]:has(.painel-geral.lista-aberta) .dica-geral { display: none; }
+}

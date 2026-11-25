@@ -52,3 +52,25 @@
 .anexo-img img { display: block; max-width: 240px; max-height: 180px; object-fit: contain; background: rgba(0, 0, 0, .08); min-width: 60px; min-height: 40px; }
 .anexo-arq { display: inline-block; padding: 6px 10px; box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .35); }
 .anexos-pend[hidden] { display: none; }
+
+/* ---------- r5: PC com um cabeçalho só (js/chat-cel.js: botaoDupla, medirJanela) ----------
+   A barra da janela (✉ Dupla · Detalhes · ▁ · ×) fica no canto direito da faixa das abas;
+   a faixa Dupla/Assistente/Novo pedido some (a Dupla é o ✉; conversa nova é o ＋ das abas). */
+#formChat .cmp-responder { display: none; }
+@media (min-width: 761px) {
+  #gaveta.grande:not(.min):not(.fechada):has(.painel-chat:not([hidden])) .janela-chat { position: absolute; top: 12px; right: 14px; z-index: 3; padding: 0; gap: 6px; }
+  #gaveta.grande:not(.min) [data-painel="chat"] > .seg-conversas { display: none !important; }
+  #gaveta.grande:not(.min) [data-painel="chat"] .conversa-topo { margin-right: calc(var(--jc-w, 260px) + 10px); }
+  #gaveta.grande:not(.min) [data-painel="dupla"] > .seg-conversas { margin-right: calc(var(--jc-w, 100px) + 10px); }
+  #gaveta.grande:not(.min) #abasConversa { scrollbar-width: none; }
+  .janela-chat .btn.mini { min-height: 40px; }
+  .janela-chat [data-jc="min"] { min-width: 40px; font-size: 18px; }
+  .janela-chat .jc-dupla { position: relative; }
+  .janela-chat .jc-dupla .badge { position: static; display: inline-block; margin-left: 6px; padding: 0 5px; font: 700 12px/18px var(--ui); }
+  .janela-chat .jc-dupla .badge[hidden] { display: none; }
+
+  /* com pergunta ou decisão aberta: "Responder ↑" é o botão principal; Enviar (texto / fila) fica pequeno ao lado */
+  #formChat.com-pend .cmp-responder { display: block; flex: 1; min-height: 48px; padding: 0 20px; font: 600 22px var(--titulo); letter-spacing: .02em; }
+  #formChat.com-pend #btnEnviar { flex: none; min-width: 0; padding: 0 16px; font: 600 16px var(--ui); }
+  #formChat.com-pend.tem-texto .cmp-responder { background: var(--papel-claro); color: var(--tinta); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra); }
+}

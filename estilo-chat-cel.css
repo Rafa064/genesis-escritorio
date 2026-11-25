@@ -127,3 +127,19 @@
   #hudChat.det-aberto .cp-tem-dec .cp-pulso { display: none !important; }
   #hudChat.det-aberto .cp-tem-dec .cp-tit small.cp-etapa { font: 700 15px/1.2 var(--ui); color: var(--tinta); }
 }
+
+/* ---------- r5: botão desligado diz o que fazer ("Escolha uma opção acima"): cinza tracejado, sem parecer laranja apagado ---------- */
+#formChat .cmp-acao-ir:disabled, .qz-nav .qz-prox:disabled, .qz-nav .qz-enviar:disabled {
+  opacity: 1; cursor: not-allowed; transform: none;
+  background: var(--papel-claro) !important; color: #5c4a39 !important;
+  box-shadow: none !important; outline: 2px dashed rgba(90, 58, 34, .55); outline-offset: -2px;
+  font: 600 17px/1.2 var(--ui) !important;
+}
+/* ---------- r5: só a decisão da vez aberta; as próximas recolhem em "＋ mais N decisões depois desta" (js/chat-cel.js) ---------- */
+#msgs .aprovacao.cel-recolhida { display: none !important; }
+@media (max-width: 760px) {
+  #formChat .cmp-acao { flex-wrap: wrap; row-gap: 2px; }
+  #formChat .cmp-mais { flex: 1 1 100%; min-height: 36px; padding: 0 8px; border: 0; background: none; cursor: pointer; font: 600 15px var(--ui); color: var(--tinta); text-decoration: underline; text-underline-offset: 3px; }
+  #formChat.com-acao:not(.aberto):has(.cmp-mais) { padding-top: 6px; }
+  #msgs { padding-bottom: 12px; }
+}

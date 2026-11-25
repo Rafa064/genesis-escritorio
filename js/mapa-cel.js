@@ -57,6 +57,35 @@ function centroDoSetor(s, larg) {
 const BARRA = 52, FAIXA = 46; // alturas da barra de setores e da faixa de números (px)
 let setorAtual = 'geral', zoomDoSetor = 0;
 
+// Visão geral (celular em pé): o mapa enche a altura que sobra entre a barra e o painel (números numa
+// linha + "Ver quem faz o quê"), até 25 % mais largo que a tela: some um pedaço dos lados, e a câmera
+// fica onde estão os bonecos (quem espera você pesa mais; arrastar mostra o resto).
+// O painel começa onde o mapa acaba (--mapa-geral-h).
+const PAINEL_GERAL = 150, PEDIDO = 96, CORTE_MAX = 1.25;
+export function zoomGeral(w, h) {
+  const largura = w / (MW * T), altura = (h - BARRA - PAINEL_GERAL - PEDIDO) / (MH * T);
+  const z = Math.min(1, Math.max(largura, Math.min(altura, largura * CORTE_MAX)));
+  $('#palco')?.style.setProperty('--mapa-geral-h', `${Math.round(MH * T * z)}px`);
+  return z;
+}
+// Centro da câmera na visão geral: a janela da largura da tela que pega mais "peso" (esperando você = 4,
+// fazendo = 2, livre = 1), com folga de um boneco em cada borda; empate fica mais perto do meio.
+// Recalcula a cada 2 s (os bonecos andam; a câmera não fica correndo atrás deles).
+let cacheGeral = { t: 0, vw: 0, v: [MW * T / 2, 0] };
+export function centroGeral(vw) {
+  const agora = performance.now(), W = MW * T;
+  if (vw >= W) return [W / 2, 0];
+  if (agora - cacheGeral.t < 2000 && cacheGeral.vw === vw) return cacheGeral.v;
+  const pts = [...(ctx?.mundo()?.agentes.values() || [])].map((b) => [b.x, grupoDe(b) === 'esperando' ? 4 : grupoDe(b) === 'fazendo' ? 2 : 1]);
+  let melhor = [-1, 0], x0b = (W - vw) / 2;
+  for (let x0 = 0; x0 <= W - vw; x0 += 4) {
+    const p = pts.reduce((s, [x, w]) => s + (x >= x0 + 14 && x <= x0 + vw - 14 ? w : 0), 0), d = -Math.abs(x0 - (W - vw) / 2);
+    if (p > melhor[0] || (p === melhor[0] && d > melhor[1])) { melhor = [p, d]; x0b = x0; }
+  }
+  cacheGeral = { t: agora, vw, v: [x0b + vw / 2, 0] };
+  return cacheGeral.v;
+}
+
 export function ligar(c) {
   ctx = c;
   montarBarra(); montarPainel(); montarFicha(); montarZoom();
@@ -194,6 +223,7 @@ function montarPainel() {
   el.onclick = (e) => {
     const rd = e.target.closest('[data-rd]'); if (rd) { irResumo(rd.dataset.rd); return; }
     if (e.target.closest('[data-custo]')) { Hoje.abrirEm('custo'); return; }
+    if (e.target.closest('[data-pg-ver]')) { listaAberta = !listaAberta; desenharPainel(); return; }
     const a = e.target.closest('[data-agora]'); if (a) { const b = [...ctx.mundo().agentes.values()].find((x) => x.m?.k === a.dataset.agora); if (b) abrirFicha(b, true); else ctx.localizar(a.dataset.agora); }
   };
 }
@@ -205,7 +235,21 @@ export function irResumo(qual) {
   else if (qual === 'esperando') ctx.abrirAba('atencao');
   else if (qual === 'custo') Hoje.abrirEm('custo');
 }
-let ultResumo = null;
+let ultResumo = null, listaAberta = false;
+// "11 tarefas · 3 agentes": tarefas = passos ou pedidos em andamento (cada agente rodando conta um);
+// agentes = cargos diferentes trabalhando. Quem espera você fica fora: está em "decisões".
+function contarFazendo() {
+  const c = ctx.contagens?.(); if (c && c.tarefas != null) return { tarefas: c.tarefas, agentes: c.agentes }; // mesma conta do Hoje e da Equipe
+  const ativos = ctx.quemTrabalha().filter((a) => a.cls !== 'alerta' && a.cls !== 'erro');
+  return { tarefas: ativos.length, agentes: new Set(ativos.map(({ m }) => ctx.nomeAgente(m))).size };
+}
+// Os 4 números do dia numa linha só (visão geral do celular), cada um com a sua unidade.
+function numerosMapa(r) {
+  const { tarefas, agentes } = contarFazendo(), um = (k, s, p) => (k === 1 ? s : p);
+  const n = (cls, v, rot, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
+  const fazendo = `${um(tarefas, 'tarefa', 'tarefas')} · ${agentes} ${um(agentes, 'agente', 'agentes')}`;
+  return `<div class="pg-numeros">${n('fila', r.fila, 'na fila', 'Pedidos esperando a vez: ver a fila do dia')}${n('fazendo', tarefas, fazendo, 'Tarefas em andamento e quantos agentes (cargos) estão nelas')}${n('esperando', r.esperando, um(r.esperando, 'decisão', 'decisões'), 'Decisões e autorizações que só você pode dar')}${n('custo', '<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'de IA hoje', 'Gasto estimado de IA hoje: ver o custo')}</div>`;
+}
 export async function desenharPainel() {
   if (!ctx?.eu() || !ctx.mundo()) return;
   let r = null;
@@ -228,8 +272,10 @@ export async function desenharPainel() {
     return `<button type="button" class="pg-agora ${g}" data-agora="${esc(m.k)}"><img src="${await ctx.retratoDe(m.nome)}" alt=""><span><b>${esc(ctx.nomeAgente(m))}</b><small>${esc(acao)}</small></span><i class="ind ${g}" aria-hidden="true"></i></button>`;
   }));
   const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você</span><span>sem marcador = livre</span></p>
-    ${Hoje.htmlNumerosDia(r, { custo: true })}
-    <div class="pg-lista">${linhas.join('') || '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>'}</div>`;
+    ${numerosMapa(r)}
+    <div class="pg-lista">${linhas.join('') || '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>'}</div>
+    ${linhas.length > 1 ? `<button type="button" class="pg-ver" data-pg-ver aria-expanded="${listaAberta}">${listaAberta ? 'Mostrar menos ▴' : 'Ver quem faz o quê ▾'}</button>` : ''}`;
+  el.classList.toggle('lista-aberta', listaAberta);
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
   // linha cortada no pé não aparece (melhor uma a menos que meia)
   const lista = el.querySelector('.pg-lista');
@@ -268,7 +314,7 @@ function montarFicha() {
     else if (q === 'dupla') ctx.abrirAba('dupla');
   };
 }
-const autorizar = (t) => t.replace(/^Quer permissão para:?\s*/i, 'Autorizar: ').replace(/^Autorizar: (\S+)ndo\b/, (x, r) => `Autorizar: ${r}r`);
+const autorizar = (t) => t.replace(/^(Quer permissão para:?|Aguarda autorização para)\s*/i, 'Autorizar: ').replace(/^Autorizar: (\S+)ndo\b/, (x, r) => `Autorizar: ${r}r`);
 function proximaAcao(b) {
   const g = grupoDe(b), meu = b.pessoa === ctx.eu()?.pessoa, m = b.m || {};
   const assist = b.lugar?.assistente || b.lugar?.codex;
