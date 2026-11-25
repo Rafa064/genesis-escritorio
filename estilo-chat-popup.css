@@ -1,0 +1,23 @@
+/* Chat como janela no centro da tela (PC), mais perto do VS Code: larga, alta e acima dos avisos.
+   No celular (até 760 px) continua a folha de baixo de sempre. */
+@media (min-width: 761px) {
+  :root { --chat-l: min(1000px, calc(100vw - 240px)); --chat-a: min(900px, calc(100vh - 40px)); }
+  #gaveta.conversa:not(.fechada) {
+    position: fixed; left: 50%; top: 50%; translate: -50% -50%;
+    width: var(--chat-l); height: var(--chat-a);
+    margin: 0; z-index: 15;
+  }
+  /* escurece o escritório atrás (só visual: Esc ou "Fechar" fecham) */
+  body:has(#gaveta.conversa:not(.fechada))::after {
+    content: ''; position: fixed; inset: 0; z-index: 14; pointer-events: none;
+    background: rgba(14, 9, 6, .68);
+  }
+  #gaveta.conversa:not(.fechada) .painel-chat { font-size: 16px; line-height: 1.55; }
+  /* os avisos (toasts) ficam embaixo do escuro e não cortam a conversa */
+  /* a alça "› Fechar" da lateral vai para fora da janela, no canto de cima à direita */
+  body:has(#gaveta.conversa:not(.fechada)) #alternaLateral {
+    position: fixed; z-index: 16; translate: none; right: auto;
+    top: calc(50% - var(--chat-a) / 2);
+    left: calc(50% + var(--chat-l) / 2 + 10px);
+  }
+}
