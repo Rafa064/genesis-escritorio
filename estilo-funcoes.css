@@ -278,3 +278,14 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
 .hoje details.hj-dia.r5[open] { padding-bottom: 10px; }
 .hoje details.hj-dia.r5 > :not(summary) { margin-left: 14px; margin-right: 14px; }
 .hoje details.hj-dia.r5 .rd-linha { margin-top: 6px; margin-bottom: 8px; }
+
+/* ======================= Noite 2 · rodada 4: título e motivo sem cortar ======================= */
+/* Cada linha do Hoje reserva até 2 linhas para o título e 2 para o motivo (sem reticências no meio da frase);
+   tocar no texto (data-motivo) mostra tudo. Quem espera você fica em "Precisa de você", com o motivo em destaque. */
+.hoje .hj-item-txt[data-motivo] { cursor: pointer; }
+.hoje .hj-item-txt small { white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hoje .hj-item-txt.todo > b, .hoje .hj-item-txt.todo small { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.hoje .hj-item-txt:focus-visible { outline: 2px solid var(--contorno, #2a1a10); outline-offset: 2px; }
+.hoje .hj-item.espera .hj-item-txt > b { color: var(--tinta); }
+/* o título de quem espera É o motivo da espera: aparece inteiro (cabe em 2 ou 3 linhas curtas) */
+.hoje .hj-item.espera .hj-item-txt > b { display: block; -webkit-line-clamp: unset; overflow: visible; }

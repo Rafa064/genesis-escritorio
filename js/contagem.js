@@ -29,3 +29,13 @@ export function textoPendencias(c) {
   if (c?.avisos) partes.push(um(c.avisos, 'aviso', 'avisos'));
   return partes.join(' · ');
 }
+
+// Quem espera você NÃO está "em andamento": o agente parado num alerta (autorização ou pergunta) é uma decisão
+// sua e aparece só em "Precisa de você". "Fazendo agora" conta só quem continua sozinho.
+export const esperaVoce = (estado) => (typeof estado === 'string' ? estado : estado?.status ?? estado?.cls) === 'alerta';
+// Separa uma lista em quem continua e quem espera você (ehAlerta diz se o item está parado esperando).
+export function separarAndamento(lista = [], ehAlerta = esperaVoce) {
+  const andando = [], esperando = [];
+  for (const x of lista) (ehAlerta(x) ? esperando : andando).push(x);
+  return { andando, esperando };
+}

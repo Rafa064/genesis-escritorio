@@ -4,6 +4,8 @@
 // nDec: decisões que faltam neste pedido · soPerguntas: todas são perguntas da assistente.
 
 export const decisoes = (n) => `${n} ${n === 1 ? 'decisão' : 'decisões'}`;
+// A contagem única do chat no celular (cabeçalho): "4 decisões pendentes" / "1 decisão pendente".
+export const pendentes = (n) => `${decisoes(n)} ${n === 1 ? 'pendente' : 'pendentes'}`;
 // Contagem NESTE pedido, sempre com unidade: "4 decisões neste pedido" ou "faltam 3 de 4 decisões".
 export const contaDecisoes = (falta, total = falta) => (total > falta ? `faltam ${falta} de ${decisoes(total)}` : `${decisoes(falta)} neste pedido`);
 

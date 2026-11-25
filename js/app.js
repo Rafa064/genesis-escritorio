@@ -26,7 +26,7 @@ import * as PP from './pedido-pagina.js';
 import * as A from './anexos.js';
 import * as EQ from './equipe.js';
 import * as CC from './chat-cel.js';
-import { estadoPedido as estadoDoChat } from './estado-pedido.js';
+import { estadoPedido as estadoDoChat, pendentes } from './estado-pedido.js';
 import * as CTG from './contagem.js';
 
 const $ = (s) => document.querySelector(s);
@@ -178,7 +178,7 @@ function ensinarCargo(id) {
   const c = cargosAgora().find((x) => x.id === id); if (!c) return;
   const t = EQ.proximaDaTrilha(c);
   if (innerWidth <= 760) fecharEquipeVista();
-  Hoje.preparar({ titulo: t ? `Ensinar ${EQ.nomeSkill(t.nome)} · ${c.nome}` : `Próxima skill · ${c.nome}`, texto: EQ.pedidoEnsinar(c, t) });
+  Hoje.preparar({ titulo: t ? `Ensinar habilidade: ${EQ.nomeSkill(t.nome)} · ${c.nome}` : `Próxima habilidade · ${c.nome}`, texto: EQ.pedidoEnsinar(c, t) });
 }
 function localizarCargo(id) {
   const b = mundo?.agentes.get(`cargo|${id}`);
@@ -813,6 +813,7 @@ function montarInterface() {
   // "Sobre: X · Alterar" (no compositor da conversa) abre a lista de conversas; o perfil abre perfil e ajustes.
   // Celular: "Responder" abre o compositor; o seletor troca de conversa; "‹ Voltar" volta ao escritório.
   CC.ligarCompositor($('#formChat'), $('#entrada'));
+  CC.ligarCabecalhoERodape($('#formChat'), $('#msgs'), $('#hudChat'), $('#seletorConvCel'));
   $('#seletorConvCel').onclick = () => { const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) desenharAbasFechadas(); desenharSeletorConversas(); };
   document.addEventListener('click', (e) => { if (e.target.closest('[data-voltar-cel]')) irPara('mapa'); });
   $('#cmpSobre').onclick = (e) => { if (!e.target.closest('[data-cmp-alterar]')) return; const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) { desenharAbasFechadas(); el.scrollIntoView({ block: 'nearest' }); } };
@@ -860,6 +861,8 @@ function montarInterface() {
     const ag = e.target.closest('.eqa-card[data-k]'); if (ag) { fecharEquipeVista(); localizar(ag.dataset.k); return; }
     const en = e.target.closest('[data-ensinar]'); if (en) { ensinarCargo(en.dataset.ensinar); return; }
     if (e.target.closest('.cg-det')) return; // abrir os detalhes do cartão não leva ao mapa
+    const vm = e.target.closest('[data-cargo-mapa]'); if (vm) { fecharEquipeVista(); localizarCargo(vm.dataset.cargoMapa); return; }
+    if (EQ.alternarCargo(e.target, innerWidth <= 760)) return; // celular: tocar no cartão compacto abre/fecha
     const cg = e.target.closest('[data-cargo]'); if (cg) { fecharEquipeVista(); localizarCargo(cg.dataset.cargo); return; }
     const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
@@ -1946,7 +1949,7 @@ function seloAba(id) {
   const ap = aprovacoes.filter((a) => a.conversa_id === id && !lerJson(a.detalhe).origem?.terminal);
   const nDec = ap.reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0);
   const e = estadoDoChat({ nDec: ap.length ? Math.max(1, nDec) : 0, soPerguntas: ap.length > 0 && ap.every(Q.ehQuestionario), rodando: convOcupada(id) });
-  if (e) return [e.ic, e.txt.charAt(0).toLowerCase() + e.txt.slice(1), e.k];
+  if (e) return [e.ic, e.txt.charAt(0).toLowerCase() + e.txt.slice(1), e.k, Math.max(1, nDec)];
   if (naoVistas.has(id)) return ['✅', 'respondeu: você ainda não viu'];
   return null;
 }
@@ -1969,15 +1972,16 @@ function desenharSeletorConversas() {
   if (!$('#listaAbasFechadas').hidden) desenharAbasFechadas();
   // Celular: no lugar das abas, um seletor com o nome inteiro e o estado da conversa aberta.
   const atual = conversas.find((c) => c.id === conversaAtual);
-  // O estado de "precisa de você" e "fazendo" já está no cartão do pedido logo abaixo: não repete no seletor.
+  // "Fazendo" já está no cartão do pedido logo abaixo; "precisa de você" vira a contagem única ("4 decisões pendentes").
   const seloAtual = atual ? seloAba(atual.id) : null;
-  CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: seloAtual && !['voce', 'fazendo'].includes(seloAtual[2]) ? seloAtual : null, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
+  const seloCel = seloAtual?.[2] === 'voce' ? [seloAtual[0], pendentes(seloAtual[3])] : seloAtual?.[2] === 'fazendo' ? null : seloAtual;
+  CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: seloCel, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
 }
 function desenharAbasFechadas() {
   const el = $('#listaAbasFechadas');
   const lista = [...conversas].sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado)).slice(0, 80);
   el.innerHTML = `<div class="af-topo"><b>Em qual conversa?</b><button type="button" class="btn mini" data-af-fechar title="Fechar" aria-label="Fechar">×</button></div>
-    <div class="af-acoes"><button type="button" class="btn" data-af-nova>＋ Conversa nova</button>${conversaAtual ? '<button type="button" class="btn" data-af-renomear>Renomear ou apagar esta</button>' : ''}</div>` + (lista.length ? lista.map((c) => {
+    <div class="af-acoes"><button type="button" class="btn af-cel" data-novo-pedido="">＋ Novo pedido</button><button type="button" class="btn af-cel" data-seg="dupla">✉ Dupla</button><button type="button" class="btn" data-af-nova>＋ Conversa nova</button>${conversaAtual ? '<button type="button" class="btn" data-af-renomear>Renomear ou apagar esta</button>' : ''}</div>` + (lista.length ? lista.map((c) => {
     const v = visualAba(c), selo = seloAba(c.id), atual = c.id === conversaAtual;
     return `<button type="button" class="af-item${atual ? ' aberta' : ''}" data-reabrir="${c.id}" style="--cor:${v.cor}"><span class="ic">${v.icone}</span><span class="nm">${esc(v.nome)}<small>${selo ? `<b class="af-est">${selo[0]} ${selo[1]}</b> · ` : ''}${atual ? 'aberta agora · ' : ''}${nomeAlvo(c)}${c.projeto ? ' · ' + esc(c.projeto) : ''} · ${D.ha(new Date(c.atualizado).getTime())}</small></span></button>`;
   }).join('') : '<p class="sub">Nenhuma conversa ainda.</p>');
@@ -2719,7 +2723,7 @@ async function mandarPronto(texto, { alvo, projeto } = {}) {
 }
 function ligarHoje() {
   Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto, resumoIr: (q) => MC.irResumo(q),
-    contagens: () => ({ fazendo: quemTrabalha().length, esperando: ultPend.alertas, pendencias: ultPend.contagem }),
+    contagens: () => ({ fazendo: quemTrabalha().filter((a) => !CTG.esperaVoce(a.cls)).length, esperando: ultPend.alertas, pendencias: ultPend.contagem }),
     eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
     abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
 }
@@ -2733,6 +2737,7 @@ function ligarMapaCel() {
 // "Ficha do cargo" (cartão do mapa): abre o painel Equipe e leva até o cartão desse cargo.
 function abrirCargoNaEquipe(id) {
   if (abaEq !== 'cargos') { abaEq = 'cargos'; guarda('abaEq2', abaEq); }
+  EQ.abrirCartao(id); // no celular o cartão já vem aberto
   abrirEquipeVista();
   let n = 0;
   const achar = () => {

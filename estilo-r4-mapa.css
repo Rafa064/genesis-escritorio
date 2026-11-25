@@ -159,3 +159,36 @@ body:not([data-vista=mapa]) .ind-mapa { display: none; }
   body[data-vista=mapa]:has(#hudMapa.pedido:not([hidden])) .bc-abrir svg { width: 18px; height: 18px; }
   body.setor-no-pedido #hudMapa.pedido .cp-chip-mapa { padding-top: 10px; }
 }
+
+/* ---------- Noite 2 · rodada 4: alternador "Visão geral / Aproximar" e a linha das salas ---------- */
+/* No topo do mapa, duas metades grandes (a escolhida em papel claro). Aproximado, as salas ficam
+   numa faixa de papel logo abaixo; na visão geral essa faixa some (o mapa inteiro já está na tela). */
+.salas-mapa { display: none; }
+@media (max-width: 760px) {
+  .sm-modo { display: flex; flex: 1; gap: 4px; min-width: 0; }
+  .sm-modo button {
+    flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 0 8px;
+    border: 0; cursor: pointer; background: transparent; color: var(--papel); font: 700 15px var(--ui); white-space: nowrap;
+    box-shadow: inset 0 0 0 2px rgba(244, 228, 191, .35);
+  }
+  .sm-modo button.on { background: var(--sel-fundo); color: var(--tinta); box-shadow: var(--sel-sombra); }
+  .sm-modo button:active { transform: translateY(2px); }
+  .sm-modo .zc-grade, .sm-modo .zc-lupa { flex: none; transform: scale(.85); }
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta) .salas-mapa {
+    display: flex; align-items: center; position: absolute; left: 0; right: 0; top: 52px; z-index: 5; height: 46px; padding: 0 4px;
+    background: var(--papel); box-shadow: inset 0 -1px 0 var(--papel-sombra), 0 2px 0 rgba(42, 26, 16, .25);
+  }
+  .salas-mapa .sm-chips { gap: 2px; }
+  .salas-mapa .sm-chips button { min-height: 38px; padding: 0 9px; color: var(--tinta); font-size: 14px; }
+  .salas-mapa .sm-chips button.on { background: var(--madeira-escura); color: var(--papel); box-shadow: inset 0 -3px 0 #e8b864; }
+  /* a lupa (+ e −) desce para baixo da linha das salas */
+  body[data-vista=mapa]:not(.mapa-geral):not(.gaveta-aberta):not(.ficha-aberta) .zoom-cel { top: 106px; }
+  /* visão geral: a lista de quem está fazendo o quê usa todo o espaço até o pedido */
+  .painel-geral .pg-lista { flex: 1 1 auto; align-content: start; }
+  .pg-lista > [hidden] { display: none !important; }
+}
+@media (max-width: 760px) {
+  /* o pé do painel só reserva a faixa do pedido (88 px), não mais; a legenda cabe numa linha */
+  body:has(#hudMapa.pedido:not([hidden])) .painel-geral { padding-bottom: 96px; }
+  .painel-geral .pg-legenda { flex-wrap: nowrap; gap: 4px 12px; white-space: nowrap; }
+}

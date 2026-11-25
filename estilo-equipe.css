@@ -144,3 +144,35 @@
   .cg-filtro small { min-width: 18px; padding: 1px 4px; }
 }
 .cg-lista:not([data-filtro=todos]) .cg-sec h3 small { display: none; }
+
+/* ======================= Noite 2 · rodada 4: cartão compacto, "habilidades" e motivo inteiro ======================= */
+/* Estado numa linha; o que o agente faz (ou por que espera) vem embaixo, inteiro, em até 2 linhas. */
+.cg-cab { grid-template-columns: 48px minmax(0, 1fr) auto; }
+.cg-abre { display: none; font-style: normal; }
+#equipeVista .cg-acao { margin: 0; font: 600 13px/1.4 var(--ui); color: var(--tinta, var(--texto)); overflow-wrap: anywhere; }
+#equipeVista .cg-acao span { color: var(--meta, var(--fraco)); font-weight: 600; }
+#equipeVista .cg-card.precisa .cg-acao { padding: 6px 8px; background: #fff3d1; box-shadow: inset 3px 0 0 #ffd23f; }
+#equipeVista .cg-sabe { font: 600 13.5px/1.35 var(--ui); }
+.cg-corpo { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.cg-mapa { display: none; }
+/* PC: os detalhes trazem o papel e as rotinas completos (no cartão eles ficam resumidos) */
+.cg-rotinas { margin: 4px 0 0; padding-left: 18px; }
+.cg-papel-todo { color: var(--tinta, var(--texto)); }
+@media (max-width: 760px) {
+  /* celular: cartão compacto (rosto, nome, estado, "2 habilidades · falta 1 para o nível 3"); toque abre o resto */
+  #equipeVista .cg-card { cursor: pointer; gap: 5px; padding: 10px 12px; }
+  .cg-cab { grid-template-columns: 40px minmax(0, 1fr) 28px; }
+  .cg-abre { display: grid; place-items: center; width: 28px; height: 28px; font: 700 14px var(--ui); color: var(--meta, var(--fraco)); transition: transform .15s; }
+  .cg-card.aberto .cg-abre { transform: rotate(180deg); }
+  #equipeVista .cg-sabe { font-size: 13px; padding-left: 50px; }
+  #equipeVista .cg-acao { margin-left: 50px; font-size: 12.5px; }
+  #equipeVista .cg-card:not(.precisa) .cg-acao { display: none; }
+  #equipeVista .cg-card.aberto .cg-acao { display: block; }
+  .cg-corpo { display: none; }
+  .cg-card.aberto .cg-corpo { display: flex; padding-top: 4px; }
+  #equipeVista .cg-card.aberto .cg-papel { -webkit-line-clamp: unset; display: block; }
+  .cg-card.aberto .cg-rotina { white-space: normal; }
+  .cg-papel-todo, .cg-rotinas { display: none; }
+  .cg-mapa { display: block; width: 100%; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .cg-abre { transition: none; } }

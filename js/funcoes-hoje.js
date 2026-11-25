@@ -9,7 +9,7 @@ import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
 import * as Rot from './hoje-rotinas.js';
 import { cargoDe } from './equipe.js';
-import { contarPendencias, comAvisos, textoDecisoes, textoPendencias } from './contagem.js';
+import { contarPendencias, comAvisos, textoDecisoes, textoPendencias, separarAndamento } from './contagem.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -217,11 +217,12 @@ function quemFaz(agente, alvo) {
   if (agente) return { id: agente, nome: ctx.nomeAgente(agente) };
   return { id: 'Orquestrador', nome: 'Sua assistente' };
 }
-// Uma linha do Hoje: rostinho de quem faz, o quê, e UM botão direto.
+// Uma linha do Hoje: rostinho de quem faz, o quê, e UM botão direto. Título e motivo têm até 2 linhas cada;
+// tocar no texto abre tudo (data-motivo), sem cortar o motivo da espera no meio.
 async function linhaHoje({ quem, titulo, sub = '', botao = '', cls = '' }) {
   const { esc } = ctx;
   return `<article class="hj-item ${cls}"><img class="hj-rosto" src="${await ctx.retratoDe(quem.id)}" alt="" title="${esc(quem.nome)}">
-    <div class="hj-item-txt"><b>${esc(titulo)}</b><small><span class="hj-it-quem">${esc(quem.nome)}</span>${sub ? ` · ${sub}` : ''}</small></div>${botao}</article>`;
+    <div class="hj-item-txt" data-motivo role="button" tabindex="0" aria-expanded="false" title="Toque para ler tudo"><b>${esc(titulo)}</b><small><span class="hj-it-quem">${esc(quem.nome)}</span>${sub ? ` · ${sub}` : ''}</small></div>${botao}</article>`;
 }
 // selo: o número do grupo, sempre com unidade (ex.: "5 decisões · 1 aviso"); sem ele, "N itens".
 const grupoHoje = (cls, titulo, itens, vazio, selo = '', topo = '') => { const n = selo || (itens.length ? plural(itens.length, 'item', 'itens') : ''); return `<section class="hj-grupo ${cls}"><h3><span>${titulo}</span>${n ? `<i>${n}</i>` : ''}</h3>${topo}${itens.length ? itens.join('') : `<p class="hj-grupo-vazio">${vazio}</p>`}</section>`; };
@@ -240,14 +241,15 @@ async function htmlSugestoes() {
   const velho = s && (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
   const precisa = [], andando = [], pronto = [], sugeridas = [], depois = [];
+  let nAgora = 0; // "agora" só conta quem continua trabalhando (não quem espera você nem pedido só enviado)
   // 1. Decisões que só você pode dar: a MESMA conta do aviso do topo (contagem.js).
   const t = Rot.dados(ctx).teste, prog = quemFaz('programador');
   const dec = ctx.contagens?.().pendencias || contarPendencias();
   const cont = comAvisos(dec, t && !t.ok ? 1 : 0);
-  if (dec.decisoes) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: textoDecisoes(dec), sub: 'os agentes param até você responder', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
+  if (dec.decisoes) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: textoDecisoes(dec), sub: 'os agentes esperam você', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
   // 2. Teste da manhã (Programador): quebrou = um aviso em "Precisa de você"; passou = pronto hoje.
   if (t && !t.ok) precisa.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã quebrou', sub: esc(String(t.erros?.[0] || 'veja o registro').slice(0, 80)), botao: '<button class="btn forte hj-item-btn" data-teste-preparar>Preparar pedido</button>', cls: 'urgente' }));
-  if (t?.ok) pronto.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã passou', sub: `${esc(t.branch || 'main')} · ${D.hora(new Date(t.quando).getTime())}`, botao: '<span class="hj-selo-ok">ALL OK</span>' }));
+  if (t?.ok) pronto.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã passou', sub: `às ${D.hora(new Date(t.quando).getTime())}`, botao: '<span class="hj-selo-ok">ALL OK</span>' }));
   // 3. Sugestões do dia: as não enviadas ficam em "Sugestões para mandar" (são opção, não pendência);
   //    as enviadas estão em andamento.
   for (const [i, x] of (p?.prompts || []).entries()) {
@@ -266,12 +268,15 @@ async function htmlSugestoes() {
       continue;
     }
     if (enviada) andando.push(await linhaHoje({ quem, titulo: x.titulo, sub: 'pedido enviado', botao: `<button class="btn hj-item-btn" data-mandar="${i}">Ver</button>`, cls: 'feito' }));
-    else sugeridas.push(await linhaHoje({ quem, titulo: x.titulo, sub: `${tam[2]}${mc ? ` · ${esc(mc.titulo)}` : ''}`, botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
+    else sugeridas.push(await linhaHoje({ quem, titulo: x.titulo, sub: tam[2], botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
   }
   // 4. Quem está trabalhando agora e o que já entregou hoje (da fila do dia, só a sua equipe).
   try {
     const linhas = [...((await filaDoDia()).get(eu)?.values() || [])];
-    for (const l of linhas.filter((x) => x.agora.length)) andando.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora[0].t, sub: l.agora.some((x) => x.alerta) ? '<b class="hj-alerta">precisa de você</b>' : 'trabalhando agora', botao: '<button class="btn hj-item-btn" data-rd="fazendo">Ver</button>' }));
+    const { andando: continuam, esperando } = separarAndamento(linhas.filter((x) => x.agora.length), (l) => l.agora.some((x) => x.alerta));
+    for (const l of esperando) precisa.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora.find((x) => x.alerta).t, sub: '<b class="hj-alerta">parado, esperando você</b>', botao: '<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>', cls: 'urgente espera' }));
+    for (const l of continuam) andando.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora[0].t, sub: 'trabalhando', botao: '<button class="btn hj-item-btn" data-rd="fazendo">Ver</button>' }));
+    nAgora = continuam.length;
     for (const l of linhas.filter((x) => x.feitos && x.ultimoFeito && x.nome !== 'Orquestrador')) pronto.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: primeiraFrase(l.ultimoFeito.texto || 'Entrega', 80), sub: `${plural(l.feitos, 'entrega')} hoje`, botao: '<button class="btn hj-item-btn" data-hsub="fila">Ver</button>', cls: 'feito' }));
   } catch (e) { console.warn('hoje (fila):', e); }
   // 5. Ideias para preparar quando der: melhorias (Gerente) e posts (Estrategista).
@@ -283,7 +288,7 @@ async function htmlSugestoes() {
   // Ordem fixa: Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois.
   return livre
     + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.', textoPendencias(cont))
-    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', andando.length ? `${andando.length} agora` : '')
+    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', nAgora ? `${nAgora} agora` : andando.length ? plural(andando.length, 'item', 'itens') : '')
     + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.', pronto.length ? plural(pronto.length, 'entrega') : '')
     + grupoHoje('g-sugestoes', 'Sugestões para mandar', sugeridas, 'Todas as sugestões de hoje já foram mandadas.', sugeridas.length ? plural(sugeridas.length, 'sugestão', 'sugestões') : '', projs + cab)
     + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia')) : '')

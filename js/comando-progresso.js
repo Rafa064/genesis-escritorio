@@ -6,7 +6,7 @@ import { frase, primeiraFrase } from './humano.js';
 import { tituloDe } from './config.js';
 import { ctx, esc, tempoDe, nomeArq } from './comando-ctx.js';
 import { ico } from './comando-icones.js';
-import { estadoPedido, contaDecisoes, decisoes } from './estado-pedido.js';
+import { estadoPedido, contaDecisoes, decisoes, pendentes } from './estado-pedido.js';
 export { contaDecisoes };
 
 const EDITA = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
@@ -88,12 +88,13 @@ function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo, totalDec
   // Um estado só (precisa de você > fazendo); a etapa vira linha secundária e as decisões ficam no botão Decidir.
   const soPerguntas = pend.length > 0 && pend.every((x) => x.q);
   const est = estadoDoPedido(pend.length, soPerguntas, n);
-  const sub = `Etapa ${n} de 4${m && !pend.length ? ` · há ${tempoDe(Date.now() - m.inicio)}` : ''}`;
+  // A etapa geral só aparece aberto (nos detalhes) ou sem decisão pendente: uma contagem por vez.
+  const sub = aberto || !pend.length ? `Etapa ${n} de 4${m && !pend.length ? ` · há ${tempoDe(Date.now() - m.inicio)}` : ''}` : '';
   const nDec = contaDecisoes(pend.length, Math.max(totalDec, pend.length));
-  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${soPerguntas ? 'Sua assistente tem perguntas' : maiusc(contaDecisoes(pend.length))}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
-  return `<div class="cp cp-rodando${alerta ? ' cp-alerta' : ''}${aberto ? ' aberto' : ''}">
+  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${soPerguntas ? 'Sua assistente tem perguntas' : maiusc(pendentes(pend.length))}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
+  return `<div class="cp cp-rodando${alerta ? ' cp-alerta' : ''}${pend.length ? ' cp-tem-dec' : ''}${aberto ? ' aberto' : ''}">
     <div class="cp-cab"><span class="cp-pulso"></span>
-      <button type="button" class="cp-tit" data-cp="menu" aria-expanded="${aberto}" title="${aberto ? 'Recolher' : 'Ver etapas e opções'}"><b>${esc(titulo || nomePedido(m, pedido))}</b><span class="cp-estado est-${est.k}">${est.ic} ${esc(est.txt)}</span><small class="cp-etapa">${sub}</small></button>
+      <button type="button" class="cp-tit" data-cp="menu" aria-expanded="${aberto}" title="${aberto ? 'Recolher' : 'Ver etapas e opções'}"><b>${esc(titulo || nomePedido(m, pedido))}</b><span class="cp-estado est-${est.k}">${est.ic} ${esc(est.txt)}</span>${sub ? `<small class="cp-etapa">${sub}</small>` : ''}</button>
       ${pend.length ? `<button type="button" class="btn forte cp-decidir" data-cp="aprovar" aria-label="${soPerguntas ? 'Responder às perguntas da assistente' : `Decidir: ${nDec}`}"><span>${soPerguntas ? 'Responder' : 'Decidir'}</span><small>${soPerguntas ? 'perguntas' : esc(nDec).replace(' neste pedido', '<span class="cp-dec-ctx"> neste pedido</span>')}</small></button>` : ''}
       <button type="button" class="cp-menu-btn" data-cp="menu" aria-expanded="${aberto}" aria-label="${aberto ? 'Recolher o cartão do pedido' : 'Etapas e opções do pedido'}">${ico('seta', aberto ? 'gira' : 'gira-baixo')}</button></div>
     ${aberto ? trilha(n, alerta) : `<div class="cp-mini" aria-hidden="true">${[1, 2, 3, 4].map((i) => `<i class="${i < n ? 'ok' : i === n ? (alerta ? 'atual alerta' : 'atual') : ''}"></i>`).join('')}</div>`}

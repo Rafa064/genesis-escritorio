@@ -115,11 +115,11 @@ function caminho(f) {
   const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(f), nome = m ? m[1] : f, obs = m ? m[2] : '';
   return `<span class="ap3-cam"><code>${esc(nome).replace(/\//g, '/<wbr>')}</code>${obs ? `<small>${esc(obs)}</small>` : ''}</span>`;
 }
-// "Pedido “X” · decisão 2 de 3 deste pedido": info.ordem ({ base, total }) soma as autorizações do mesmo pedido.
-function numero(info, n, i) {
-  const o = info.ordem, tot = o ? o.total : n, k = (o ? o.base : 0) + i + 1, num = tot > 1 ? `decisão ${k} de ${tot} deste pedido` : '';
-  if (info.pedido) return `<p class="ap3-pedido">${num ? `<span class="ap3-num">${num.charAt(0).toUpperCase()}${num.slice(1, num.indexOf(' deste') > 0 ? num.indexOf(' deste') : undefined)} ·</span> ` : ''}${info.convId != null ? `<button type="button" class="ap3-pedido-link" data-pp-conv="${esc(info.convId)}" title="Abrir a página do pedido">pedido <b>“${esc(info.pedido)}”</b> ›</button>` : `pedido <b>“${esc(info.pedido)}”</b>`}</p>`;
-  return num ? `<p class="ap3-pedido">${num.charAt(0).toUpperCase()}${num.slice(1)}</p>` : '';
+// "pedido “X” ›" no alto do cartão. Sem "Decisão 2 de 3": a contagem é uma só ("4 decisões pendentes", no
+// cabeçalho e no Decidir); dentro do questionário fica só "Pergunta 1 de 2".
+function numero(info) {
+  if (!info.pedido) return '';
+  return `<p class="ap3-pedido">${info.convId != null ? `<button type="button" class="ap3-pedido-link" data-pp-conv="${esc(info.convId)}" title="Abrir a página do pedido">pedido <b>“${esc(info.pedido)}”</b> ›</button>` : `pedido <b>“${esc(info.pedido)}”</b>`}</p>`;
 }
 // Quantas decisões este pedido de autorização pede (uma por ação).
 export const nDecisoes = (a) => explicar(a).acoes.length;

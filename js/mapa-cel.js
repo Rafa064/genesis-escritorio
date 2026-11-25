@@ -71,24 +71,34 @@ export function ligar(c) {
 }
 
 // ======================= barra de setores (chips) =======================
+// Noite 2 · rodada 4: no topo, um alternador de duas posições, "Visão geral" (o andar inteiro, só os
+// quadradinhos de estado, e a lista de quem está fazendo o quê) e "Aproximar" (uma sala de perto).
+// Aproximado, a linha de baixo troca de sala; o último setor visto é lembrado.
+let ultimoSetor = '';
 function montarBarra() {
   if ($('#setoresMapa')) return;
   const el = document.createElement('nav');
-  el.id = 'setoresMapa'; el.className = 'setores-mapa'; el.setAttribute('aria-label', 'Aproximar um setor do escritório');
+  el.id = 'setoresMapa'; el.className = 'setores-mapa'; el.setAttribute('aria-label', 'Como ver o escritório');
   $('#palco').appendChild(el);
-  desenharBarra();
-  el.onclick = (e) => { const b = e.target.closest('[data-setor]'); if (b) irSetor(b.dataset.setor); };
-  // com o mapa aproximado, os números do dia ficam numa faixa fina logo abaixo dos setores
-  const f = document.createElement('div'); f.id = 'resumoSetor'; f.className = 'resumo-setor';
+  el.onclick = (e) => { const b = e.target.closest('[data-modo]'); if (b) irSetor(b.dataset.modo === 'geral' ? 'geral' : ultimoSetor || setorInicial()); };
+  // aproximado: as salas numa faixa logo abaixo do alternador
+  const f = document.createElement('nav'); f.id = 'salasMapa'; f.className = 'salas-mapa'; f.setAttribute('aria-label', 'Escolher a sala');
   $('#palco').appendChild(f);
-  f.onclick = (e) => { const rd = e.target.closest('[data-rd]'); if (rd) irResumo(rd.dataset.rd); };
+  f.onclick = (e) => { const b = e.target.closest('[data-setor]'); if (b) irSetor(b.dataset.setor); };
+  desenharBarra();
 }
+// sala onde está o meio da tela (para marcar o chip quando a pessoa arrasta)
+let salaNoMeio = '';
 function desenharBarra() {
-  const el = $('#setoresMapa'); if (!el || !ctx.eu()) return;
-  const S = setores();
-  const chip = (id, nome) => `<button type="button" data-setor="${id}" class="${setorAtual === id ? 'on' : ''}" aria-pressed="${setorAtual === id}">${esc(nome)}</button>`;
-  const html = `<div class="sm-chips">${Object.entries(S).map(([id, s]) => chip(id, s.nome)).join('')}</div>`;
+  const el = $('#setoresMapa'), f = $('#salasMapa'); if (!el || !ctx.eu()) return;
+  const geral = setorAtual === 'geral' || ctx.zoom() < 1, S = setores();
+  const modo = (id, rot, ico) => `<button type="button" data-modo="${id}" class="${(id === 'geral') === geral ? 'on' : ''}" aria-pressed="${(id === 'geral') === geral}"><i class="${ico}" aria-hidden="true"></i>${rot}</button>`;
+  const html = `<div class="sm-modo" role="group" aria-label="Visão do mapa">${modo('geral', 'Visão geral', 'zc-grade')}${modo('perto', 'Aproximar', 'zc-lupa')}</div>`;
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  const marcado = S[setorAtual] ? setorAtual : salaNoMeio;
+  const chip = (id, nome) => `<button type="button" data-setor="${id}" class="${marcado === id ? 'on' : ''}" aria-pressed="${marcado === id}">${esc(nome === 'Sala' ? 'Sua sala' : nome)}</button>`;
+  const hf = `<div class="sm-chips">${Object.entries(S).map(([id, s]) => chip(id, s.nome)).join('')}</div>`;
+  if (f && f.dataset.h !== hf) { f.innerHTML = hf; f.dataset.h = hf; }
 }
 export function irSetor(id) {
   fecharFicha();
@@ -98,7 +108,7 @@ export function irSetor(id) {
     // zoom: a sala enche a faixa útil (entre os números e o pedido) — pela largura ou pela altura, o que der bonecos maiores
     const s = setores()[id], h = $('#palco').clientHeight - BARRA - FAIXA - (margens().baixo || 0);
     const z = Math.max(1.5, Math.min(2.05, Math.max(w / (s.larg * T), h / ((s.foco[3] - s.foco[1] + 0.6) * T))));
-    setorAtual = id; zoomDoSetor = z;
+    setorAtual = id; zoomDoSetor = z; ultimoSetor = id;
     ctx.vista(z, centroDoSetor(s, w / z / T));
   }
   desenharBarra(); desenharPainel();
@@ -146,9 +156,9 @@ export function tocarGeral(x, y) {
   if (!id) return false;
   irSetor(id); return true;
 }
-// Ao abrir no celular, a câmera já começa perto (bonecos em tamanho de toque): no setor de quem
-// espera você; se ninguém espera, onde há mais gente sua trabalhando. "Tudo" fica a um toque.
-let comecou = false;
+// O celular abre na VISÃO GERAL: quem abre o app quer saber "quem está fazendo o quê", e isso é o andar
+// inteiro com o estado de cada um (quadradinhos) e, embaixo, a lista com o que cada um faz. "Aproximar"
+// leva ao setor de quem espera você; se ninguém espera, onde há mais gente sua trabalhando.
 function setorInicial() {
   const eu = ctx.eu()?.pessoa, conta = {};
   let espera = null;
@@ -158,12 +168,6 @@ function setorInicial() {
     if (grupoDe(b) === 'fazendo') conta[s] = (conta[s] || 0) + (b.pessoa === eu ? 2 : 1);
   }
   return espera || Object.entries(conta).sort((a, b) => b[1] - a[1])[0]?.[0] || 'criacao';
-}
-function talvezComecar() {
-  if (comecou || !cel()) return;
-  const m = ctx.mundo(); if (!ctx.eu() || !m || m.agentes.size < 2) return;
-  comecou = true;
-  if (setorAtual === 'geral' && ctx.zoom() < 1 && !fichaDe) irSetor(setorInicial());
 }
 // Na visão geral os bonecos são pequenos: o toque pega quem estiver mais perto (até ~24 px na tela).
 // Vale do indicador (acima da cabeça) até os pés: tocar no quadradinho também abre a ficha.
@@ -214,22 +218,22 @@ export async function desenharPainel() {
   if (!pc) { pc = document.createElement('div'); pc.id = 'resumoPC'; pc.className = 'resumo-pc'; $('#palco').appendChild(pc); pc.onclick = (e) => { const rd = e.target.closest('[data-rd]'); if (rd) irResumo(rd.dataset.rd); }; }
   const hpc = Hoje.htmlNumerosDia(r, { custo: true });
   if (pc.dataset.h !== hpc) { pc.innerHTML = hpc; pc.dataset.h = hpc; }
-  const fs = $('#resumoSetor'), hfs = Hoje.htmlNumerosDia(r, { curto: true });
-  if (fs && fs.dataset.h !== hfs) { fs.innerHTML = hfs; fs.dataset.h = hfs; }
-  talvezComecar();
   const el = $('#painelGeral'); if (!el) return;
-  // quantos cabem inteiros entre os números e o pedido (celular baixo: 1; alto: até 3); o resto está em "Fazendo"
-  const ativos = ctx.quemTrabalha().slice(0, Math.max(1, Math.min(3, Math.floor((innerHeight - 800) / 50) + 1)));
+  // cabem os que couberem inteiros entre os números e o pedido (o resto está em "Fazendo")
+  const ativos = ctx.quemTrabalha().slice(0, 6);
   const linhas = await Promise.all(ativos.map(async ({ m, cls }) => {
     let acao = D.emSegundoPlano(m) ? 'rodando em segundo plano' : cls === 'semsinal' ? 'sem sinal há um tempo' : m.ult ? primeiraFrase(frase(m.ult), 60) : 'pensando…';
     if (cls === 'alerta') acao = autorizar(acao).replace(/^Autorizar:/, 'Espera você autorizar:');
     const g = cls === 'alerta' || cls === 'erro' ? 'esperando' : 'fazendo';
     return `<button type="button" class="pg-agora ${g}" data-agora="${esc(m.k)}"><img src="${await ctx.retratoDe(m.nome)}" alt=""><span><b>${esc(ctx.nomeAgente(m))}</b><small>${esc(acao)}</small></span><i class="ind ${g}" aria-hidden="true"></i></button>`;
   }));
-  const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você decidir</span><span>sem marcador = livre</span></p>
+  const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você</span><span>sem marcador = livre</span></p>
     ${Hoje.htmlNumerosDia(r, { custo: true })}
     <div class="pg-lista">${linhas.join('') || '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>'}</div>`;
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  // linha cortada no pé não aparece (melhor uma a menos que meia)
+  const lista = el.querySelector('.pg-lista');
+  if (lista?.clientHeight) for (const l of lista.children) { l.hidden = false; l.hidden = l.offsetTop - lista.offsetTop + l.offsetHeight > lista.clientHeight + 1; }
 }
 // Atividade › Resumo: os mesmos três números no topo (fica fora das listas que o app redesenha).
 function desenharResumoAtividade(r) {
@@ -342,6 +346,7 @@ function desenharFoco(mundo, z, c, w) {
   const meio = [c.x + w / (2 * z), c.y + (mg.topo + (h - mg.topo - mg.baixo) / 2) / z];
   const id = !cel() || z < 1.4 || fichaDe ? null : S[setorAtual] ? setorAtual : Object.keys(S).find((k) => { const f = S[k].foco; return meio[0] >= f[0] * T && meio[0] <= f[2] * T && meio[1] >= f[1] * T && meio[1] <= f[3] * T; });
   const nome = $('#focoNome');
+  if ((id || '') !== salaNoMeio) { salaNoMeio = id || ''; desenharBarra(); }
   if (!id) { if (!el.hidden) { el.hidden = true; nome.hidden = true; } return; }
   nome.hidden = false;
   const f = S[id].foco, x = Math.round((f[0] * T - c.x) * z), y = Math.round((f[1] * T - c.y) * z);
@@ -420,16 +425,21 @@ function quadro() {
     // duas etiquetas no mesmo lugar (roda de conversa na copa): a de baixo sobe uma linha.
     // Placa de sala, nome de pessoa ou cabeça de alguém embaixo: desvia para o lado mais perto (ou sobe).
     let ye = y;
-    if (!mini) for (let k = 0; k < 4; k++) {
-      const bate = postas.find((p) => Math.abs(p.y - ye) < 17 && p.x0 < xe + hw && p.x1 > xe - hw);
-      if (bate) { ye = bate.y - 18; continue; }
-      const o = obst.find((r) => r.x0 < xe + hw && r.x1 > xe - hw && r.y0 < ye - 4 && r.y1 > ye - 4 - eh);
-      if (!o) break;
-      const op = [[o.x0 - 2 - hw, ye], [o.x1 + 2 + hw, ye], [xe, o.y0 + 3]].filter(([nx, ny]) => nx - hw >= 2 && nx + hw <= w - 2 && ny - 4 - eh >= topoUtil);
-      const melhor = op.sort((a, b2) => Math.hypot(a[0] - xe, a[1] - ye) - Math.hypot(b2[0] - xe, b2[1] - ye))[0];
-      if (!melhor) break; [xe, ye] = melhor;
+    // Livre = não encosta em outra etiqueta (com 4 px de folga) nem em obstáculo, e fica dentro da tela.
+    const livre = (nx, ny) => nx - hw >= 2 && nx + hw <= w - 2 && ny - 4 - eh >= topoUtil
+      && !postas.some((p) => p.y0 < ny + 4 && p.y1 > ny - eh - 4 && p.x0 - 4 < nx + hw && p.x1 + 4 > nx - hw)
+      && !obst.some((r) => r.x0 < nx + hw && r.x1 > nx - hw && r.y0 < ny - 4 && r.y1 > ny - 4 - eh);
+    if (!mini && !livre(xe, ye)) {
+      // Procura o lugar livre mais perto: ao lado de quem atrapalha (melhor que empilhar, como
+      // Estrategista e Crítico lado a lado), em cima ou embaixo. Sem lugar livre, fica onde estava.
+      const cand = [];
+      for (const p of postas) cand.push([p.x0 - 6 - hw, ye], [p.x1 + 6 + hw, ye], [xe, p.y0 - 6], [xe, p.y1 + eh + 6]);
+      for (const r of obst) cand.push([r.x0 - 2 - hw, ye], [r.x1 + 2 + hw, ye], [xe, r.y0 + 3], [xe, r.y1 + eh + 6]);
+      const ok = cand.filter(([nx, ny]) => livre(nx, ny) && Math.abs(nx - x) < 140 && Math.abs(ny - y) < 70)
+        .sort((a, b2) => Math.hypot(a[0] - xe, (a[1] - ye) * 1.5) - Math.hypot(b2[0] - xe, (b2[1] - ye) * 1.5))[0];
+      if (ok) [xe, ye] = ok;
     }
-    postas.push({ x0: xe - hw, x1: xe + hw, y: ye });
+    postas.push({ x0: xe - hw, x1: xe + hw, y0: ye - eh - 4, y1: ye });
     el.style.transform = `translate(${Math.round(xe)}px, ${Math.round(ye)}px) translate(-50%, -100%)`;
     el.dataset.v = '1';
   }
@@ -446,17 +456,30 @@ function obstaculos(mundo, lay, z, c) {
   for (const b of mundo.agentes.values()) if (b.lugar?.assistente && gente.some((p) => p.pessoa === b.pessoa && Math.abs(p.x - b.x) < 44 && Math.abs(p.y - b.y) < 60)) juntos.add(b.pessoa);
   mundo.juntos = juntos;
   const rel = (el) => { const r = el.getBoundingClientRect(); const dx = el._dx || 0, dy = el._dy || 0; return r.width ? { x0: r.left - base.left - dx, x1: r.right - base.left - dx, y0: r.top - base.top - dy, y1: r.bottom - base.top - dy } : null; };
-  const placas = [...document.querySelectorAll('#camada .placa:not(.jogo)')].map(rel).filter(Boolean);
-  const obst = [...placas];
+  // placa da sala: com folga em volta (nada encosta nela, nem nome nem etiqueta)
+  const M = 8, placas = [...document.querySelectorAll('#camada .placa:not(.jogo)')].map(rel).filter(Boolean).map((p) => ({ x0: p.x0 - M, x1: p.x1 + M, y0: p.y0 - M, y1: p.y1 + M }));
+  const obst = [...placas], bate = (r) => placas.some((p) => p.x0 < r.x1 && p.x1 > r.x0 && p.y0 < r.y1 && p.y1 > r.y0);
   for (const g of document.querySelectorAll('#camada .nome.gente')) {
     const r = rel(g); if (!r) continue;
     let dx = 0, dy = 0;
-    const o = placas.find((p) => p.x0 < r.x1 && p.x1 > r.x0 && p.y0 < r.y1 && p.y1 > r.y0);
-    if (o) { const op = [[o.x0 - 2 - r.x1, 0], [o.x1 + 2 - r.x0, 0], [0, o.y1 + 2 - r.y0]]; [dx, dy] = op.sort((a, b) => Math.hypot(...a) - Math.hypot(...b))[0]; }
+    if (bate(r)) {
+      // o nome fica embaixo dos pés; se cai em cima da placa, sobe para cima da cabeça (junto da pessoa).
+      // Sem espaço em cima: para o lado, e só por último para baixo da placa.
+      const o = placas.find((p) => p.x0 < r.x1 && p.x1 > r.x0 && p.y0 < r.y1 && p.y1 > r.y0);
+      const pe = r.y0 - 2 * z, cabeca = pe - 36 * z; // topo do nome ≈ pés; a cabeça fica uns 36 px acima
+      const op = [[0, cabeca - 3 - r.y1], [o.x0 - r.x1, 0], [o.x1 - r.x0, 0], [0, o.y1 - r.y0]];
+      [dx, dy] = op.find(([ox, oy]) => !bate({ x0: r.x0 + ox, x1: r.x1 + ox, y0: r.y0 + oy, y1: r.y1 + oy }) && r.y0 + oy > 0) || op[3];
+    }
     if (dx !== (g._dx || 0) || dy !== (g._dy || 0)) { g._dx = dx; g._dy = dy; g.style.translate = dx || dy ? `${Math.round(dx)}px ${Math.round(dy)}px` : ''; }
-    obst.push({ x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy });
+    obst.push({ x0: r.x0 + dx - 3, x1: r.x1 + dx + 3, y0: r.y0 + dy - 3, y1: r.y1 + dy + 3 });
   }
   for (const p of gente) { const x = (p.x - c.x) * z, y = (p.y - c.y) * z; obst.push({ x0: x - 9 * z, x1: x + 9 * z, y0: y - 34 * z, y1: y - 18 * z }); }
+  // controles por cima do mapa (lupa, ajuda, faixa da sala): etiqueta nenhuma fica embaixo deles
+  for (const s of ['#zoomCel', '#focoNome', '#boasVindas', '#resumoPC']) {
+    const el = $(s); if (!el || el.hidden || !el.offsetParent) continue;
+    const r = el.getBoundingClientRect(); if (!r.width) continue;
+    obst.push({ x0: r.left - base.left - 8, x1: r.right - base.left + 8, y0: r.top - base.top - 6, y1: r.bottom - base.top + 6 });
+  }
   return obst;
 }
 export const altBarra = BARRA;
@@ -467,7 +490,7 @@ export function margens() {
   const agora = performance.now(); if (agora - cacheMg.t < 250) return cacheMg.v;
   const palco = $('#palco')?.getBoundingClientRect(); let topoCobre = palco?.bottom || 0;
   for (const s of ['#hudMapa', '#bcAbrir', '#fichaMapa']) { const el = $(s); if (!el || el.hidden) continue; const r = el.getBoundingClientRect(); if (r.height && r.top < topoCobre && r.top > (palco?.top || 0) + 100) topoCobre = r.top; }
-  cacheMg = { t: agora, v: { topo: BARRA + (ctx.zoom() >= 1 && $('#resumoSetor')?.offsetParent ? FAIXA : 0), baixo: palco ? Math.max(0, palco.bottom - topoCobre + 6) : 0 } };
+  cacheMg = { t: agora, v: { topo: BARRA + (ctx.zoom() >= 1 && $('#salasMapa')?.offsetParent ? FAIXA : 0), baixo: palco ? Math.max(0, palco.bottom - topoCobre + 6) : 0 } };
   return cacheMg.v;
 }
 export const resumoAtual = () => ultResumo;

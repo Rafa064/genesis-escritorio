@@ -33,7 +33,7 @@ function navHtml(a) {
   const falta = faltam(perguntasDe(a), escolhasDe(a.id)), txt = falta <= (respondida(a, k) ? 0 : 1) ? 'Enviar respostas' : bt.txt;
   return `<div class="qz-nav"><button type="button" class="btn qz-voltar" data-q-nav="-1"${k ? '' : ' disabled'}>‹ Voltar</button>${ult
     ? `<button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(txt)}</button>`
-    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${respondida(a, k) ? '' : ' disabled'}>${respondida(a, k) ? 'Próxima ›' : 'Escolha para seguir'}</button>`}</div>`;
+    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${respondida(a, k) ? '' : ' disabled'}>${respondida(a, k) ? 'Próxima pergunta ›' : 'Escolha para seguir'}</button>`}</div>`;
 }
 
 export function html(a, info = {}) {

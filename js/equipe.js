@@ -107,8 +107,22 @@ if (typeof document !== 'undefined') document.addEventListener('change', (ev) =>
   for (const lb of l.querySelectorAll('.cg-filtro label')) lb.classList.toggle('on', lb.contains(r));
   const v = l.querySelector('.cg-vazio'); if (v) v.textContent = VAZIO[filtroCargos] || '';
 });
+// "2 habilidades" (na interface é sempre habilidade; o id técnico da skill só aparece no detalhe).
+export const habilidades = (n) => `${n} ${n === 1 ? 'habilidade' : 'habilidades'}`;
+// Celular: o cartão é compacto; tocar nele abre o resto (papel, trilha, Ensinar). Guarda quem está aberto entre redesenhos.
+const cartoesAbertos = new Set();
+// Devolve true se o toque foi tratado aqui (abrir/fechar), para não levar ao mapa.
+export function alternarCargo(alvo, celular) {
+  const card = alvo?.closest?.('.cg-card'); if (!card || !celular) return false;
+  if (alvo.closest('.cg-corpo') && card.classList.contains('aberto')) return true; // toque no meio do aberto não fecha
+  const id = card.dataset.cargo, ab = !cartoesAbertos.has(id);
+  if (ab) cartoesAbertos.add(id); else cartoesAbertos.delete(id);
+  card.classList.toggle('aberto', ab); card.setAttribute('aria-expanded', ab);
+  return true;
+}
+export const abrirCartao = (id) => cartoesAbertos.add(id);
 export const proximaDaTrilha = (c) => c.trilha.find((t) => !t.em.length) || null;
-// Painel "Equipe": um cartão por cargo, todos da mesma altura; a trilha (nível, próxima skill e "Ensinar") é o centro.
+// Painel "Equipe": um cartão por cargo; a trilha (nível, próxima habilidade e "Ensinar habilidade") é o centro.
 // ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas }
 export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas }) {
   const chip = (s) => {
@@ -120,36 +134,44 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
   const algumSabido = lista.some((c) => c.skills.some((s) => s.sabido));
   const cartao = async (c) => {
     const e = estado(c), set = setorPorId(c.setor);
-    // Nível = skills dele que existem (sem nenhum PC informando, conta as da lista). A barra vai até o fim da trilha.
+    // Nível = habilidades dele que existem (sem nenhum PC informando, conta as da lista). A barra vai até o fim da trilha.
     const nivel = algumSabido ? c.skills.filter((s) => s.em.length).length : c.skills.length;
     const prox = proximaDaTrilha(c), total = Math.max(nivel, c.skills.length) + c.trilha.filter((t) => !t.em.length).length;
-    const pct = total ? Math.round((nivel / total) * 100) : 100, nSk = nivel;
-    const est = e?.vivo ? `${e.st.rot}${e.pessoa ? ' · para ' + e.pessoa : ''}` : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
-    const rotina = c.rotinas[0];
-    return `<article class="cg-card${e?.vivo ? ' vivo' : ''}${precisa(e) ? ' precisa' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa">
+    const pct = total ? Math.round((nivel / total) * 100) : 100;
+    // Estado numa linha (sem a ação); o motivo/ação vem embaixo, inteiro, em até 2 linhas.
+    const est = e?.vivo ? e.st.rot : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
+    const acao = e?.vivo && e.acao ? `<p class="cg-acao" title="${esc(e.acao)}">${e.pessoa ? `<span>para ${esc(e.pessoa)}:</span> ` : ''}${esc(e.acao)}</p>` : '';
+    const rotina = c.rotinas[0], aberto = cartoesAbertos.has(c.id);
+    const rotinas = c.rotinas.map((r) => `<li>${esc(quandoRotina(r.quando))}: ${esc(r.o_que)}</li>`).join('');
+    return `<article class="cg-card${e?.vivo ? ' vivo' : ''}${precisa(e) ? ' precisa' : ''}${aberto ? ' aberto' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa" aria-expanded="${aberto}">
       <header class="cg-cab"><img src="${await retratoDe(c.id)}" alt="">
         <div class="cg-txt"><b class="cg-nm">${esc(c.nome)}</b>
-          <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i><span>${esc(est)}${e?.acao ? ` · ${esc(e.acao)}` : ''}</span></div></div></header>
+          <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i><span>${esc(est)}</span></div></div><i class="cg-abre" aria-hidden="true">▾</i></header>
+      ${acao}
+      <p class="cg-sabe"><b>${habilidades(nivel)}</b> · ${prox ? `falta 1 para o nível ${nivel + 1}` : `nível ${nivel}, trilha completa`}</p>
+      <div class="cg-corpo">
       <p class="cg-papel">${esc(c.papel || '')}</p>
-      ${rotina ? `<p class="cg-rotina" title="${esc(c.rotinas.map((r) => `${quandoRotina(r.quando)}: ${r.o_que}`).join('\n'))}">⏰ Sozinho, ${esc(quandoRotina(rotina.quando))}: ${esc(String(rotina.o_que).replace(/\s*\(.*\)\s*$/, '').split(':')[0])}</p>` : ''}
+      ${rotina ? `<p class="cg-rotina">⏰ Sozinho, ${esc(quandoRotina(rotina.quando))}: ${esc(String(rotina.o_que).replace(/\s*\(.*\)\s*$/, '').split(':')[0])}</p>` : ''}
       <div class="cg-trilha">
-        <p class="cg-sabe">Sabe fazer: <b>${nSk} ${nSk === 1 ? 'skill' : 'skills'}</b></p>
-        <div class="cg-niv"><b>Nível ${nivel}</b><small>${prox ? `Próximo nível: ${nivel} de ${total}` : 'Trilha completa'}</small></div>
-        <div class="cg-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${nivel}" aria-label="Trilha de ${esc(c.nome)}: ${nivel} de ${total} skills"><i style="width:${pct}%"></i></div>
-        ${prox ? `<div class="cg-prox"><small>Próxima skill</small><p>${esc(frase1(prox.porque))}</p></div><button type="button" class="btn forte cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara o pedido para a assistente criar esta skill. Nada é enviado antes de você revisar.">Ensinar: ${esc(nomeSkill(prox.nome))}</button>`
-          : `<div class="cg-prox fim"><small>Próxima skill</small><p>Trilha completa por enquanto.</p></div><button type="button" class="btn cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara um pedido para a assistente propor a próxima skill deste cargo">Sugerir a próxima skill</button>`}
+        <div class="cg-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${nivel}" aria-label="Trilha de ${esc(c.nome)}: ${nivel} de ${total} habilidades"><i style="width:${pct}%"></i></div>
+        ${prox ? `<div class="cg-prox"><small>Próxima habilidade</small><p>${esc(frase1(prox.porque))}</p></div><button type="button" class="btn forte cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara o pedido para a assistente criar esta habilidade. Nada é enviado antes de você revisar.">Ensinar habilidade: ${esc(nomeSkill(prox.nome))}</button>`
+          : `<div class="cg-prox fim"><small>Próxima habilidade</small><p>Trilha completa por enquanto.</p></div><button type="button" class="btn cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara um pedido para a assistente propor a próxima habilidade deste cargo">Sugerir a próxima habilidade</button>`}
       </div>
-      <details class="cg-det"><summary>${c.skills.length ? 'Ver as skills e detalhes' : 'Nenhuma skill ainda · detalhes'}</summary>
+      <button type="button" class="btn cg-mapa" data-cargo-mapa="${esc(c.id)}">Ver no mapa</button>
+      <details class="cg-det"><summary>${c.skills.length ? 'Ver as habilidades e detalhes' : 'Nenhuma habilidade ainda · detalhes'}</summary>
+        <p class="cg-ficha cg-papel-todo">${esc(c.papel || '')}</p>
+        ${rotinas ? `<ul class="cg-ficha cg-rotinas">${rotinas}</ul>` : ''}
         ${c.skills.length ? `<div class="cg-chips">${c.skills.map(chip).join('')}</div>` : ''}
         ${prox ? `<p class="cg-ficha">Próxima: <code>${esc(prox.nome)}</code></p>` : ''}
         ${c.apelidos.length ? `<p class="cg-ficha">Também atende por ${c.apelidos.map((a) => `<code>${esc(a.nome)}</code>`).join(' ')}</p>` : ''}
         ${c.modelo ? `<p class="cg-ficha">Modelo: ${esc(MODELOS[baixo(c.modelo)] || c.modelo)}</p>` : ''}
       </details>
+      </div>
     </article>`;
   };
   const grupos = ['criacao', 'marketing'].map((s) => [setorPorId(s), lista.filter((c) => (c.setor || 'criacao') === s)]).filter(([, l]) => l.length);
   const nPrecisa = lista.filter((c) => precisa(estado(c))).length;
-  const resumo = `<b>${lista.length} cargos</b>, um boneco cada, dos dois devs${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} skills instaladas` : ''} · <b>Ensinar</b> sobe o cargo de nível`;
+  const resumo = `<b>${lista.length} cargos</b>, um boneco cada, dos dois devs${vivos ? ` · <b>${vivos} trabalhando agora</b>` : ' · todos livres'}${algumSabido ? ` · ${temSk} de ${totSk} habilidades instaladas` : ''} · <b>Ensinar habilidade</b> sobe o cargo de nível`;
   // Filtro (Todos / Trabalhando / Precisam de você) e a frase de resumo atrás do "i" (no celular).
   const filtros = [['todos', 'Todos', lista.length], ['vivo', 'Trabalhando', vivos], ['precisa', 'Precisam de você', nPrecisa]];
   let html = `<div class="cg-lista" data-filtro="${filtroCargos}"><div class="cg-topo"><div class="cg-filtro" role="radiogroup" aria-label="Mostrar">${filtros.map(([id, t, n]) => `<label class="${id === filtroCargos ? 'on' : ''}${id === 'precisa' && n ? ' alerta' : ''}"><input type="radio" name="cgFiltro" value="${id}"${id === filtroCargos ? ' checked' : ''}>${t} <small>${n}</small></label>`).join('')}</div>

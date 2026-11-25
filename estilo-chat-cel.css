@@ -78,9 +78,52 @@
   .ap3 .ap3-botoes .btn { min-width: 0; min-height: 48px; padding: 4px 8px; white-space: normal; line-height: 1.1; }
 
   /* ---------- compositor recolhido em "Responder"; abre com 📎, caixa e Enviar ---------- */
-  #formChat:not(.aberto) > :not(.cmp-abrir) { display: none !important; }
+  #formChat:not(.aberto) > :not(.cmp-abrir):not(.cmp-acao) { display: none !important; }
   #formChat:not(.aberto) { padding-top: 6px; }
   #formChat:not(.aberto) .cmp-abrir { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; font-size: 18px; }
   #formChat .cmp-sobre { display: none; } /* o seletor de cima já diz em qual conversa */
   #formChat.aberto .cmp-recolher { display: inline-grid; place-items: center; flex: none; min-width: 48px; font-size: 20px !important; }
+
+  /* ---------- r4: cabeçalho numa faixa só: ‹ · conversa (nome + "4 decisões pendentes", toque troca) · ✉ novas · Detalhes ---------- */
+  .seg-conversas.faixa-cel { display: flex !important; align-items: stretch; gap: 0; padding: 0; margin: 0; }
+  .seg-conversas.faixa-cel > * { flex: none; }
+  .seg-conversas.faixa-cel .seg-voltar { order: 0; width: 40px; padding: 0 !important; font-size: 0 !important; }
+  .seg-conversas.faixa-cel .seg-voltar span { font-size: 32px; margin-top: -4px; }
+  .seg-conversas.faixa-cel button[data-seg="chat"], .seg-conversas.faixa-cel .seg-novo { display: none !important; } /* Novo pedido: na lista "Em qual conversa?" */
+  .seg-conversas.faixa-cel button[data-seg="dupla"] { order: 2; display: none; flex: none; width: 44px; padding: 0 !important; font-size: 20px !important; position: relative; }
+  .seg-conversas.faixa-cel button[data-seg="dupla"]:has(.badge:not([hidden])) { display: grid; place-items: center; align-content: center; gap: 0; }
+  .seg-conversas.faixa-cel button[data-seg="dupla"] .badge { position: absolute; top: 8px; right: 6px; width: 10px; height: 10px; min-width: 0; padding: 0; font-size: 0 !important; } /* bolinha de recados novos */
+  .seg-conversas.faixa-cel button[data-seg="dupla"] { font-size: 0 !important; }
+  .seg-conversas.faixa-cel button[data-seg="dupla"]::before { content: "✉"; font: 22px/1 var(--ui); }
+  .seg-conversas.faixa-cel #seletorConvCel { order: 1; flex: 1 1 auto; min-width: 0; width: auto; min-height: 52px; padding: 4px 8px 4px 10px; gap: 8px; box-shadow: inset 6px 0 0 var(--cor); }
+  .seg-conversas.faixa-cel #seletorConvCel .sc-txt b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg-conversas.faixa-cel #seletorConvCel .sc-txt small { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg-conversas.faixa-cel #seletorConvCel .sc-ic { display: none; } /* a cor da conversa já está na borda */
+  .det-pedido-cel { order: 3; display: grid; place-items: center; align-content: center; gap: 0; width: 64px; min-height: 52px; padding: 0; border: 0; cursor: pointer; color: var(--tinta); background: var(--papel-claro); box-shadow: inset 2px 0 0 rgba(90, 58, 34, .3); font: 600 16px/1 var(--ui); }
+  .det-pedido-cel small { font: 600 11px/1.1 var(--ui); color: var(--meta); }
+  .det-pedido-cel[hidden] { display: none; }
+  #listaAbasFechadas .af-acoes { flex-wrap: wrap; }
+  #listaAbasFechadas .af-acoes .btn { flex: 1 1 40%; min-height: 44px; }
+  /* com decisão aberta, o cartão do pedido (etapa, página, interromper) fica atrás de "Detalhes" */
+  #hudChat:has(.cp-tem-dec:not(.aberto)) { display: none !important; }
+  /* o nome do pedido já está na faixa de cima */
+  #msgs .ap3-pedido { display: none; }
+
+  /* ---------- r4: rodapé com a ação principal da decisão; "Escrever na conversa" vira link pequeno ---------- */
+  #formChat .cmp-acao { display: flex; gap: 8px; }
+  #formChat .cmp-acao[hidden], #formChat.aberto .cmp-acao { display: none !important; }
+  #formChat .cmp-acao .btn { min-height: 52px; min-width: 0; }
+  #formChat .cmp-acao-ir { flex: 1; font: 600 21px var(--titulo); white-space: normal; line-height: 1.1; }
+  #formChat .cmp-acao-ir:disabled { opacity: .55; cursor: not-allowed; }
+  #formChat .cmp-acao-voltar { flex: none; width: 52px; font-size: 26px !important; padding: 0; }
+  #formChat.com-acao:not(.aberto) .cmp-abrir { min-height: 36px; width: auto; justify-self: center; padding: 0 10px; background: none !important; box-shadow: none !important; font: 600 15px var(--ui) !important; color: var(--meta); text-decoration: underline; }
+  body:has(#formChat.com-acao:not(.aberto)) #msgs .qz-nav { display: none; }
+}
+@media (min-width: 761px) { #listaAbasFechadas .af-cel, .det-pedido-cel { display: none !important; } }
+@media (max-width: 760px) {
+  /* Detalhes aberto pela faixa: sem repetir nome, estado e Decidir (já estão em cima e no rodapé); fica a etapa */
+  #hudChat.det-aberto .cp-tem-dec .cp-tit b, #hudChat.det-aberto .cp-tem-dec .cp-estado,
+  #hudChat.det-aberto .cp-tem-dec .cp-decidir, #hudChat.det-aberto .cp-tem-dec .cp-menu-btn,
+  #hudChat.det-aberto .cp-tem-dec .cp-pulso { display: none !important; }
+  #hudChat.det-aberto .cp-tem-dec .cp-tit small.cp-etapa { font: 700 15px/1.2 var(--ui); color: var(--tinta); }
 }
