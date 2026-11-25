@@ -203,3 +203,27 @@
   #equipeVista .cg-sabe { display: none; }
   #equipeVista .cg-card.aberto .cg-sabe { display: block; }
 }
+
+/* ======================= Noite 2 · rodada 6: estado › Agora › ação; o resto recolhido ======================= */
+/* O cartão mostra só o que muda agora: estado, "Agora: …" e a ação do momento (ex.: "Revisar autorização").
+   Papel, habilidades, trilha e "Ensinar" ficam em "Habilidades e detalhes ▾" (no PC, um botão; no celular, tocar no cartão). */
+#equipeVista .cg-grade { grid-auto-rows: auto; align-items: stretch; }
+#equipeVista .cg-corpo { display: none; }
+#equipeVista .cg-card.aberto .cg-corpo { display: flex; }
+#equipeVista .cg-revisar { align-self: flex-start; min-height: 40px; padding: 0 18px; font-size: 15px; }
+.cg-hab { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 2px; border: 0; background: none; cursor: pointer;
+  font: 600 14px var(--ui); color: var(--meta, var(--fraco)); }
+.cg-hab:hover, .cg-hab:focus-visible { color: var(--tinta, var(--texto)); text-decoration: underline; outline: none; }
+.cg-hab i { font-style: normal; transition: transform .15s; }
+.cg-card.aberto .cg-hab i { transform: rotate(180deg); }
+#equipeVista .cg-card.precisa .cg-acao b { color: var(--tinta, var(--texto)); }
+@media (min-width: 761px) {
+  #equipeVista .cg-card { gap: 10px; }
+  .cg-hab { font-size: 15px; }
+}
+@media (max-width: 760px) {
+  .cg-hab { display: none; }
+  #equipeVista .cg-revisar { margin-left: 50px; width: calc(100% - 50px); font-size: 14.5px; }
+}
+@media (prefers-reduced-motion: reduce) { .cg-hab i { transition: none; } }
+#equipeVista .cg-revisar { font: 700 15px var(--ui); letter-spacing: 0; }

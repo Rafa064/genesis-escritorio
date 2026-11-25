@@ -313,3 +313,33 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
   .hoje .hj-ped .hj-rosto, .hoje .hj-ped { grid-template-columns: 40px minmax(0, 1fr); }
   .hoje .hj-ped .hj-rosto { width: 40px; height: 40px; }
 }
+
+/* ======================= Noite 2 · rodada 6: "Em andamento" por pedido ======================= */
+/* Um cartão por pedido: título + "Seu pedido · 2 etapas agora" e, dentro, cada etapa com o responsável e a marca
+   agente / ferramenta / assistente. Ferramenta não tem rosto (não é boneco): leva o ícone da chave. */
+.hoje .hj-item.hj-and { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px 12px; }
+.hoje .hj-and-cab { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.hoje .hj-and-tit { display: grid; gap: 2px; min-width: 0; }
+.hoje .hj-and-tit > b { font: 600 15px/1.3 var(--ui); color: var(--tinta); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hoje .hj-and-tit small { font: 13px/1.35 var(--ui); color: var(--meta, #5b3f26); }
+.hoje .hj-etapas { list-style: none; margin: 0; padding: 8px 0 0; display: grid; gap: 8px; border-top: 1px dashed rgba(90, 58, 34, .35); }
+.hoje .hj-et { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; min-width: 0; }
+.hoje .hj-et-rosto, .hoje .hj-et-ic { width: 30px; height: 30px; image-rendering: pixelated; background: var(--papel-escuro, #e9d6ad); box-shadow: 0 0 0 2px var(--contorno, #2a1a0e); }
+.hoje .hj-et-ic { display: grid; place-items: center; background: #e4dccb; box-shadow: 0 0 0 2px #6b5a48; color: #4a3b2c; }
+.hoje .hj-et-ic svg { width: 16px; height: 16px; fill: currentColor; }
+.hoje .hj-et-txt { display: grid; gap: 1px; min-width: 0; }
+.hoje .hj-et-quem { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.hoje .hj-et-quem b { font: 700 14px/1.3 var(--ui); color: var(--tinta); }
+.hoje .hj-et-txt small { font: 13px/1.35 var(--ui); color: var(--meta, #5b3f26); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hoje .hj-tag { font: 700 11px/1 var(--ui); font-style: normal; text-transform: uppercase; letter-spacing: .04em; padding: 3px 5px; }
+.hoje .hj-tag.agente { background: #dbe7f5; color: #23476e; box-shadow: inset 0 0 0 1px #4f86c6; }
+.hoje .hj-tag.ferramenta { background: #ece5d8; color: #4a3b2c; box-shadow: inset 0 0 0 1px #8a7a66; }
+.hoje .hj-tag.assistente { background: #f3e3c4; color: #6b4310; box-shadow: inset 0 0 0 1px #c9853a; }
+@media (min-width: 761px) {
+  .hoje .hj-and-tit > b { font-size: 16px; }
+  .hoje .hj-and-tit small, .hoje .hj-et-txt small { font-size: 14.5px; }
+  .hoje .hj-et-quem b { font-size: 15px; }
+}
+/* o título do grupo nunca quebra no meio ("Em / andamento"): se o selo não couber, ele desce inteiro */
+.hoje .hj-grupo h3 { flex-wrap: wrap; row-gap: 6px; }
+.hoje .hj-grupo h3 > span { white-space: nowrap; }

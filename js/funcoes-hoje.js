@@ -9,7 +9,7 @@ import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
 import * as Rot from './hoje-rotinas.js';
 import { cargoDe } from './equipe.js';
-import { contarPendencias, comAvisos, textoPendencias, separarAndamento, textoAndamento } from './contagem.js';
+import { contarPendencias, comAvisos, textoPendencias, textoAndamento } from './contagem.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -102,7 +102,7 @@ export function comparacao(r) {
   return pct > 5 ? `${pct}% acima da média` : pct < -5 ? `${-pct}% abaixo da média` : 'na média dos últimos dias';
 }
 // "11" + "tarefas · 3 agentes": o mesmo texto do Hoje e da Equipe (contagem.js), com o primeiro número em destaque.
-const rotuloAndamento = (r) => textoAndamento({ tarefas: r.tarefas ?? r.fazendo, agentes: r.agentes }).replace(/^d+s/, '').replace(/^Nada em andamento$/, 'tarefas · 0 agentes');
+const rotuloAndamento = (r) => textoAndamento({ tarefas: r.tarefas ?? r.fazendo, agentes: r.agentes }).replace(/^\d+\s/, '').replace(/^Nada em andamento$/, 'tarefas · 0 agentes');
 // Os três números do dia (mesma cor e ícone dos indicadores do mapa). Toque abre a lista.
 export function htmlNumerosDia(r, { custo = false, curto = false } = {}) {
   if (curto) { // faixa fina de uma linha (mapa aproximado no celular)
@@ -241,6 +241,22 @@ async function htmlPedidosEsperando(pedidos) {
   }));
   return `<article class="hj-item urgente hj-peds"><ul class="hj-ped-lista">${itens.join('')}</ul><button class="btn forte hj-item-btn hj-rever-dec" data-rd="esperando">Revisar decisões</button></article>`;
 }
+// "Em andamento": um cartão por PEDIDO (os seus primeiro), com as etapas e quem faz cada uma dentro.
+// Ferramenta (Render, Godot…) aparece marcada como ferramenta, não como agente; a conta do selo é a desta lista.
+const TAG_ETAPA = { agente: 'agente', ferramenta: 'ferramenta', assistente: 'assistente' };
+async function htmlPedidosAndamento(lista, eu) {
+  const { esc } = ctx;
+  const ordem = [...lista].sort((a, b) => (b.pessoa === eu) - (a.pessoa === eu) || b.t - a.t);
+  return Promise.all(ordem.map(async (p) => {
+    const etapas = await Promise.all(p.etapas.map(async (e) => {
+      const nome = e.tipo === 'assistente' ? (p.pessoa === eu ? 'Sua assistente' : `Assistente de ${p.pessoa}`) : e.nome;
+      const rosto = e.tipo === 'ferramenta' ? `<span class="hj-et-ic" aria-hidden="true">${icoPx('ferramenta')}</span>` : `<img class="hj-et-rosto" src="${await ctx.retratoDe(e.id)}" alt="">`;
+      return `<li class="hj-et ${e.tipo}">${rosto}<div class="hj-et-txt"><span class="hj-et-quem"><b>${esc(nome)}</b><i class="hj-tag ${e.tipo}">${TAG_ETAPA[e.tipo] || e.tipo}</i></span><small>${esc(e.acao || (e.cls === 'semsinal' ? 'sem sinal há um tempo' : 'trabalhando'))}</small></div></li>`;
+    }));
+    const de = p.pessoa === eu ? 'Seu pedido' : `Pedido de ${esc(p.pessoa)}`;
+    return `<article class="hj-item hj-and"><div class="hj-and-cab"><div class="hj-and-tit"><b>${esc(p.titulo)}</b><small>${de} · ${plural(p.etapas.length, 'etapa')} agora</small></div><button class="btn hj-item-btn" data-rd="fazendo" title="Ver quem está trabalhando em quê">Ver</button></div><ol class="hj-etapas">${etapas.join('')}</ol></article>`;
+  }));
+}
 // Sugestões em três grupos: o que precisa de você, o que está andando e o que ficou pronto hoje.
 async function htmlSugestoes() {
   const { esc } = ctx;
@@ -271,7 +287,7 @@ async function htmlSugestoes() {
     if (editando && editando.i === i) { sugeridas.push(editor(x.titulo, i + 1, 8, `="${i}"`)); continue; }
     if (confirmar === i) {
       const destino = `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
-      (enviada ? andando : sugeridas).push(`<article class="hj-sug aberta ${enviada ? 'enviada' : ''}">
+      sugeridas.push(`<article class="hj-sug aberta ${enviada ? 'enviada' : ''}">
         <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
         ${x.por ? `<p class="hj-motivo-todo"><b>Por quê:</b> ${esc(x.por)}</p>` : ''}
         <dl class="hj-ficha"><dt>Quem faz</dt><dd>${esc(quem.nome)}</dd><dt>Duração</dt><dd>${tam[1]}</dd>${mc || x.marco ? `<dt>Marco</dt><dd>${esc(mc ? mc.titulo : 'marco #' + x.marco)}</dd>` : ''}<dt>Vai para</dt><dd>${destino}${x.skill ? ` · receita “${esc(x.skill)}”` : ''}</dd></dl>
@@ -281,14 +297,15 @@ async function htmlSugestoes() {
       </article>`);
       continue;
     }
-    if (enviada) andando.push(await linhaHoje({ quem, titulo: x.titulo, sub: 'pedido enviado', botao: `<button class="btn hj-item-btn" data-mandar="${i}">Ver</button>`, cls: 'feito' }));
+    // Enviada: o pedido de verdade já aparece em "Em andamento" (por pedido); aqui fica só a marca de enviada.
+    if (enviada) sugeridas.push(await linhaHoje({ quem, titulo: x.titulo, sub: 'já enviada', botao: `<button class="btn hj-item-btn" data-mandar="${i}">Ver</button>`, cls: 'feito' }));
     else sugeridas.push(await linhaHoje({ quem, titulo: x.titulo, sub: tam[2], botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
   }
-  // 4. Quem está trabalhando agora e o que já entregou hoje (da fila do dia, só a sua equipe).
+  // 4. Em andamento: um cartão por pedido (dos dois devs, os seus primeiro), a MESMA lista da conta do mapa e da Equipe.
+  andando.push(...await htmlPedidosAndamento(ctx.contagens?.().emAndamento || [], eu));
+  // O que já entregou hoje (da fila do dia, só a sua equipe).
   try {
     const linhas = [...((await filaDoDia()).get(eu)?.values() || [])];
-    const { andando: continuam } = separarAndamento(linhas.filter((x) => x.agora.length), (l) => l.agora.some((x) => x.alerta));
-    for (const l of continuam) andando.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: l.agora[0].t, sub: 'trabalhando', botao: '<button class="btn hj-item-btn" data-rd="fazendo">Ver</button>' }));
     for (const l of linhas.filter((x) => x.feitos && x.ultimoFeito && x.nome !== 'Orquestrador')) pronto.push(await linhaHoje({ quem: quemFaz(l.nome === 'Orquestrador' ? '' : l.nome), titulo: primeiraFrase(l.ultimoFeito.texto || 'Entrega', 80), sub: `${plural(l.feitos, 'entrega')} hoje`, botao: '<button class="btn hj-item-btn" data-hsub="fila">Ver</button>', cls: 'feito' }));
   } catch (e) { console.warn('hoje (fila):', e); }
   // 5. Ideias para preparar quando der: melhorias (Gerente) e posts (Estrategista).
@@ -297,11 +314,11 @@ async function htmlSugestoes() {
   const cab = s ? `<div class="hj-cab sub"><div><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'escritas ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : ((h) => h === 'agora' ? 'escritas agora' : 'escritas há ' + h)(D.ha(new Date(p.gerado || s.gerado).getTime()))}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`
     : `<div class="hj-cab sub"><div><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
   const projs = s?.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
-  const and = { tarefas: ctx.contagens?.().tarefas ?? 0, agentes: ctx.contagens?.().agentes ?? 0 }; // a mesma conta do mapa e da Equipe
+  const c0 = ctx.contagens?.() || {}, and = { tarefas: c0.tarefas ?? 0, agentes: c0.agentes ?? 0, ferramentas: c0.ferramentas ?? 0 }; // a mesma conta do mapa e da Equipe
   // Ordem fixa: Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois.
   return livre
     + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.', textoPendencias(cont))
-    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', and.tarefas || and.agentes ? textoAndamento(and) : andando.length ? plural(andando.length, 'item', 'itens') : '', and.tarefas > andando.length ? '<p class="hj-grupo-nota">Abaixo, só os da sua equipe.</p>' : '')
+    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', and.tarefas || and.agentes ? textoAndamento(and) : andando.length ? plural(andando.length, 'item', 'itens') : '')
     + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.', pronto.length ? plural(pronto.length, 'entrega') : '')
     + grupoHoje('g-sugestoes', 'Sugestões para mandar', sugeridas, 'Todas as sugestões de hoje já foram mandadas.', sugeridas.length ? plural(sugeridas.length, 'sugestão', 'sugestões') : '', projs + cab)
     + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia')) : '')

@@ -128,7 +128,7 @@ body:not([data-vista=mapa]) .ind-mapa { display: none; }
 .fm-ficha { justify-self: start; padding: 0; border: 0; background: none; cursor: pointer; color: var(--acao-escura, #a4541a); font: 600 14px/1.4 var(--ui, system-ui, sans-serif); text-decoration: underline; text-underline-offset: 3px; }
 .fm-ficha:hover { color: var(--tinta, #2a1d12); }
 /* cartão do cargo destacado ao chegar pelo mapa */
-.cg-card.cg-foco { outline: 3px solid #ffd23f; outline-offset: 2px; }
+.cg-card.cg-foco, .aprovacao.cg-foco { outline: 3px solid #ffd23f; outline-offset: 2px; }
 
 /* ---------- celular: zoom num botão só (lupa) que abre +, − e "ver tudo" ---------- */
 @media (max-width: 760px) {
@@ -219,3 +219,54 @@ body:not([data-vista=mapa]) .ind-mapa { display: none; }
   .painel-geral.lista-aberta { top: calc(52px + var(--mapa-geral-h, 70vw) * .45); }
   body.mapa-geral[data-vista=mapa]:has(.painel-geral.lista-aberta) .dica-geral { display: none; }
 }
+
+/* ---------- Noite 2 · rodada 6: embaixo do mapa, UMA faixa (resumo + a pendência que mais importa) ---------- */
+/* Recolhida: "5 decisões · 2 agentes" e quem espera você, com a ação. Tocar na faixa abre o resto
+   (legenda, números e a lista de quem faz o quê). O cartão do pedido sai da visão geral (o topo já
+   avisa as decisões); o "Novo pedido" fica numa faixa própria no pé. */
+@media (max-width: 760px) {
+  .painel-geral .pg-extra { display: none; }
+  .painel-geral.lista-aberta .pg-extra { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; }
+  .pg-faixa { display: grid; flex: none; background: var(--papel-claro, #fffaf0); box-shadow: 0 0 0 2px var(--contorno, #2a1a10), 2px 3px 0 2px rgba(30, 18, 8, .25); }
+  .pg-topo {
+    display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border: 0; cursor: pointer; text-align: left;
+    background: transparent; color: var(--tinta); font: 600 16px var(--ui);
+  }
+  .pg-topo > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .pg-topo > span b { font-weight: 800; }
+  .pg-topo > em { flex: none; font: 700 14px var(--ui); font-style: normal; color: var(--acao-escura, #a4541a); }
+  .pg-topo .ind { width: 12px; height: 12px; flex: none; }
+  .pg-pend {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 8px 8px 10px; cursor: pointer;
+    box-shadow: inset 0 1px 0 var(--linha-fina, rgba(42, 26, 16, .15));
+  }
+  .pg-faixa.esperando .pg-pend { background: #fff1c2; box-shadow: inset 0 1px 0 var(--linha-fina, rgba(42, 26, 16, .15)), inset 4px 0 0 #d8a521; }
+  .pg-alvo { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+  .pg-alvo:not(:has(img)) { grid-template-columns: 1fr; }
+  .pg-alvo img { width: 36px; height: 36px; background: var(--papel-escuro); }
+  .pg-alvo > span { display: grid; min-width: 0; }
+  .pg-alvo b { font: 700 15px/1.2 var(--ui); }
+  /* a frase padrão inteira, em até 2 linhas (sem reticências) */
+  .pg-alvo small { font: 14px/1.3 var(--ui); color: var(--tinta); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pg-revisar.btn { min-height: 48px; width: 112px; padding: 4px 8px; font-size: 14px; line-height: 1.15; white-space: normal; }
+  /* lista aberta: a faixa fica no alto do painel e todos aparecem */
+  .painel-geral.lista-aberta .pg-lista { overflow-y: auto; }
+  .pg-agora.esperando small { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  /* visão geral: sem o cartão do pedido; "Novo pedido" vira a faixa do pé */
+  body.mapa-geral[data-vista=mapa] #hudMapa.pedido { display: none !important; }
+  /* (o :has do cartão do pedido pesa mais: aqui vai com !important) */
+  body.mapa-geral[data-vista=mapa] #bcAbrir { left: 10px !important; right: 10px !important; bottom: 10px !important; width: auto !important; height: 52px !important; min-height: 0; justify-content: center; flex-direction: row !important; gap: 10px !important; font-size: 20px !important; }
+  body.mapa-geral[data-vista=mapa] .painel-geral { padding-bottom: 76px; }
+
+  /* etiquetas da visão geral: nome curto do cargo (pequeno) em vez de um "…" igual para todos */
+  .etq.mini.e-trab, .etq.mini.e-precisa, .etq.mini.e-outro { padding: 0 4px 0 1px; gap: 3px; background: rgba(27, 22, 34, .86); box-shadow: 0 0 0 1px rgba(10, 6, 14, .9); }
+  .etq.mini.e-trab > b, .etq.mini.e-precisa > b, .etq.mini.e-outro > b { display: inline; font: 600 10px/12px var(--ui, system-ui, sans-serif); }
+  .etq.mini > i { width: 8px; height: 8px; }
+  .etq.mini.e-precisa { padding: 1px 5px 1px 2px; background: #ffd23f; color: var(--tinta, #2a1d12); box-shadow: 0 0 0 2px #2a1a10; }
+  .etq.mini.e-precisa > b { font-weight: 800; font-size: 11px; }
+  .etq.mini.e-precisa > i { width: 11px; height: 11px; box-shadow: none; }
+}
+@media (max-width: 760px) { .pg-alvo[data-agora] { cursor: pointer; } }
+/* ficha curta: "há 5 min" e a etapa do pedido numa linha embaixo do texto */
+.fm-corpo.r4 .fm-pedido dd small { display: block; margin: 2px 0 0; }
+.fm-corpo.r4 .fm-agora dd small { margin: 0; white-space: nowrap; }

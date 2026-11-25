@@ -112,22 +112,25 @@ if (typeof document !== 'undefined') document.addEventListener('change', (ev) =>
 });
 // "2 habilidades" (na interface é sempre habilidade; o id técnico da skill só aparece no detalhe).
 export const habilidades = (n) => `${n} ${n === 1 ? 'habilidade' : 'habilidades'}`;
-// Celular: o cartão é compacto; tocar nele abre o resto (papel, trilha, Ensinar). Guarda quem está aberto entre redesenhos.
+// O cartão é compacto (estado › Agora › ação do momento); o resto (papel, habilidades, trilha, Ensinar) fica recolhido.
+// Celular: tocar no cartão abre. PC: o botão "Habilidades e detalhes ▾". Guarda quem está aberto entre redesenhos.
 const cartoesAbertos = new Set();
 // Devolve true se o toque foi tratado aqui (abrir/fechar), para não levar ao mapa.
 export function alternarCargo(alvo, celular) {
-  const card = alvo?.closest?.('.cg-card'); if (!card || !celular) return false;
-  if (alvo.closest('.cg-corpo') && card.classList.contains('aberto')) return true; // toque no meio do aberto não fecha
+  const card = alvo?.closest?.('.cg-card'), botao = alvo?.closest?.('[data-cg-abrir]');
+  if (!card || (!celular && !botao)) return false;
+  if (!botao && alvo.closest('.cg-corpo') && card.classList.contains('aberto')) return true; // toque no meio do aberto não fecha
   const id = card.dataset.cargo, ab = !cartoesAbertos.has(id);
   if (ab) cartoesAbertos.add(id); else cartoesAbertos.delete(id);
   card.classList.toggle('aberto', ab); card.setAttribute('aria-expanded', ab);
+  card.querySelector('[data-cg-abrir]')?.setAttribute('aria-expanded', ab);
   return true;
 }
 export const abrirCartao = (id) => cartoesAbertos.add(id);
 export const proximaDaTrilha = (c) => c.trilha.find((t) => !t.em.length) || null;
 // Painel "Equipe": um cartão por cargo; a trilha (nível, próxima habilidade e "Ensinar habilidade") é o centro.
 // ctx = { lista, estado(c) -> { st, acao, pessoa } | null, retratoDe, esc, corPessoa, pessoas, andamento: { tarefas, agentes } }
-export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas, andamento = null }) {
+export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pessoas, andamento = null, eu = '' }) {
   const chip = (s) => {
     const tem = s.em.length > 0, dica = !s.sabido ? 'nenhum PC informou ainda (ponte desligada ou antiga)' : tem ? `instalada no PC de ${s.em.join(' e ')}` : 'ainda não existe em nenhum PC';
     return `<span class="cg-skill ${tem ? 'tem' : s.sabido ? 'falta' : ''}" title="${esc(dica)}">${tem ? '✓' : '○'} ${esc(nomeSkill(s.nome))} <code>${esc(s.nome)}</code></span>`;
@@ -141,19 +144,25 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
     const nivel = algumSabido ? c.skills.filter((s) => s.em.length).length : c.skills.length;
     const prox = proximaDaTrilha(c), total = Math.max(nivel, c.skills.length) + c.trilha.filter((t) => !t.em.length).length;
     const pct = total ? Math.round((nivel / total) * 100) : 100;
-    // Estado numa linha (sem a ação); embaixo, "Agora: o que está fazendo", inteiro, em até 2 linhas (também no celular fechado).
-    const est = e?.vivo ? e.st.rot : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
-    const fazendo = e?.vivo ? e.acao || (precisa(e) ? 'Esperando você para seguir' : 'Começando um pedido') : '';
-    const acao = fazendo ? `<p class="cg-acao" title="${esc(fazendo)}"><b>Agora:</b> ${esc(fazendo)}${e.pessoa ? ` <span>· para ${esc(e.pessoa)}</span>` : ''}</p>` : '';
+    // Ordem do cartão: estado › "Agora: o que está fazendo" (inteiro, até 2 linhas) › a ação do momento.
+    // Quem espera um dev diz qual ("precisa de você" / "precisa de Kenny"); o motivo vem do alertaHumano (humano.js).
+    const espera = precisa(e), deQuem = espera && e.pessoa && eu && e.pessoa !== eu ? `precisa de ${e.pessoa}` : '';
+    const est = e?.vivo ? (deQuem || e.st.rot) : e?.st.cls === 'fim' ? 'entregou · agora na copa' : 'livre · na copa';
+    const fazendo = e?.vivo ? e.acao || (espera ? 'Esperando você para seguir' : 'Começando um pedido') : '';
+    const acao = fazendo ? `<p class="cg-acao" title="${esc(fazendo)}"><b>Agora:</b> ${esc(fazendo)}${e.pessoa && !espera ? ` <span>· para ${esc(e.pessoa)}</span>` : ''}</p>` : '';
+    const agir = !espera ? '' : e.st.cls === 'alerta'
+      ? '<button type="button" class="btn forte cg-revisar" data-revisar-permissao title="Abre as decisões que esperam você">Revisar autorização</button>'
+      : '<button type="button" class="btn forte cg-revisar" data-revisar-permissao title="Abre o que precisa de você">Ver o erro</button>';
     const rotina = c.rotinas[0], aberto = cartoesAbertos.has(c.id);
     const rotinas = c.rotinas.map((r) => `<li>${esc(quandoRotina(r.quando))}: ${esc(r.o_que)}</li>`).join('');
-    return `<article class="cg-card${anda(e) ? ' vivo' : ''}${precisa(e) ? ' precisa' : ''}${aberto ? ' aberto' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa" aria-expanded="${aberto}">
+    return `<article class="cg-card${anda(e) ? ' vivo' : ''}${espera ? ' precisa' : ''}${aberto ? ' aberto' : ''}" data-cargo="${esc(c.id)}" tabindex="0" style="--cor:${set.cor}" title="Ver no mapa" aria-expanded="${aberto}">
       <header class="cg-cab"><img src="${await retratoDe(c.id)}" alt="">
         <div class="cg-txt"><b class="cg-nm">${esc(c.nome)}</b>
           <div class="cg-est" style="--cor:${e?.st.cor || '#7d7590'}"><i>${e?.st.glifo || 'z'}</i><span>${esc(est)}</span></div></div><i class="cg-abre" aria-hidden="true">▾</i></header>
       ${acao}
-      <p class="cg-sabe"><b>${habilidades(nivel)}</b> · ${prox ? `falta 1 para o nível ${nivel + 1}` : `nível ${nivel}, trilha completa`}</p>
+      ${agir}
       <div class="cg-corpo">
+      <p class="cg-sabe"><b>${habilidades(nivel)}</b> · ${prox ? `falta 1 para o nível ${nivel + 1}` : `nível ${nivel}, trilha completa`}</p>
       <p class="cg-papel">${esc(c.papel || '')}</p>
       ${rotina ? `<p class="cg-rotina">⏰ Sozinho, ${esc(quandoRotina(rotina.quando))}: ${esc(String(rotina.o_que).replace(/\s*\(.*\)\s*$/, '').split(':')[0])}</p>` : ''}
       <div class="cg-trilha">
@@ -162,8 +171,7 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
           : `<div class="cg-prox fim"><small>Próxima habilidade</small><p>Trilha completa por enquanto.</p></div><button type="button" class="btn cg-ensinar" data-ensinar="${esc(c.id)}" title="Prepara um pedido para a assistente propor a próxima habilidade deste cargo">Sugerir a próxima habilidade</button>`}
       </div>
       <button type="button" class="btn cg-mapa" data-cargo-mapa="${esc(c.id)}">Ver no mapa</button>
-      <details class="cg-det"><summary>${c.skills.length ? 'Ver as habilidades e detalhes' : 'Nenhuma habilidade ainda · detalhes'}</summary>
-        <p class="cg-ficha cg-papel-todo">${esc(c.papel || '')}</p>
+      <details class="cg-det"><summary>${c.skills.length ? 'Lista de habilidades e ficha' : 'Nenhuma habilidade ainda · ficha'}</summary>
         ${rotinas ? `<ul class="cg-ficha cg-rotinas">${rotinas}</ul>` : ''}
         ${c.skills.length ? `<div class="cg-chips">${c.skills.map(chip).join('')}</div>` : ''}
         ${prox ? `<p class="cg-ficha">Próxima: <code>${esc(prox.nome)}</code></p>` : ''}
@@ -171,6 +179,7 @@ export async function htmlCargos({ lista, estado, retratoDe, esc, corPessoa, pes
         ${c.modelo ? `<p class="cg-ficha">Modelo: ${esc(MODELOS[baixo(c.modelo)] || c.modelo)}</p>` : ''}
       </details>
       </div>
+      <button type="button" class="cg-hab" data-cg-abrir aria-expanded="${aberto}">Habilidades e detalhes <i aria-hidden="true">▾</i></button>
     </article>`;
   };
   const grupos = ['criacao', 'marketing'].map((s) => [setorPorId(s), lista.filter((c) => (c.setor || 'criacao') === s)]).filter(([, l]) => l.length);

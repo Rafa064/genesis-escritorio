@@ -27,14 +27,15 @@ function rotuloBotao(a) {
 }
 
 // Voltar / Próxima (ou Enviar na última) do modo uma-por-vez.
+// O botão aparece sempre como botão ("Próxima pergunta ›"; na última, "Enviar respostas"), desligado até
+// haver resposta, com uma legenda pequena do que falta (uma opção OU o campo "Outro").
 function navHtml(a) {
-  const k = passoDe(a), n = perguntasDe(a).length, ult = k === n - 1, bt = rotuloBotao(a);
-  // Desligado, o botão diz o que fazer ("Escolha uma opção acima"); marcado, diz o próximo passo
-  // ("Próxima pergunta ›" e, na última, "Enviar respostas"; se faltar uma de antes, "Falta 1 pergunta").
-  const fazer = 'Escolha uma opção acima', ok = respondida(a, k);
+  const k = passoDe(a), n = perguntasDe(a).length, ult = k === n - 1, bt = rotuloBotao(a), ok = respondida(a, k);
+  const falta = perguntasDe(a).findIndex((_, i) => !respondida(a, i));
+  const legenda = !ok ? 'Selecione uma opção ou escreva outra' : ult && bt.off && falta >= 0 ? `Falta responder a pergunta ${falta + 1}` : '';
   return `<div class="qz-nav"><button type="button" class="btn qz-voltar" data-q-nav="-1"${k ? '' : ' disabled'}>‹ Voltar</button>${ult
-    ? `<button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(!ok ? fazer : bt.off ? bt.txt : 'Enviar respostas')}</button>`
-    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${ok ? '' : ' disabled'}>${ok ? 'Próxima pergunta ›' : fazer}</button>`}</div>`;
+    ? `<button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>Enviar respostas</button>`
+    : `<button type="button" class="btn forte qz-prox" data-q-nav="1"${ok ? '' : ' disabled'}>Próxima pergunta ›</button>`}${legenda ? `<small class="qz-legenda">${legenda}</small>` : ''}</div>`;
 }
 
 export function html(a, info = {}) {
@@ -52,7 +53,7 @@ export function html(a, info = {}) {
   const quem = info.quem || 'A assistente';
   return `<div class="aprovacao ap3 qz" data-ap="${a.id}" data-ap-i="0" data-q="${a.id}">
     ${info.numeroHtml || ''}
-    <div class="ap3-cab"><span class="ap-ic">${ico('ajuda')}</span><div class="ap3-tit"><b>${pergs.length > 1 ? `${pergs.length} perguntas para você` : 'Uma pergunta para você'}</b><small class="ap3-dest">${esc(quem)} quer acertar o pedido${info.pedido ? ` “${esc(info.pedido)}”` : ''} antes de seguir.</small></div></div>
+    <div class="ap3-cab"><span class="ap-ic">${ico('ajuda')}</span><div class="ap3-tit"><b>${pergs.length > 1 ? 'Perguntas antes de começar' : 'Uma pergunta antes de começar'}</b><small class="ap3-dest">${esc(quem)} quer acertar o pedido antes de seguir.</small></div></div>
     ${passo ? `<p class="qz-passo" aria-live="polite"><b>Pergunta ${k + 1} de ${pergs.length}</b><span class="qz-pontos" aria-hidden="true">${pergs.map((_, i) => `<i class="${i === k ? 'atual' : respondida(a, i) ? 'ok' : ''}"></i>`).join('')}</span></p>` : ''}
     ${pergs.length ? blocos : '<p class="ap-nota">As perguntas não vieram. Toque em Pular e responda na conversa.</p>'}
     ${passo ? navHtml(a) : `<div class="qz-botoes"><button type="button" class="btn forte qz-enviar" data-q-enviar${bt.off ? ' disabled' : ''}>${esc(bt.txt)}</button><button type="button" class="btn ap3-recusar" data-q-pular>Pular</button></div>`}

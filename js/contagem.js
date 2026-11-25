@@ -45,11 +45,52 @@ export function separarAndamento(lista = [], ehAlerta = esperaVoce) {
 // Agente = cada cargo da equipe trabalhando agora. Quem espera você (alerta) ou travou (erro) não entra:
 // está em "Precisa de você".
 export const trabalhando = (cls) => cls === 'trab' || cls === 'semsinal';
-// "11 tarefas · 3 agentes" · "1 tarefa · 1 agente" · "Nada em andamento". Nome estável: a frente do mapa usa.
-export function textoAndamento({ tarefas = 0, agentes = 0 } = {}) {
-  const t = Math.max(0, tarefas | 0), a = Math.max(0, agentes | 0);
+// "11 tarefas · 3 agentes" · "1 tarefa · 1 agente · 1 ferramenta" · "Nada em andamento". Nome estável: a frente do mapa usa.
+export function textoAndamento({ tarefas = 0, agentes = 0, ferramentas = 0 } = {}) {
+  const t = Math.max(0, tarefas | 0), a = Math.max(0, agentes | 0), f = Math.max(0, ferramentas | 0);
   if (!t && !a) return 'Nada em andamento';
-  return `${um(t, 'tarefa', 'tarefas')} · ${um(a, 'agente', 'agentes')}`;
+  return `${um(t, 'tarefa', 'tarefas')} · ${um(a, 'agente', 'agentes')}${f ? ` · ${um(f, 'ferramenta', 'ferramentas')}` : ''}`;
+}
+
+// ---------- Em andamento POR PEDIDO (Hoje, mapa e Equipe usam a mesma conta) ----------
+// Cada pedido aberto traz as etapas sendo feitas agora, com o responsável de cada uma:
+//   agente (cargo da equipe ou visitante), ferramenta (Render, Godot, Blender, PixelLab…: um programa, não um agente)
+//   ou assistente (a sessão do dev, quando ninguém mais está trabalhando no pedido).
+// tarefas = etapas em andamento · agentes = responsáveis DIFERENTES que são agentes · ferramentas = idem, ferramentas.
+// Quem espera você (alerta) ou travou (erro) não entra: está em "Precisa de você".
+const FERRAMENTAS = new Set(['render', 'godot', 'blender', 'pixellab', 'huggingface', 'hf', 'ffmpeg']);
+export const ehFerramenta = (nome, tipo = '') => tipo === 'conector' || FERRAMENTAS.has(String(nome ?? '').toLowerCase());
+const responsavelPadrao = (nome, tipo) => ({ id: String(nome), nome: String(nome), tipo: tipo === 'assistente' ? 'assistente' : ehFerramenta(nome, tipo) ? 'ferramenta' : 'agente' });
+// missoes: as de dados.js ({ id, pessoa, titulo, status, fim, ultimo, alvo, passos }); escalacao(m) diz quem entrou no pedido.
+export function montarAndamento(missoes = [], { escalacao = (m) => m.escalacao || [], responsavel = responsavelPadrao, acao = () => '', agora = Date.now() } = {}) {
+  const out = [];
+  for (const m of missoes) {
+    if (!m || m.fim || !['trab', 'semsinal', 'alerta'].includes(m.status) || agora - (m.ultimo || 0) > 12 * 3600e3) continue;
+    const etapas = [], vistos = new Set();
+    for (const x of escalacao(m)) {
+      if (!['agente', 'programa', 'conector'].includes(x.tipo) || !['trabalhando', 'semsinal'].includes(x.estado) || x.ult?.tipo === 'alerta') continue;
+      const r = responsavel(x.nome, x.tipo); if (!r || vistos.has(r.id)) continue;
+      vistos.add(r.id);
+      etapas.push({ ...r, cls: x.estado === 'semsinal' ? 'semsinal' : 'trab', acao: acao(x) });
+    }
+    // Ninguém chamado trabalhando: quem toca o pedido é a própria assistente (se não estiver parada esperando você).
+    if (!etapas.length && m.status !== 'alerta') {
+      const r = responsavel(m.alvo === 'codex' ? 'Codex' : 'Orquestrador', 'assistente');
+      if (r) etapas.push({ ...r, cls: m.status, acao: acao({ ult: m.passos?.at(-1) }) });
+    }
+    if (etapas.length) out.push({ id: m.id, pessoa: m.pessoa, titulo: m.titulo, etapas, t: m.ultimo || 0 });
+  }
+  return out;
+}
+export function contarAndamento(pedidos = []) {
+  const agentes = new Set(), ferramentas = new Set();
+  let tarefas = 0;
+  for (const p of pedidos) for (const e of p?.etapas || []) {
+    tarefas++;
+    if (e.tipo === 'agente') agentes.add(e.id);
+    else if (e.tipo === 'ferramenta') ferramentas.add(e.id);
+  }
+  return { nPedidos: pedidos.length, tarefas, agentes: agentes.size, ferramentas: ferramentas.size };
 }
 
 // Os pedidos que esperam você, um por linha: nome do pedido, quantas decisões e a próxima (a primeira que falta).

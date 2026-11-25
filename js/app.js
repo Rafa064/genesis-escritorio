@@ -173,10 +173,18 @@ function estadoDoCargo(c) {
   const { m, st } = mesaDoCargo(c), vivo = TRABALHANDO.includes(st.cls);
   return { st, vivo, pessoa: vivo ? m.pessoa : '', acao: vivo && m.ult ? primeiraFrase(frase(m.ult), 80) : '' };
 }
-// Em andamento (uma definição só, contagem.js): tarefas = passos/pedidos sendo feitos; agentes = cargos trabalhando.
-// Quem espera você ou travou fica fora (está em "Precisa de você").
+// Em andamento (uma definição só, contagem.js): por pedido, com as etapas e quem faz cada uma.
+// tarefas = etapas sendo feitas; agentes = responsáveis diferentes que são agentes (ferramenta não conta).
+// Quem espera você ou travou fica fora (está em "Precisa de você"). emAndamento = a lista que o Hoje mostra.
+function responsavelAndamento(nome, tipo) {
+  if (nome === 'Orquestrador' || EQ.daAssistente(nome)) return { id: 'Orquestrador', nome: 'Assistente', tipo: 'assistente' };
+  const c = EQ.cargoDe(nome, cargosAgora());
+  if (c) return { id: c.id, nome: c.nome, tipo: 'agente' };
+  return { id: nome, nome: CURTO[nome] || tituloDe(nome), tipo: CTG.ehFerramenta(nome, tipo) ? 'ferramenta' : 'agente' };
+}
 function andamento() {
-  return { tarefas: quemTrabalha().filter((a) => CTG.trabalhando(a.cls)).length, agentes: cargosAgora().filter((c) => CTG.trabalhando(estadoDoCargo(c).st.cls)).length };
+  const emAndamento = CTG.montarAndamento(D.missoes(), { escalacao: D.escalacao, responsavel: responsavelAndamento, acao: (x) => (x.ult ? primeiraFrase(frase(x.ult), 80) : '') });
+  return { ...CTG.contarAndamento(emAndamento), emAndamento };
 }
 // "Ensinar" (Equipe): o pedido para a assistente criar a próxima skill do cargo abre no editor do Hoje (não sai sozinho).
 function ensinarCargo(id) {
@@ -714,9 +722,16 @@ function desenharJanelaChat() {
   const m = aba === 'chat' && conv ? missaoDaConversa(conv) : null;
   el.innerHTML = min
     ? `<b class="jc-tit">${aba === 'dupla' ? '✉ Dupla' : '✦ Assistente'}</b><span class="espaco"></span><button type="button" class="btn mini" data-jc="abrir">Abrir conversa</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar" aria-label="Fechar">×</button>`
-    : `${aba === 'chat' ? CC.botaoDupla() : ''}${m ? '<button type="button" class="btn mini" data-jc="detalhes" title="Etapa, página e opções do pedido">Detalhes</button>' : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório" aria-label="Minimizar">▁</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
+    : `${aba === 'chat' ? CC.botaoDupla() : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório" aria-label="Minimizar">▁</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
   CC.medirJanela(el);
+  desenharCabPC(conv, m);
 }
+// PC: cabeçalho da conversa abaixo das abas (nome · pendências · Detalhes), js/chat-cel.js.
+function desenharCabPC(conv = conversas.find((c) => c.id === conversaAtual), m = conv ? missaoDaConversa(conv) : null) {
+  const s = conv ? seloAba(conv.id) : null;
+  CC.desenharCabecalhoPC($('#cabConvPC'), { v: conv ? visualAba(conv) : null, selo: s?.[2] === 'voce' ? [s[0], pendentes(s[3])] : s, gpt: conv?.alvo === 'codex', detalhes: !!m });
+}
+$('#cabConvPC').onclick = (e) => { if (e.target.closest('[data-jc]')) $('#janelaChat').onclick(e); };
 $('#janelaChat').onclick = (e) => {
   const k = e.target.closest('[data-jc]')?.dataset.jc; if (!k) return;
   if (k === 'min') minimizarChat(true);
@@ -863,7 +878,7 @@ function montarInterface() {
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
   $('#equipeCorpo').onclick = (e) => {
     const ir = e.target.closest('[data-eqaba-ir]'); if (ir) { abaEq = ir.dataset.eqabaIr; guarda('abaEq2', abaEq); desenharEquipeVista(); return; }
-    if (e.target.closest('[data-revisar-permissao]')) { abrirAba('atencao'); return; }
+    if (e.target.closest('[data-revisar-permissao]')) { if (innerWidth <= 760) fecharEquipeVista(); MC.irResumo('esperando'); return; } // as decisões, como o "Revisar decisões" do Hoje
     const ag = e.target.closest('.eqa-card[data-k]'); if (ag) { fecharEquipeVista(); localizar(ag.dataset.k); return; }
     const en = e.target.closest('[data-ensinar]'); if (en) { ensinarCargo(en.dataset.ensinar); return; }
     if (e.target.closest('.cg-det')) return; // abrir os detalhes do cartão não leva ao mapa
@@ -1990,6 +2005,7 @@ function desenharSeletorConversas() {
   const seloAtual = atual ? seloAba(atual.id) : null;
   const seloCel = seloAtual?.[2] === 'voce' ? [seloAtual[0], pendentes(seloAtual[3])] : seloAtual?.[2] === 'fazendo' ? null : seloAtual;
   CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: seloCel, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
+  desenharCabPC(atual);
 }
 function desenharAbasFechadas() {
   const el = $('#listaAbasFechadas');
@@ -2661,7 +2677,7 @@ async function desenharEquipeVista() {
     abasEq.innerHTML = [['cargos', 'Quem é quem'], ['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo<span class="so-pc"> e ajustes</span>']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
     $('#equipeVista').dataset.aba = abaEq;
     if (abaEq === 'agora') { $('#equipeCorpo').innerHTML = await htmlEquipeAgora(); return; }
-    if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas, andamento: andamento() }); return; }
+    if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas, andamento: andamento(), eu: EU?.pessoa }); return; }
     const pes = ['', ...pessoas()];
     $('#filtrosEquipe').innerHTML = `<div class="eq-grupo">${pes.map((p) => `<button data-fpes="${esc(p)}" class="${p === filtroPesEq ? 'on' : ''}">${p ? esc(p) : 'Os dois'}</button>`).join('')}</div><div class="eq-grupo">${FILTROS_TIPO_EQ.map(([t, r]) => `<button data-ftipo="${t}" class="${t === filtroTipoEq ? 'on' : ''}">${r}</button>`).join('')}</div>`;
     const q = buscaEq.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

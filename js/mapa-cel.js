@@ -57,11 +57,11 @@ function centroDoSetor(s, larg) {
 const BARRA = 52, FAIXA = 46; // alturas da barra de setores e da faixa de números (px)
 let setorAtual = 'geral', zoomDoSetor = 0;
 
-// Visão geral (celular em pé): o mapa enche a altura que sobra entre a barra e o painel (números numa
-// linha + "Ver quem faz o quê"), até 25 % mais largo que a tela: some um pedaço dos lados, e a câmera
+// Visão geral (celular em pé): o mapa enche a altura que sobra entre a barra e a faixa de resumo (rodada 6:
+// uma faixa só + "Novo pedido"), até 50 % mais largo que a tela: some um pedaço dos lados, e a câmera
 // fica onde estão os bonecos (quem espera você pesa mais; arrastar mostra o resto).
 // O painel começa onde o mapa acaba (--mapa-geral-h).
-const PAINEL_GERAL = 150, PEDIDO = 96, CORTE_MAX = 1.25;
+const PAINEL_GERAL = 112, PEDIDO = 70, CORTE_MAX = 1.5;
 export function zoomGeral(w, h) {
   const largura = w / (MW * T), altura = (h - BARRA - PAINEL_GERAL - PEDIDO) / (MH * T);
   const z = Math.min(1, Math.max(largura, Math.min(altura, largura * CORTE_MAX)));
@@ -223,9 +223,27 @@ function montarPainel() {
   el.onclick = (e) => {
     const rd = e.target.closest('[data-rd]'); if (rd) { irResumo(rd.dataset.rd); return; }
     if (e.target.closest('[data-custo]')) { Hoje.abrirEm('custo'); return; }
+    const rv = e.target.closest('[data-pg-revisar]'); if (rv) { revisar([...ctx.mundo().agentes.values()].find((x) => x.m?.k === rv.dataset.pgRevisar)); return; }
     if (e.target.closest('[data-pg-ver]')) { listaAberta = !listaAberta; desenharPainel(); return; }
     const a = e.target.closest('[data-agora]'); if (a) { const b = [...ctx.mundo().agentes.values()].find((x) => x.m?.k === a.dataset.agora); if (b) abrirFicha(b, true); else ctx.localizar(a.dataset.agora); }
   };
+}
+// "Revisar autorização" (faixa, ficha e etiqueta amarela): abre Atividade e leva até o pedido de permissão
+// desse agente (o cartão pisca): o cartão com mais palavras em comum com o nome e a frase do pedido.
+function revisar(b) {
+  const fr = b?.m?.ult ? frase(b.m.ult).replace(/^Aguarda autorização para /i, '') : '';
+  const pal = [b?.m?.nome, ctx.nome(b), fr].join(' ').toLowerCase().split(/[^\p{L}\d]+/u).filter((p) => p.length > 3);
+  fecharFicha(); ctx.abrirAba('atencao');
+  let n = 0;
+  const achar = () => {
+    const cards = [...document.querySelectorAll('[data-painel="atencao"] .aprovacao:not(.qz)')];
+    const nota = (c) => { const t = c.textContent.toLowerCase(); return pal.filter((p) => t.includes(p)).length; };
+    const el = cards.reduce((m, c) => (!m || nota(c) > nota(m) ? c : m), null);
+    if (!el) { if (++n < 15) setTimeout(achar, 120); return; }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('cg-foco');
+    setTimeout(() => el.classList.remove('cg-foco'), 2600);
+  };
+  setTimeout(achar, 120);
 }
 // Para onde cada número leva (o mesmo no Escritório, na Atividade e no Hoje).
 export function irResumo(qual) {
@@ -263,18 +281,25 @@ export async function desenharPainel() {
   const hpc = Hoje.htmlNumerosDia(r, { custo: true });
   if (pc.dataset.h !== hpc) { pc.innerHTML = hpc; pc.dataset.h = hpc; }
   const el = $('#painelGeral'); if (!el) return;
-  // cabem os que couberem inteiros entre os números e o pedido (o resto está em "Fazendo")
-  const ativos = ctx.quemTrabalha().slice(0, 6);
-  const linhas = await Promise.all(ativos.map(async ({ m, cls }) => {
-    let acao = D.emSegundoPlano(m) ? 'rodando em segundo plano' : cls === 'semsinal' ? 'sem sinal há um tempo' : m.ult ? primeiraFrase(frase(m.ult), 60) : 'pensando…';
-    if (cls === 'alerta') acao = autorizar(acao).replace(/^Autorizar:/, 'Espera você autorizar:');
+  // Rodada 6: embaixo do mapa, UMA faixa ("5 decisões · 2 agentes" + a pendência que mais importa e a ação dela).
+  // Tocar na faixa abre o resto (legenda, números e a lista de quem faz o quê).
+  const todos = ctx.quemTrabalha(), eu = ctx.eu()?.pessoa;
+  const pend = todos.find((a) => (a.cls === 'alerta' || a.cls === 'erro') && a.m.pessoa === eu) || null, prim = pend || todos[0];
+  const ativos = todos.filter((a) => a !== prim).slice(0, 6); // a lista aberta não repete quem já está na faixa
+  const acaoDe = ({ m, cls }) => D.emSegundoPlano(m) ? 'Rodando em segundo plano' : cls === 'semsinal' ? 'Sem sinal há um tempo' : m.ult ? simples(primeiraFrase(frase(m.ult), 90)) : 'Pensando…';
+  const linhas = await Promise.all(ativos.map(async (a) => {
+    const { m, cls } = a, acao = acaoDe(a); // quem espera você: a frase padrão ("Aguarda autorização para …"), igual à Equipe
     const g = cls === 'alerta' || cls === 'erro' ? 'esperando' : 'fazendo';
     return `<button type="button" class="pg-agora ${g}" data-agora="${esc(m.k)}"><img src="${await ctx.retratoDe(m.nome)}" alt=""><span><b>${esc(ctx.nomeAgente(m))}</b><small>${esc(acao)}</small></span><i class="ind ${g}" aria-hidden="true"></i></button>`;
   }));
-  const html = `<p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você</span><span>sem marcador = livre</span></p>
+  const { agentes } = contarFazendo(), um = (k, s1, p) => (k === 1 ? s1 : p);
+  const alvo = prim ? `<span class="pg-alvo${pend ? ' esperando' : ''}" data-agora="${esc(prim.m.k)}" role="button" tabindex="0"><img src="${await ctx.retratoDe(prim.m.nome)}" alt=""><span><b>${esc(ctx.nomeAgente(prim.m))}</b><small>${esc(acaoDe(prim))}</small></span></span>` : '<span class="pg-alvo"><span><small>Ninguém trabalhando agora. A equipe está na copa.</small></span></span>';
+  const botao = pend ? `<button type="button" class="btn forte pg-revisar" data-pg-revisar="${esc(pend.m.k)}">${pend.cls === 'erro' ? 'Ver o erro' : 'Revisar autorização'}</button>` : '';
+  const topo = r.esperando ? `<b>${r.esperando} ${um(r.esperando, 'decisão', 'decisões')}</b> · ${agentes} ${um(agentes, 'agente', 'agentes')}` : `<b>Nada esperando você</b> · ${agentes} ${um(agentes, 'agente', 'agentes')}`;
+  const faixa = `<div class="pg-faixa${pend ? ' esperando' : ''}"><button type="button" class="pg-topo" data-pg-ver aria-expanded="${listaAberta}"><i class="ind ${r.esperando ? 'esperando' : 'fazendo'}" aria-hidden="true"></i><span>${topo}</span><em>${listaAberta ? 'Fechar ▴' : 'Ver tudo ▾'}</em></button><div class="pg-pend">${alvo}${botao}</div></div>`;
+  const html = `${faixa}<div class="pg-extra"><p class="pg-legenda" aria-label="Legenda do mapa"><span><i class="ind fazendo"></i>fazendo</span><span><i class="ind esperando"></i>espera você</span><span>sem marcador = livre</span></p>
     ${numerosMapa(r)}
-    <div class="pg-lista">${linhas.join('') || '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>'}</div>
-    ${linhas.length > 1 ? `<button type="button" class="pg-ver" data-pg-ver aria-expanded="${listaAberta}">${listaAberta ? 'Mostrar menos ▴' : 'Ver quem faz o quê ▾'}</button>` : ''}`;
+    <div class="pg-lista">${linhas.join('') || (prim ? '<p class="pg-vazio">Só quem está acima trabalha agora.</p>' : '<p class="pg-vazio">Ninguém trabalhando agora. A equipe está na copa.</p>')}</div></div>`;
   el.classList.toggle('lista-aberta', listaAberta);
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
   // linha cortada no pé não aparece (melhor uma a menos que meia)
@@ -308,18 +333,17 @@ function montarFicha() {
       if (chip) chip.click(); else ctx.abrirAgente(b);
     } else if (q === 'detalhes') ctx.abrirAgente(b);
     else if (q === 'cargo' && b.cargo) ctx.abrirCargo?.(b.cargo.id);
-    else if (q === 'decidir') ctx.abrirAba('atencao');
+    else if (q === 'decidir') revisar(b);
     else if (q === 'conversar') ctx.abrirChat(b.lugar?.codex ? 'codex' : 'claude');
     else if (q === 'pedir') ctx.pedir();
     else if (q === 'dupla') ctx.abrirAba('dupla');
   };
 }
-const autorizar = (t) => t.replace(/^(Quer permissão para:?|Aguarda autorização para)\s*/i, 'Autorizar: ').replace(/^Autorizar: (\S+)ndo\b/, (x, r) => `Autorizar: ${r}r`);
 function proximaAcao(b) {
   const g = grupoDe(b), meu = b.pessoa === ctx.eu()?.pessoa, m = b.m || {};
   const assist = b.lugar?.assistente || b.lugar?.codex;
   if (g === 'esperando') return meu
-    ? { texto: b.status === 'erro' ? 'Deu erro e parou. Veja o que aconteceu e diga como seguir.' : 'Aprove para ele continuar. Se recusar, ele para e espera outra instrução.', botao: ['decidir', b.status === 'erro' ? 'Ver o erro' : 'Revisar autorização'] }
+    ? { texto: b.status === 'erro' ? 'Deu erro e parou. Veja o que aconteceu e diga como seguir.' : 'Aprove para ele seguir. Se recusar, ele para e espera.', botao: ['decidir', b.status === 'erro' ? 'Ver o erro' : 'Revisar autorização'] }
     : { texto: `Está esperando o ${b.pessoa} decidir. Nada para você aqui.`, botao: ['dupla', `Falar com o ${b.pessoa}`] };
   if (g === 'fazendo') return { texto: b.status === 'semsinal' ? 'Continua rodando, mas sem dar notícia há alguns minutos. Se demorar, confira os detalhes.' : 'Segue sozinho. Você só precisa agir se ele pedir.', botao: null };
   if (assist && meu) return { texto: 'Livre agora. Converse para pedir algo novo.', botao: ['conversar', 'Conversar'] };
@@ -344,8 +368,7 @@ export async function abrirFicha(b, centrar = false) {
   fichaDe = b;
   const g = grupoDe(b), m = b.m || {}, nome = ctx.nome(b), px = proximaAcao(b);
   let tarefa = g === 'livre' ? (m.ult?.tipo === 'fim' ? `Última entrega: ${primeiraFrase(m.ult.resposta || frase(m.ult), 90)}` : 'Nenhuma tarefa agora.') : D.emSegundoPlano(m) ? 'Rodando uma tarefa em segundo plano.' : m.ult ? primeiraFrase(frase(m.ult), 110) : 'Pensando…';
-  // "Quer permissão para: gerando um modelo 3D" → "Autorizar: gerar um modelo 3D" (o que você vai decidir)
-  if (b.status === 'alerta') tarefa = autorizar(tarefa);
+  // quem espera você: a frase padrão ("Aguarda autorização para gerar um modelo 3D"), a mesma da Equipe
   tarefa = simples(tarefa);
   const missao = m.ult?._m?.titulo && g !== 'livre' ? primeiraFrase(m.ult._m.titulo, 140) : '';
   const estado = b.status === 'alerta' ? 'Aguardando sua autorização' : b.status === 'erro' ? 'Parou com erro' : ROT_GRUPO[g];
@@ -353,22 +376,19 @@ export async function abrirFicha(b, centrar = false) {
   const el = $('#fichaMapa');
   // Rodada 4: o cartão responde às 3 perguntas de quem acompanha: qual pedido, em que etapa, o que fez por último.
   const mis = g !== 'livre' ? m.ult?._m || null : null;
+  // Rodada 6: ficha curta (nome, cargo, Agora, ação); a etapa do pedido vira uma linha de texto
   let etapaHtml = '';
-  if (mis) {
-    let n = 1; try { n = etapaDe(mis); } catch {}
-    const alerta = b.status === 'alerta' || b.status === 'erro';
-    etapaHtml = `<ol class="fm-trilha" aria-label="Etapa ${n} de 4">${ETAPAS.map((t, i) => `<li class="${i + 1 < n || n === 4 ? 'ok' : i + 1 === n ? (alerta ? 'atual alerta' : 'atual') : ''}"><i></i><span>${t}</span></li>`).join('')}</ol>`;
-  }
+  if (mis) { let n = 1; try { n = etapaDe(mis); } catch {} etapaHtml = `<small>Etapa ${n} de 4 · ${ETAPAS[n - 1] || ''}</small>`; }
   const quandoTxt = quando ? (quando === 'agora' ? 'agora' : 'há ' + quando) : '';
   const precisa = g === 'esperando' && b.pessoa === ctx.eu()?.pessoa; // a decisão pendente vem logo depois do nome
   const quem = b.pessoa === ctx.eu()?.pessoa || g !== 'esperando' ? estado : 'Esperando o ' + esc(b.pessoa);
-  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x))}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${quem}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}${b.visitante ? ' · visitante' : ''}</span>${b.cargo ? `<button type="button" class="fm-ficha" data-ficha="cargo">Ficha do ${esc(rotuloDe(b))} ›</button>` : ''}</div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
+  const nomeLimpo = nome.replace(/^\S+\s/, (x) => /\p{Extended_Pictographic}/u.test(x) ? '' : x), cargo = rotuloDe(b), cargoTxt = cargo && cargo !== nomeLimpo ? cargo : '';
+  el.innerHTML = `<div class="fm-cab"><img src="${await ctx.retratoDe(b.m?.nome || b.nome)}" alt=""><div class="fm-nome"><b>${esc(nomeLimpo)}</b><span class="fm-est ${g}"><i class="ind ${g}" aria-hidden="true"></i>${cargoTxt ? esc(cargoTxt) + ' · ' : ''}${quem}${b.pessoa && b.pessoa !== ctx.eu()?.pessoa ? ` · do ${esc(b.pessoa)}` : ''}${b.visitante ? ' · visitante' : ''}</span>${b.cargo ? `<button type="button" class="fm-ficha" data-ficha="cargo">Ficha do ${esc(rotuloDe(b))} ›</button>` : ''}</div><button type="button" class="fm-x" data-ficha-fechar aria-label="Fechar">×</button></div>
     <dl class="fm-corpo r4">
-      ${precisa ? `<div class="fm-precisa"><dt>Precisa de você</dt><dd><b>${esc(tarefa)}</b><span>${esc(px.texto)}</span></dd></div>` : ''}
-      <div class="fm-pedido"><dt>Pedido</dt><dd class="${missao ? '' : 'fm-nada'}">${missao ? esc(missao) : g === 'livre' ? 'Nenhum agora' : 'Tarefa avulsa (sem pedido)'}${etapaHtml}</dd></div>
-      ${precisa ? '' : `<div><dt>Última ação</dt><dd>${esc(tarefa)}</dd></div>`}
-      ${quandoTxt ? `<div class="fm-quando"><dt>${precisa ? 'Esperando' : 'Quando'}</dt><dd>${quandoTxt}</dd></div>` : ''}
-      ${precisa ? '' : `<div class="fm-prox ${g}"><dt>Para você</dt><dd>${esc(px.texto)}</dd></div>`}
+      ${precisa ? `<div class="fm-precisa"><dt>Precisa de você${quandoTxt ? ' · ' + quandoTxt : ''}</dt><dd><b>${esc(tarefa)}</b><span>${esc(px.texto)}</span></dd></div>`
+        : `<div class="fm-agora"><dt>Agora</dt><dd>${esc(tarefa)}${quandoTxt && quandoTxt !== 'agora' && g !== 'livre' ? `<small> · ${quandoTxt}</small>` : ''}</dd></div>`}
+      ${g === 'livre' ? '' : `<div class="fm-pedido"><dt>Pedido</dt><dd class="${missao ? '' : 'fm-nada'}">${missao ? esc(missao) : 'Tarefa avulsa (sem pedido)'}${etapaHtml}</dd></div>`}
+      ${precisa || g === 'fazendo' ? '' : `<div class="fm-prox ${g}"><dt>Para você</dt><dd>${esc(px.texto)}</dd></div>`}
     </dl>
     <div class="fm-acoes">${px.botao ? `<button type="button" class="btn forte" data-ficha="${px.botao[0]}">${esc(px.botao[1])}</button>` : ''}${mis && !px.botao ? `<button type="button" class="btn forte" data-ficha="pedido" data-mid="${esc(mis.id)}">Ver o pedido</button>` : ''}<button type="button" class="btn" data-ficha="detalhes">Ver detalhes</button></div>`;
   el.hidden = false; el.className = `ficha-mapa ${g}`;
@@ -449,9 +469,16 @@ function quadro() {
   mundo.semIcones = true;
   if (!lay.dataset.ligado) { // tocar na etiqueta = tocar no boneco
     lay.dataset.ligado = '1';
-    lay.addEventListener('click', (e) => { const t = e.target.closest('[data-etq]'); const b = t && ctx.mundo()?.agentes.get(t.dataset.etq); if (b) { e.stopPropagation(); abrirFicha(b); } });
+    // Rodada 6: a etiqueta amarela de quem espera a SUA autorização leva direto à revisão (o boneco abre a ficha)
+    lay.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-etq]'); const b = t && ctx.mundo()?.agentes.get(t.dataset.etq); if (!b) return;
+      e.stopPropagation();
+      if (b.status === 'alerta' && b.pessoa === ctx.eu()?.pessoa) revisar(b); else abrirFicha(b);
+    });
   }
-  const mini = z < 1; // visão geral do celular: só o quadradinho (sem texto), senão vira sopa de letras
+  // Visão geral do celular: etiqueta mínima. Quem trabalha ou espera você mostra o nome curto do cargo
+  // (não um "…" igual para todos); livre e copa ficam sem marcador.
+  const mini = z < 1;
   for (const el of pool.values()) el.dataset.v = '';
   const topoUtil = margens().topo + 4; // a etiqueta não foge para baixo da barra de salas
   const postas = [], obst = mini ? ((mundo.juntos = null), []) : obstaculos(mundo, lay, z, c);
@@ -461,13 +488,14 @@ function quadro() {
     if (x < -60 || x > w + 60 || y < -20 || y > h + 20) continue;
     let el = pool.get(b.id); const sel = fichaDe === b;
     if (!el) { el = document.createElement('span'); el.dataset.etq = b.id; lay.appendChild(el); pool.set(b.id, el); }
-    const [tipo, extra] = estadoEtiqueta(b), txt = mundo.juntos?.has(b.pessoa) && b.lugar?.assistente ? (b.pessoa === ctx.eu()?.pessoa ? 'Você + sua assistente' : `${b.pessoa} + assistente`) : rotuloDe(b);
+    const [tipo, extra] = estadoEtiqueta(b), txt = mundo.juntos?.has(b.pessoa) && b.lugar?.assistente ? (b.pessoa === ctx.eu()?.pessoa ? 'Você + sua assistente' : `${b.pessoa} + assistente`) : mini && b.lugar?.assistente && b.pessoa === ctx.eu()?.pessoa ? 'Assistente' : rotuloDe(b);
+    if (mini && (tipo === 'copa' || tipo === 'livre')) { el.className = 'etq mini e-' + tipo; el.dataset.v = '1'; continue; } // sem marcador (não ocupa lugar)
     const cls = `etq e-${tipo}${sel ? ' sel' : ''}${mini ? ' mini' : ''}${b.cargo ? ' e-cargo' : ''}`;
     if (el.className !== cls) el.className = cls;
     const chave = `${txt}|${extra}`;
     if (el.dataset.k !== chave) { el.dataset.k = chave; el.innerHTML = `<i aria-hidden="true"></i><b>${esc(txt)}</b>${extra ? `<small>${esc(extra)}</small>` : ''}`; el.title = `${txt}${extra ? ' · ' + extra : ''}`; el._w = 0; }
     if (!el._w || el.className !== el._cls) { el._w = el.offsetWidth; el._h = el.offsetHeight; el._cls = el.className; }
-    const hw = el._w / 2, eh = el._h || 16; let xe = mini ? x : Math.max(hw + 4, Math.min(w - hw - 4, x)); // perto da borda, a etiqueta entra na tela
+    const hw = el._w / 2, eh = el._h || 16; let xe = Math.max(hw + 4, Math.min(w - hw - 4, x)); // perto da borda, a etiqueta entra na tela
     // duas etiquetas no mesmo lugar (roda de conversa na copa): a de baixo sobe uma linha.
     // Placa de sala, nome de pessoa ou cabeça de alguém embaixo: desvia para o lado mais perto (ou sobe).
     let ye = y;
@@ -475,13 +503,13 @@ function quadro() {
     const livre = (nx, ny) => nx - hw >= 2 && nx + hw <= w - 2 && ny - 4 - eh >= topoUtil
       && !postas.some((p) => p.y0 < ny + 4 && p.y1 > ny - eh - 4 && p.x0 - 4 < nx + hw && p.x1 + 4 > nx - hw)
       && !obst.some((r) => r.x0 < nx + hw && r.x1 > nx - hw && r.y0 < ny - 4 && r.y1 > ny - 4 - eh);
-    if (!mini && !livre(xe, ye)) {
+    if (!livre(xe, ye)) {
       // Procura o lugar livre mais perto: ao lado de quem atrapalha (melhor que empilhar, como
       // Estrategista e Crítico lado a lado), em cima ou embaixo. Sem lugar livre, fica onde estava.
       const cand = [];
       for (const p of postas) cand.push([p.x0 - 6 - hw, ye], [p.x1 + 6 + hw, ye], [xe, p.y0 - 6], [xe, p.y1 + eh + 6]);
       for (const r of obst) cand.push([r.x0 - 2 - hw, ye], [r.x1 + 2 + hw, ye], [xe, r.y0 + 3], [xe, r.y1 + eh + 6]);
-      const ok = cand.filter(([nx, ny]) => livre(nx, ny) && Math.abs(nx - x) < 140 && Math.abs(ny - y) < 70)
+      const ok = cand.filter(([nx, ny]) => livre(nx, ny) && Math.abs(nx - x) < (mini ? 70 : 140) && Math.abs(ny - y) < (mini ? 30 : 70))
         .sort((a, b2) => Math.hypot(a[0] - xe, (a[1] - ye) * 1.5) - Math.hypot(b2[0] - xe, (b2[1] - ye) * 1.5))[0];
       if (ok) [xe, ye] = ok;
     }

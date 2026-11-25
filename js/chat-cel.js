@@ -39,12 +39,22 @@ export function irProximaDecisao(caixa) {
 }
 
 // ---------- Chat no PC: um cabeçalho só ----------
-// As abas de conversa e os botões da janela (✉ Dupla · Detalhes · ▁ · ×) dividem a mesma faixa:
+// As abas de conversa e os botões da janela (✉ Dupla · ▁ · ×) dividem a mesma faixa:
 // a barra da janela fica no canto direito (CSS em estilo-chat-popup.css) e as abas guardam o espaço dela (--jc-w).
 // A faixa Dupla/Assistente/Novo pedido some; a Dupla vira o botão ✉ (com o aviso de recados novos).
 export function botaoDupla() {
   const bd = document.querySelector('.painel-chat [data-badge-dupla]');
   return `<button type="button" class="btn mini jc-dupla" data-seg="dupla" title="Conversa da dupla">✉ Dupla<b class="badge" data-badge-dupla${bd && !bd.hidden ? '' : ' hidden'}>${esc(bd?.textContent || '')}</b></button>`;
+}
+// Cabeçalho da conversa no PC (logo abaixo das abas): o nome do pedido UMA vez, as pendências e "Detalhes".
+// Por isso o "pedido “X” ›" do cartão e o "Na conversa: X · Trocar" do compositor somem no PC.
+// v: { icone, nome, cor } · selo: [ícone, texto] ou null · gpt: conversa com o Codex · detalhes: há pedido.
+export function desenharCabecalhoPC(el, { v, selo, gpt = false, detalhes = false }) {
+  if (!el) return;
+  const html = v ? `<span class="ccp-ic" aria-hidden="true">${esc(v.icone || '✦')}</span><b class="ccp-nome">${esc(v.nome || 'Conversa nova')}</b>${gpt ? '<span class="cmp-quem">Codex</span>' : ''}${selo ? `<span class="ccp-estado">${esc(selo[0])} ${esc(selo[1])}</span>` : ''}<span class="espaco"></span>${detalhes ? '<button type="button" class="btn mini" data-jc="detalhes" title="Etapa, página e opções do pedido">Detalhes</button>' : ''}` : '';
+  el.hidden = !html;
+  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+  el.style.setProperty('--cor', v?.cor || 'var(--borda-clara)');
 }
 export function medirJanela(el) {
   requestAnimationFrame(() => {
@@ -52,7 +62,9 @@ export function medirJanela(el) {
     // a faixa das abas encolheu: a aba aberta volta a ficar inteira à vista
     const faixa = document.querySelector('#abasConversa'), on = faixa?.querySelector('.aba-conv.on'); if (!on) return;
     const fr = faixa.getBoundingClientRect(), r = on.getBoundingClientRect();
-    if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; else if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8;
+    // cabe sem rolar (a faixa cresceu): volta ao começo, sem aba cortada à esquerda
+    if (r.right - fr.left + faixa.scrollLeft <= faixa.clientWidth) faixa.scrollLeft = 0;
+    else if (r.right > fr.right) faixa.scrollLeft += r.right - fr.right + 8; else if (r.left < fr.left) faixa.scrollLeft += r.left - fr.left - 8;
   });
 }
 
@@ -66,19 +78,27 @@ function acaoDoRodape(msgs) {
     const alvo = card.querySelector('.qz-nav .qz-prox, .qz-nav .qz-enviar, .qz-botoes .qz-enviar');
     if (!alvo) return null;
     const voltar = card.querySelector('.qz-nav .qz-voltar:not(:disabled)');
-    return { card, alvo, txt: alvo.textContent.trim(), off: alvo.disabled, voltar };
+    const legenda = card.querySelector('.qz-nav .qz-legenda')?.textContent || '';
+    return { card, alvo, txt: alvo.textContent.trim(), off: alvo.disabled, voltar, legenda };
   }
   const n = msgs.querySelectorAll('.aprovacao:not(.decidida)').length;
   return { card, txt: n > 1 ? `Ver a próxima decisão ↓` : 'Ver a decisão ↓', off: false, rolar: true };
 }
-// Celular: só a decisão da vez fica aberta; as próximas recolhem e o rodapé mostra "＋ mais N decisões depois desta"
-// (fica no rodapé fixo para nunca aparecer cortado). Tocar abre todas até a decisão da vez mudar. Devolve N.
+// Celular: só a decisão da vez fica aberta; as próximas recolhem (abrem sozinhas quando a da vez é decidida).
+// Uma contagem só: o cabeçalho de cada cartão diz "Decisão 1 de 4 · <título>" (o mesmo 4 da faixa de cima);
+// dentro do questionário fica só "Pergunta 1 de 2". Nada de "mais N decisões" à parte.
 function recolherProximas(msgs) {
-  const pend = [...msgs.querySelectorAll('.aprovacao:not(.decidida)')], id = pend[0]?.dataset.ap || '';
-  if (msgs.dataset.verDe !== id) { delete msgs.dataset.verTodas; msgs.dataset.verDe = id; }
-  const recolher = ehCel() && !msgs.dataset.verTodas;
-  pend.forEach((c, i) => { if (c.classList.contains('cel-recolhida') !== (recolher && i > 0)) c.classList.toggle('cel-recolhida'); });
-  return recolher ? pend.length - 1 : 0;
+  const pend = [...msgs.querySelectorAll('.aprovacao:not(.decidida)')], cel = ehCel();
+  pend.forEach((c, i) => { if (c.classList.contains('cel-recolhida') !== (cel && i > 0)) c.classList.toggle('cel-recolhida'); });
+  msgs.querySelectorAll('.ap3-ordem').forEach((x) => { if (!cel || x.closest('.decidida')) x.remove(); });
+  if (!cel) return;
+  pend.forEach((c, i) => {
+    const tit = c.querySelector('.ap3-tit > b'); if (!tit) return;
+    const txt = `Decisão ${i + 1} de ${pend.length} · `;
+    let o = tit.querySelector('.ap3-ordem');
+    if (!o) { o = document.createElement('span'); o.className = 'ap3-ordem'; tit.prepend(o); }
+    if (o.textContent !== txt) o.textContent = txt;
+  });
 }
 // PC: com pergunta ou decisão aberta, o botão principal do compositor vira "Responder ↑" (leva até ela);
 // "Enviar" (texto na conversa ou para a fila) continua ao lado, como secundário.
@@ -102,12 +122,12 @@ function irParaDecisao(msgs) {
   card.querySelector('.qz-op, .ap3-botoes .btn, .ap-botoes .btn')?.focus({ preventScroll: true });
 }
 function desenharRodape(form, msgs) {
-  const resto = recolherProximas(msgs); desenharResponder(form, msgs);
+  recolherProximas(msgs); desenharResponder(form, msgs);
   const box = form.querySelector('.cmp-acao'); if (!box) return;
   const a = ehCel() ? acaoDoRodape(msgs) : null;
   form.classList.toggle('com-acao', !!a);
   box.hidden = !a; if (!a) return;
-  const html = `${a.voltar ? '<button type="button" class="btn cmp-acao-voltar" data-acao-voltar aria-label="Pergunta anterior">‹</button>' : ''}<button type="button" class="btn forte cmp-acao-ir" data-acao-ir${a.off ? ' disabled' : ''}>${esc(a.txt)}</button>${resto > 0 ? `<button type="button" class="cmp-mais" data-mais-dec>＋ mais ${resto} ${resto === 1 ? 'decisão' : 'decisões'} depois desta</button>` : ''}`;
+  const html = `${a.voltar ? '<button type="button" class="btn cmp-acao-voltar" data-acao-voltar aria-label="Pergunta anterior">‹</button>' : ''}<button type="button" class="btn forte cmp-acao-ir" data-acao-ir${a.off ? ' disabled' : ''}>${esc(a.txt)}</button>${a.legenda ? `<small class="cmp-legenda">${esc(a.legenda)}</small>` : ''}`;
   if (box.dataset.h !== html) { box.innerHTML = html; box.dataset.h = html; }
 }
 // Cabeçalho do celular numa faixa só: ‹ Voltar · conversa (nome + estado, toque troca) · Detalhes.
@@ -128,7 +148,6 @@ export function ligarCabecalhoERodape(form, msgs, hud, seletor) {
   form.prepend(box);
   box.addEventListener('click', (e) => {
     const a = acaoDoRodape(msgs); if (!a) return;
-    if (e.target.closest('[data-mais-dec]')) { msgs.dataset.verTodas = '1'; agendar(); requestAnimationFrame(() => requestAnimationFrame(() => msgs.querySelectorAll('.aprovacao:not(.decidida)')[1]?.scrollIntoView({ behavior: 'smooth', block: 'start' }))); return; }
     if (e.target.closest('[data-acao-voltar]')) { a.voltar?.click(); return; }
     if (!e.target.closest('[data-acao-ir]')) return;
     if (a.rolar) { a.card.scrollIntoView({ behavior: 'smooth', block: 'start' }); a.card.classList.add('piscar'); setTimeout(() => a.card.classList.remove('piscar'), 1600); return; }
