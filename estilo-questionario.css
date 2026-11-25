@@ -27,6 +27,20 @@
 .qz-botoes .qz-enviar { font: 600 21px var(--titulo); }
 .qz-botoes .qz-enviar:disabled { opacity: .55; cursor: not-allowed; }
 .qz-nota { margin: 0; font: 13px/1.4 var(--ui); color: var(--meta); }
+/* Celular: uma pergunta por vez ("Pergunta 1 de N", pontinhos, Voltar / Próxima, Enviar só na última) */
+.qz-perg[hidden] { display: none; }
+.qz-perg[hidden] + .qz-perg { padding-top: 0; border-top: 0; }
+.qz-passo { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.qz-passo b { font: 600 14px var(--ui); color: var(--meta); }
+.qz-pontos { display: flex; gap: 5px; }
+.qz-pontos i { width: 22px; height: 6px; background: var(--papel-escuro); box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .35); }
+.qz-pontos i.ok { background: #4fa865; box-shadow: none; }
+.qz-pontos i.atual { background: var(--azul); box-shadow: none; }
+.qz-nav { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 8px; margin-top: 4px; }
+.qz-nav .btn { min-height: 50px; min-width: 0; padding: 4px 8px; white-space: normal; line-height: 1.1; }
+.qz-nav .qz-prox, .qz-nav .qz-enviar { font: 600 20px var(--titulo); }
+.qz-nav .btn:disabled { opacity: .55; cursor: not-allowed; }
+.qz-pular-link { padding: 0; border: 0; background: none; font: 600 13px var(--ui); color: var(--tinta); text-decoration: underline; cursor: pointer; min-height: 0; }
 @media (max-width: 560px) {
   .qz-ops { grid-template-columns: 1fr; }
   .aprovacao.qz .qz-outro { grid-template-columns: 1fr; gap: 4px; }

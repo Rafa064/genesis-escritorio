@@ -6,6 +6,8 @@ import { frase, primeiraFrase } from './humano.js';
 import { tituloDe } from './config.js';
 import { ctx, esc, tempoDe, nomeArq } from './comando-ctx.js';
 import { ico } from './comando-icones.js';
+import { estadoPedido, contaDecisoes, decisoes } from './estado-pedido.js';
+export { contaDecisoes };
 
 const EDITA = /^(Write|Edit|MultiEdit|NotebookEdit)$/;
 
@@ -48,13 +50,16 @@ export function etapaDe(m) {
 }
 const nomeEtapa = (n) => (n === 1 ? 'pedido recebido' : n === 2 ? 'montando o plano' : n === 3 ? 'fazendo' : 'pronto');
 const trilha = (n, alerta) => `<ol class="cp-etapas" aria-label="Etapa ${n} de 4">${ETAPAS.map((t, i) => `<li class="${i + 1 < n || n === 4 ? 'ok' : i + 1 === n ? (alerta ? 'atual alerta' : 'atual') : ''}"><i></i><span>${t}</span></li>`).join('')}</ol>`;
+const maiusc = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+// Estado principal (estado-pedido.js). Rodando sem decisão, diz em que parte está ("Montando o plano", "Fazendo").
+const estadoDoPedido = (nDec, soPerguntas, n) => { const e = estadoPedido({ nDec, soPerguntas, rodando: true }); return e.k === 'fazendo' ? { ...e, txt: maiusc(nomeEtapa(n)) } : e; };
 const nomePedido = (m, pedido) => primeiraFrase(m?.titulo || pedido || 'Seu pedido', 70);
 
 // Chip do pedido no mapa: toque leva ao cartão na conversa.
 export function htmlChipMapa({ m, pend = 0, titulo = '', decisao = '' }) {
-  const n = etapaDe(m);
+  const n = etapaDe(m), est = estadoDoPedido(pend, pend === 1 && /^Responder/.test(decisao), n);
   return `<button type="button" class="cp-chip-mapa${pend ? ' alerta' : ''}" data-pedido-abrir="${esc(m?.id || '')}" title="Abrir o seu pedido">
-    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? (decisao ? `${/^Responder/.test(decisao) ? 'Espera você' : 'Espera você autorizar'}: ${esc(primeiraFrase(decisao.charAt(0).toLowerCase() + decisao.slice(1), 48))}${pend > 1 ? ` · +${pend - 1} neste pedido` : ''}` : `Precisa de você · ${pend} decis${pend > 1 ? 'ões' : 'ão'} neste pedido`) : `Etapa ${n} de 4 · ${nomeEtapa(n)}`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
+    <span class="cp-pulso"></span><span class="cpm-txt"><b>${esc(primeiraFrase(titulo || m?.titulo || 'Seu pedido', 40))}</b><small>${pend ? `${est.ic} ${esc(est.txt)} · ${decisoes(pend)}` : `${esc(est.txt)} · Etapa ${n} de 4`}</small></span><span class="cpm-seta">${ico('seta')}</span></button>`;
 }
 
 // O que vem depois de cada etapa, em uma frase (o cartão recolhido mostra "Agora" e "Próximo").
@@ -70,8 +75,6 @@ export function htmlAgora({ m, conv, ocupada, escalacaoHtml = '', pend = [], tot
   return '';
 }
 
-// Contagem das decisões NESTE pedido (o topo conta as do estúdio): "4 neste pedido" ou "faltam 3 de 4".
-export const contaDecisoes = (falta, total) => (total > falta ? `faltam ${falta} de ${total}` : `${falta} neste pedido`);
 function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo, totalDec = 0) {
   const quem = gpt ? 'O Codex' : 'A assistente';
   const n = etapaDe(m && !m.fim ? m : null);
@@ -82,15 +85,16 @@ function htmlRodando(m, gpt, escalacaoHtml, pend, fila, pedido, titulo, totalDec
   const ultT = Math.max(ult?.t || 0, m?.ultimo || 0);
   // Recolhido (padrão): uma faixa com o pedido, a etapa e a próxima ação (Decidir). Aberto: etapas, o que está fazendo e o menu.
   const aberto = menuAberto;
-  // A etapa (percurso do pedido) fica no subtítulo; as decisões ficam no botão Decidir: duas contas, dois lugares.
-  const sub = `Etapa ${n} de 4 · ${nomeEtapa(n)}${m && !pend.length ? ` · há ${tempoDe(Date.now() - m.inicio)}` : ''}`;
+  // Um estado só (precisa de você > fazendo); a etapa vira linha secundária e as decisões ficam no botão Decidir.
   const soPerguntas = pend.length > 0 && pend.every((x) => x.q);
+  const est = estadoDoPedido(pend.length, soPerguntas, n);
+  const sub = `Etapa ${n} de 4${m && !pend.length ? ` · há ${tempoDe(Date.now() - m.inicio)}` : ''}`;
   const nDec = contaDecisoes(pend.length, Math.max(totalDec, pend.length));
-  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${soPerguntas ? 'Sua assistente tem perguntas' : pend.length > 1 ? `${pend.length} decisões neste pedido` : 'Uma decisão neste pedido'}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
+  const pendHtml = pend.length ? `<div class="cp-pend"><p><b>${ico('mao')} ${soPerguntas ? 'Sua assistente tem perguntas' : maiusc(contaDecisoes(pend.length))}</b><span>${esc(pend[0].titulo)}${pend.length > 1 ? ` <em>e mais ${pend.length - 1}</em>` : ''}</span></p></div>` : '';
   return `<div class="cp cp-rodando${alerta ? ' cp-alerta' : ''}${aberto ? ' aberto' : ''}">
     <div class="cp-cab"><span class="cp-pulso"></span>
-      <button type="button" class="cp-tit" data-cp="menu" aria-expanded="${aberto}" title="${aberto ? 'Recolher' : 'Ver etapas e opções'}"><b>${esc(titulo || nomePedido(m, pedido))}</b><small>${sub}</small></button>
-      ${pend.length ? `<button type="button" class="btn forte cp-decidir" data-cp="aprovar" aria-label="${soPerguntas ? 'Responder às perguntas da assistente' : `Decidir: ${nDec}`}"><span>${soPerguntas ? 'Responder' : 'Decidir'}</span><small>${soPerguntas ? 'perguntas' : esc(nDec)}</small></button>` : ''}
+      <button type="button" class="cp-tit" data-cp="menu" aria-expanded="${aberto}" title="${aberto ? 'Recolher' : 'Ver etapas e opções'}"><b>${esc(titulo || nomePedido(m, pedido))}</b><span class="cp-estado est-${est.k}">${est.ic} ${esc(est.txt)}</span><small class="cp-etapa">${sub}</small></button>
+      ${pend.length ? `<button type="button" class="btn forte cp-decidir" data-cp="aprovar" aria-label="${soPerguntas ? 'Responder às perguntas da assistente' : `Decidir: ${nDec}`}"><span>${soPerguntas ? 'Responder' : 'Decidir'}</span><small>${soPerguntas ? 'perguntas' : esc(nDec).replace(' neste pedido', '<span class="cp-dec-ctx"> neste pedido</span>')}</small></button>` : ''}
       <button type="button" class="cp-menu-btn" data-cp="menu" aria-expanded="${aberto}" aria-label="${aberto ? 'Recolher o cartão do pedido' : 'Etapas e opções do pedido'}">${ico('seta', aberto ? 'gira' : 'gira-baixo')}</button></div>
     ${aberto ? trilha(n, alerta) : `<div class="cp-mini" aria-hidden="true">${[1, 2, 3, 4].map((i) => `<i class="${i < n ? 'ok' : i === n ? (alerta ? 'atual alerta' : 'atual') : ''}"></i>`).join('')}</div>`}
     ${aberto && (titulo && (m?.titulo || pedido)) ? `<p class="cp-orig"><b>Pedido:</b> ${esc(primeiraFrase(m?.titulo || pedido, 140))}</p>` : ''}

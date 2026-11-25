@@ -67,3 +67,80 @@
   #equipeVista .cg-trilha { gap: 5px; }
   #equipeVista .cg-det > summary { min-height: 36px; }
 }
+
+/* ======================= Noite 2 · rodada 3: grade centrada, filtro, "i" e cartões mais claros ======================= */
+/* PC: a rolagem ocupa a tela toda; o conteúdo fica numa coluna centrada (sem o vazio à direita) */
+#equipeVista[data-aba=cargos] #equipeCorpo { max-width: none; }
+#equipeVista[data-aba=cargos] #equipeCorpo > * { max-width: 1120px; margin-left: auto; margin-right: auto; }
+.cg-grade { grid-auto-rows: 1fr; }
+/* filtro Todos / Trabalhando / Precisam de você + o "i" com a frase de resumo */
+.cg-topo { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
+.cg-filtro { display: flex; gap: 4px; padding: 3px; background: var(--papel-escuro, var(--painel3)); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.cg-filtro label { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; cursor: pointer; white-space: nowrap; font: 600 14px var(--ui); color: var(--meta, var(--fraco)); }
+.cg-filtro input { position: absolute; opacity: 0; pointer-events: none; }
+.cg-filtro small { font: 700 12px var(--ui); min-width: 20px; padding: 1px 5px; text-align: center; background: rgba(42, 26, 16, .12); color: var(--tinta, var(--texto)); }
+.cg-filtro label.alerta small { background: #ffd23f; box-shadow: 0 0 0 1px #2a1a10; }
+.cg-filtro label.on { background: var(--papel-claro, #fffaf0); color: var(--tinta, var(--texto)); box-shadow: 0 0 0 2px var(--contorno, #2a1a10); }
+.cg-filtro label:has(input:focus-visible) { outline: 2px solid var(--contorno, #2a1a10); outline-offset: 2px; }
+.cg-info { display: none; position: relative; margin-left: auto; }
+.cg-info summary { list-style: none; display: grid; place-items: center; width: 36px; height: 36px; cursor: pointer;
+  font: 700 17px/1 Georgia, serif; font-style: italic; color: var(--tinta, var(--texto)); background: var(--papel-claro, #fffaf0); box-shadow: 0 0 0 2px var(--contorno, #2a1a10); }
+.cg-info summary::-webkit-details-marker { display: none; }
+.cg-info[open] summary { background: var(--papel-escuro, #d9c8a4); }
+.cg-info .eq-resumo { position: absolute; right: 0; top: 44px; z-index: 3; width: min(320px, calc(100vw - 40px)); margin: 0; padding: 10px 12px; font-size: 14px; line-height: 1.45;
+  background: var(--papel-claro, #fffaf0); color: var(--tinta, var(--texto)); box-shadow: 0 0 0 2px var(--contorno, #2a1a10), 3px 5px 0 2px rgba(20, 12, 6, .25); }
+.cg-lista[data-filtro=vivo] .cg-card:not(.vivo), .cg-lista[data-filtro=precisa] .cg-card:not(.precisa) { display: none; }
+.cg-lista[data-filtro=vivo] .cg-sec:not(:has(.cg-card.vivo)), .cg-lista[data-filtro=precisa] .cg-sec:not(:has(.cg-card.precisa)) { display: none; }
+.cg-lista[data-filtro=vivo] .cg-grade, .cg-lista[data-filtro=precisa] .cg-grade { grid-auto-rows: auto; }
+.cg-vazio { display: none; margin: 16px 0; padding: 16px; text-align: center; font: 600 15px var(--ui); color: var(--fraco); background: var(--papel, var(--painel3)); }
+.cg-lista[data-filtro=vivo]:not(:has(.cg-card.vivo)) .cg-vazio, .cg-lista[data-filtro=precisa]:not(:has(.cg-card.precisa)) .cg-vazio { display: block; }
+/* cartão: só o "Ensinar" é laranja; estado, faixa do topo e destaque ficam neutros (amarelo só em "precisa de você") */
+#equipeVista .cg-card { box-shadow: var(--cartao, inset 0 0 0 1px var(--borda)), inset 0 4px 0 color-mix(in srgb, var(--cor) 55%, #8a7a66); }
+#equipeVista .cg-card.vivo { box-shadow: var(--cartao, none), inset 0 4px 0 color-mix(in srgb, var(--cor) 55%, #8a7a66), 0 0 0 2px rgba(42, 26, 16, .55); }
+#equipeVista .cg-card.precisa { box-shadow: var(--cartao, none), inset 0 4px 0 #ffd23f, 0 0 0 2px #c9a43a; }
+#equipeVista .cg-est { color: var(--meta, var(--fraco)); }
+#equipeVista .cg-est i { background: #6b5a48; }
+#equipeVista .cg-card.precisa .cg-est { color: #7a5a00; }
+#equipeVista .cg-card.precisa .cg-est i { background: #ffd23f; color: #2a1a10; box-shadow: 0 0 0 1px #2a1a10; }
+#equipeVista .cg-card.vivo:not(.precisa) .cg-est i { animation: etq-pisca 1.2s steps(2) infinite; }
+#equipeVista .eq-resumo b { color: var(--tinta, var(--texto)); }
+.cg-trilha { box-shadow: inset 0 0 0 1px rgba(90, 58, 34, .18); }
+.cg-sabe { margin: 0; font: 600 13px var(--ui); color: var(--meta, var(--fraco)); }
+.cg-sabe b { color: var(--tinta, var(--texto)); }
+.cg-niv b span { color: var(--meta, #6b5a48); }
+.cg-prox { display: block; }
+.cg-prox p { margin-top: 2px; }
+.cg-ensinar { justify-self: stretch; width: 100%; min-height: 40px; white-space: normal; text-align: center; }
+@media (max-width: 760px) {
+  /* topo leve: título pequeno ao lado das abas, que rolam de lado (com um esmaecido indicando que há mais) */
+  #equipeVista .eq-topo { flex-wrap: nowrap; padding: 6px 0 6px 12px; gap: 8px; }
+  #equipeVista .eq-topo h2 { font-size: 18px; flex: none; }
+  #equipeVista .eq-abas { flex: 1; min-width: 0; padding: 3px 24px 3px 3px; scroll-snap-type: x proximity;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  #equipeVista .eq-abas button { padding: 0 10px; font-size: 14px; min-height: 40px; scroll-snap-align: start; }
+  #equipeVista .eq-abas button:last-child { margin-right: 8px; }
+  .cg-resumo-pc { display: none; }
+  .cg-info { display: block; }
+  .cg-filtro label { padding: 0 9px; font-size: 13.5px; gap: 4px; }
+  .cg-topo { margin-top: 0; }
+  .cg-grade { grid-auto-rows: auto; }
+}
+@media (prefers-reduced-motion: reduce) { #equipeVista .cg-card .cg-est i { animation: none !important; } }
+@media (max-width: 760px) {
+  /* as 3 abas cabem inteiras: o título "Equipe" já está no "Mais" de baixo; "Catálogo" sem o "e ajustes" */
+  #equipeVista .eq-topo h2 { display: none; }
+  #equipeVista .eq-abas .so-pc { display: none; }
+  #equipeVista .eq-abas { -webkit-mask-image: none; mask-image: none; padding-right: 3px; }
+  #equipeVista .eq-abas button { flex: 1 1 auto; }
+  .cg-filtro { flex: 1; }
+  .cg-filtro label { flex: 1 1 auto; justify-content: center; padding: 0 6px; gap: 3px; }
+  .cg-filtro label:first-child small { display: none; }
+  .cg-info summary { width: 34px; height: 34px; }
+}
+#equipeVista .cg-info > summary { display: grid; place-items: center; padding: 0; min-height: 0; width: 36px; height: 36px; font: italic 700 18px/1 Georgia, serif; }
+@media (max-width: 760px) {
+  #equipeVista .cg-info > summary { width: 40px; height: 40px; }
+  .cg-filtro label { padding: 0 4px; font-size: 13px; min-height: 40px; }
+  .cg-filtro small { min-width: 18px; padding: 1px 4px; }
+}
+.cg-lista:not([data-filtro=todos]) .cg-sec h3 small { display: none; }

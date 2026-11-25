@@ -142,3 +142,20 @@ body:not([data-vista=mapa]) .ind-mapa { display: none; }
   body.setor-no-pedido .fs-nome { font-size: 13px; padding: 2px 8px; max-width: calc(100vw - 48px); }
   body.setor-no-pedido .hud-mapa.pedido .cp-chip-mapa { padding-top: 12px; }
 }
+
+/* ---------- Noite 2 · rodada 3: no celular, pedido + "Novo pedido" numa faixa só no rodapé ---------- */
+/* A faixa de madeira ocupa a largura toda; o cartão do pedido à esquerda e o botão (quadrado) à direita,
+   da mesma altura. Sem pedido aberto, o botão volta a ser o grande de sempre. */
+@media (max-width: 760px) {
+  body[data-vista=mapa]:has(#hudMapa.pedido:not([hidden])) #hudMapa.pedido { left: 6px; right: 92px; bottom: 6px; width: auto; z-index: 3; }
+  #hudMapa.pedido::before { content: ""; position: absolute; z-index: -1; left: -6px; right: -92px; top: -6px; bottom: -6px;
+    background: var(--madeira, #8a5a32); box-shadow: inset 0 2px 0 var(--madeira-clara, #b07a48), 0 -2px 0 var(--contorno, #2a1a10); }
+  #hudMapa.pedido .cp-chip-mapa { height: 76px; min-height: 0; overflow: hidden; box-shadow: 0 0 0 2px var(--contorno, #2a1a10); }
+  body[data-vista=mapa]:has(#hudMapa.pedido:not([hidden])) .bc-abrir {
+    right: 6px; bottom: 6px; width: 80px; height: 76px; min-height: 0; padding: 4px 2px; z-index: 4;
+    flex-direction: column; justify-content: center; gap: 4px; text-align: center; white-space: normal;
+    font-size: 17px; line-height: .95; box-shadow: 0 0 0 2px var(--contorno, #2a1a10), inset 0 -4px 0 var(--acao-escuro), inset 0 2px 0 var(--acao-claro);
+  }
+  body[data-vista=mapa]:has(#hudMapa.pedido:not([hidden])) .bc-abrir svg { width: 18px; height: 18px; }
+  body.setor-no-pedido #hudMapa.pedido .cp-chip-mapa { padding-top: 10px; }
+}

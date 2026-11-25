@@ -9,6 +9,11 @@
 
 .af-est { font-weight: 700; color: var(--tinta); }
 
+/* Cartão do pedido: UM estado principal (js/estado-pedido.js) e a etapa numa linha discreta embaixo */
+.cp-tit .cp-estado { font: 700 15px/1.25 var(--ui); color: var(--tinta); }
+.cp-tit .cp-estado.est-voce { color: #8a4b08; }
+.cp-tit small.cp-etapa { font: 500 12.5px/1.2 var(--ui); color: var(--meta); }
+
 /* só no celular */
 .seg-conversas .seg-voltar, #seletorConvCel, #formChat .cmp-abrir, #formChat .cmp-recolher { display: none; }
 
@@ -61,10 +66,12 @@
   #hudChat .cp-rodando:not(.aberto) .cp-tit b,
   #hudChat .cp-rodando:not(.aberto) .cp-mini,
   #hudChat .cp-rodando:not(.aberto) .cp-depois { display: none; }
-  #hudChat .cp-rodando:not(.aberto) .cp-tit small { font: 600 15px/1.25 var(--ui); color: var(--tinta); }
+  #hudChat .cp-rodando:not(.aberto) .cp-tit .cp-estado { font: 700 16px/1.25 var(--ui); }
+  #hudChat .cp-rodando:not(.aberto) .cp-tit small.cp-etapa { font: 500 12.5px/1.2 var(--ui); color: var(--meta); }
   #hudChat .cp-rodando:not(.aberto) .cp-agora-curta { margin: 4px 0 0; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
   #hudChat .cp-rodando:not(.aberto) .cp-menu-btn { margin: 0; width: 40px; height: 40px; }
   .cp-decidir { min-height: 46px; padding: 3px 12px; font-size: 18px; }
+  .cp-decidir .cp-dec-ctx { display: none; } /* "4 decisões": o "neste pedido" já é o cartão */
 
   /* ---------- decisão: título, consequência e os dois botões juntos, lado a lado, inteiros ---------- */
   .ap3 .ap3-botoes { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 8px; }

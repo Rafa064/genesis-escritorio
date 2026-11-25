@@ -258,3 +258,23 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
   .hoje .hj-rosto { width: 32px; height: 32px; }
   .hoje .hj-item-btn { padding: 0 10px; font-size: 13.5px; }
 }
+
+/* ---- Hoje, ordem fixa (Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois).
+   O selo do grupo leva unidade ("5 decisões · 1 aviso"); o custo de IA é a última linha, recolhida. */
+.hoje .g-sugestoes { --g: #c9853a; }
+.hoje .g-sugestoes .hj-cab.sub { margin: -2px 0 2px; }
+.hoje .g-sugestoes .hj-cab.sub small { font-size: 13px; }
+.hoje .g-sugestoes .hj-cab.sub .btn.mini { min-height: 36px; font-size: 13.5px; }
+.hoje .hj-grupo h3 i { white-space: nowrap; }
+.hoje details.hj-dia.r5 { display: block; margin: 20px 0 6px; padding: 0; background: var(--papel-claro, #fbf0d6); box-shadow: 0 0 0 2px rgba(90, 58, 34, .22); }
+.hoje details.hj-dia.r5 > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; min-height: 44px; padding: 11px 14px; cursor: pointer; list-style: none; font: 15px var(--ui); color: var(--meta, #5b3f26); }
+.hoje details.hj-dia.r5 > summary::-webkit-details-marker { display: none; }
+.hoje details.hj-dia.r5 > summary b { font: 700 16px var(--ui); color: var(--tinta); }
+.hoje details.hj-dia.r5 .hj-dia-rot { font: 600 15px var(--ui); }
+.hoje details.hj-dia.r5 .hj-dia-comp { flex-basis: 100%; font-size: 14px; }
+.hoje #hojeCorpo details.hj-dia.r5 > summary::before, #gaveta .hoje details.hj-dia.r5 > summary::before { display: none; }
+.hoje details.hj-dia.r5 .hj-dia-seta { margin-left: auto; font-style: normal; color: var(--tinta); transition: transform .15s; }
+.hoje details.hj-dia.r5[open] .hj-dia-seta { transform: rotate(180deg); }
+.hoje details.hj-dia.r5[open] { padding-bottom: 10px; }
+.hoje details.hj-dia.r5 > :not(summary) { margin-left: 14px; margin-right: 14px; }
+.hoje details.hj-dia.r5 .rd-linha { margin-top: 6px; margin-bottom: 8px; }

@@ -402,23 +402,33 @@ function quadro() {
   }
   const mini = z < 1; // visão geral do celular: só o quadradinho (sem texto), senão vira sopa de letras
   for (const el of pool.values()) el.dataset.v = '';
-  const postas = [];
+  const topoUtil = margens().topo + 4; // a etiqueta não foge para baixo da barra de salas
+  const postas = [], obst = mini ? ((mundo.juntos = null), []) : obstaculos(mundo, lay, z, c);
   for (const b of mundo.agentes.values()) {
     const x = (b.x - c.x) * z, topo = (b.topo ?? b.y - 31) - (b.modo === 'sentado' && b.lugar?.dir === 'cima' ? -2 : -7); // colada na cabeça (o quadro do boneco tem folga em cima)
     const y = (topo - c.y) * z;
     if (x < -60 || x > w + 60 || y < -20 || y > h + 20) continue;
     let el = pool.get(b.id); const sel = fichaDe === b;
     if (!el) { el = document.createElement('span'); el.dataset.etq = b.id; lay.appendChild(el); pool.set(b.id, el); }
-    const [tipo, extra] = estadoEtiqueta(b), txt = rotuloDe(b);
+    const [tipo, extra] = estadoEtiqueta(b), txt = mundo.juntos?.has(b.pessoa) && b.lugar?.assistente ? (b.pessoa === ctx.eu()?.pessoa ? 'Você + sua assistente' : `${b.pessoa} + assistente`) : rotuloDe(b);
     const cls = `etq e-${tipo}${sel ? ' sel' : ''}${mini ? ' mini' : ''}${b.cargo ? ' e-cargo' : ''}`;
     if (el.className !== cls) el.className = cls;
     const chave = `${txt}|${extra}`;
     if (el.dataset.k !== chave) { el.dataset.k = chave; el.innerHTML = `<i aria-hidden="true"></i><b>${esc(txt)}</b>${extra ? `<small>${esc(extra)}</small>` : ''}`; el.title = `${txt}${extra ? ' · ' + extra : ''}`; el._w = 0; }
-    if (!el._w || el.className !== el._cls) { el._w = el.offsetWidth; el._cls = el.className; }
-    const hw = el._w / 2, xe = mini ? x : Math.max(hw + 4, Math.min(w - hw - 4, x)); // perto da borda, a etiqueta entra na tela
-    // duas etiquetas no mesmo lugar (roda de conversa na copa): a de baixo sobe uma linha
+    if (!el._w || el.className !== el._cls) { el._w = el.offsetWidth; el._h = el.offsetHeight; el._cls = el.className; }
+    const hw = el._w / 2, eh = el._h || 16; let xe = mini ? x : Math.max(hw + 4, Math.min(w - hw - 4, x)); // perto da borda, a etiqueta entra na tela
+    // duas etiquetas no mesmo lugar (roda de conversa na copa): a de baixo sobe uma linha.
+    // Placa de sala, nome de pessoa ou cabeça de alguém embaixo: desvia para o lado mais perto (ou sobe).
     let ye = y;
-    if (!mini) for (let k = 0; k < 3; k++) { const bate = postas.find((p) => Math.abs(p.y - ye) < 17 && p.x0 < xe + hw && p.x1 > xe - hw); if (!bate) break; ye = bate.y - 18; }
+    if (!mini) for (let k = 0; k < 4; k++) {
+      const bate = postas.find((p) => Math.abs(p.y - ye) < 17 && p.x0 < xe + hw && p.x1 > xe - hw);
+      if (bate) { ye = bate.y - 18; continue; }
+      const o = obst.find((r) => r.x0 < xe + hw && r.x1 > xe - hw && r.y0 < ye - 4 && r.y1 > ye - 4 - eh);
+      if (!o) break;
+      const op = [[o.x0 - 2 - hw, ye], [o.x1 + 2 + hw, ye], [xe, o.y0 + 3]].filter(([nx, ny]) => nx - hw >= 2 && nx + hw <= w - 2 && ny - 4 - eh >= topoUtil);
+      const melhor = op.sort((a, b2) => Math.hypot(a[0] - xe, a[1] - ye) - Math.hypot(b2[0] - xe, b2[1] - ye))[0];
+      if (!melhor) break; [xe, ye] = melhor;
+    }
     postas.push({ x0: xe - hw, x1: xe + hw, y: ye });
     el.style.transform = `translate(${Math.round(xe)}px, ${Math.round(ye)}px) translate(-50%, -100%)`;
     el.dataset.v = '1';
@@ -426,6 +436,28 @@ function quadro() {
   for (const [id, el] of pool) if (!el.dataset.v) { el.remove(); pool.delete(id); }
   // a ficha segue o boneco: se ele sumir (mudou de estado e de lugar), fecha
   if (fichaDe && !mundo.agentes.has(fichaDe.id)) fecharFicha();
+}
+// O que as etiquetas não podem cobrir: placas das salas, nomes das pessoas e a cabeça de cada pessoa.
+// Os nomes das pessoas também saem de cima das placas (pela propriedade "translate", que o app.js não mexe).
+// Pessoa ao lado da própria assistente: uma etiqueta só ("Kenny + assistente"); o app.js esconde o nome dela.
+function obstaculos(mundo, lay, z, c) {
+  const base = lay.getBoundingClientRect(), gente = [...mundo.pessoas.values()]; if (mundo.eu) gente.push(mundo.eu);
+  const juntos = new Set();
+  for (const b of mundo.agentes.values()) if (b.lugar?.assistente && gente.some((p) => p.pessoa === b.pessoa && Math.abs(p.x - b.x) < 44 && Math.abs(p.y - b.y) < 60)) juntos.add(b.pessoa);
+  mundo.juntos = juntos;
+  const rel = (el) => { const r = el.getBoundingClientRect(); const dx = el._dx || 0, dy = el._dy || 0; return r.width ? { x0: r.left - base.left - dx, x1: r.right - base.left - dx, y0: r.top - base.top - dy, y1: r.bottom - base.top - dy } : null; };
+  const placas = [...document.querySelectorAll('#camada .placa:not(.jogo)')].map(rel).filter(Boolean);
+  const obst = [...placas];
+  for (const g of document.querySelectorAll('#camada .nome.gente')) {
+    const r = rel(g); if (!r) continue;
+    let dx = 0, dy = 0;
+    const o = placas.find((p) => p.x0 < r.x1 && p.x1 > r.x0 && p.y0 < r.y1 && p.y1 > r.y0);
+    if (o) { const op = [[o.x0 - 2 - r.x1, 0], [o.x1 + 2 - r.x0, 0], [0, o.y1 + 2 - r.y0]]; [dx, dy] = op.sort((a, b) => Math.hypot(...a) - Math.hypot(...b))[0]; }
+    if (dx !== (g._dx || 0) || dy !== (g._dy || 0)) { g._dx = dx; g._dy = dy; g.style.translate = dx || dy ? `${Math.round(dx)}px ${Math.round(dy)}px` : ''; }
+    obst.push({ x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy });
+  }
+  for (const p of gente) { const x = (p.x - c.x) * z, y = (p.y - c.y) * z; obst.push({ x0: x - 9 * z, x1: x + 9 * z, y0: y - 34 * z, y1: y - 18 * z }); }
+  return obst;
 }
 export const altBarra = BARRA;
 // Faixa útil do mapa no celular: a barra de setores cobre o topo; o pedido (ou a ficha) cobre o pé.

@@ -261,3 +261,15 @@
 .pp-prox-bt .btn.forte { flex: 1 1 100%; }
 .pp-prox-bt .btn:not(.forte) { flex: 1 1 0; min-width: 0; padding: 0 8px; font-size: 18px !important; }
 .cp-chip-mapa small { white-space: normal !important; display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+/* "5 decisões em 2 pedidos · Resolver" cabe inteiro no celular de 390 px (a unidade não pode ser cortada) */
+@media (max-width: 420px) {
+  .av-item.principal .av-txt b { font-size: 15px !important; letter-spacing: -.01em; }
+  .av-item.principal .av-acao { font-size: 15px !important; padding: 0 7px !important; gap: 2px; }
+  .av-item.principal .av-acao i { font-size: 16px; }
+}
+@media (max-width: 420px) {
+  /* com uma tela aberta a faixa tem uma linha só: o verbo vira só a seta para o texto com unidade caber */
+  body.gaveta-aberta .av-item.principal .av-acao { font-size: 0 !important; padding: 0 8px !important; }
+  body.gaveta-aberta .av-item.principal .av-acao i { font-size: 18px; }
+  body.gaveta-aberta .av-item .av-txt b { font-size: 15px !important; }
+}

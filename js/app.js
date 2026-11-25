@@ -26,6 +26,8 @@ import * as PP from './pedido-pagina.js';
 import * as A from './anexos.js';
 import * as EQ from './equipe.js';
 import * as CC from './chat-cel.js';
+import { estadoPedido as estadoDoChat } from './estado-pedido.js';
+import * as CTG from './contagem.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -625,10 +627,12 @@ function rotulos(c) {
   }
   const gente = [...mundo.pessoas.values()]; if (mundo.eu) gente.push(mundo.eu);
   for (const p of gente) {
-    const el = rotulo('g' + p.pessoa, 'nome gente'); el.style.setProperty('--cor', corPessoa(p.pessoa));
-    const n = p === mundo.eu ? `${p.pessoa} (você)` : p.pessoa;
-    if (el.textContent !== n) el.textContent = n;
-    colocar(el, p.x, p.y + 2, c);
+    if (!mundo.juntos?.has(p.pessoa)) { // ao lado da própria assistente, o nome vai na etiqueta dela (mapa-cel.js)
+      const el = rotulo('g' + p.pessoa, 'nome gente'); el.style.setProperty('--cor', corPessoa(p.pessoa));
+      const n = p === mundo.eu ? `${p.pessoa} (você)` : p.pessoa;
+      if (el.textContent !== n) el.textContent = n;
+      colocar(el, p.x, p.y + 2, c);
+    }
     const fl = falasPessoa.get(p.pessoa);
     if (fl && fl.ate > Date.now()) {
       const b = rotulo('fp' + p.pessoa, 'fala-pessoa'); b.style.setProperty('--cor', corPessoa(p.pessoa));
@@ -907,10 +911,10 @@ async function desenharTopo() {
   $('#gente').innerHTML = html.join('');
   $('#gente').onclick = (e) => { const d = e.target.closest('[data-ir]'); if (d && d.dataset.ir !== EU.pessoa) irAtePessoa(d.dataset.ir); };
   const todos = todosAgentes();
-  const nDec = decisoesPendentes().n, erros = todos.filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'erro').length;
+  const dp = decisoesPendentes(), nDec = dp.n, erros = todos.filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'erro').length;
   const novosRecados = recados.filter((r) => r.cor !== 'reacao' && new Date(r.criado).getTime() > Number(guardado('recadosVistos', '0')) && r.pessoa !== EU.pessoa).length;
   for (const el of $$('[data-badge-dupla]')) { el.hidden = !novosRecados || aba === 'dupla'; el.textContent = `${novosRecados} nova${novosRecados > 1 ? 's' : ''}`; }
-  ultPend.erros = erros;
+  ultPend.erros = erros; ultPend.contagem = dp.contagem;
   desenharPendencias(nDec, novosRecados);
   await desenharPerfil();
   document.title = nDec ? `(${nDec}) Estúdio Genesis` : 'Estúdio Genesis';
@@ -927,13 +931,13 @@ async function desenharPerfil() {
 }
 // Linha 2 do topo: UM aviso, o mais importante agora (decisões › conflito › pedido do Kenny › travou).
 // Os outros ficam num "+N" ao lado. Sem nada esperando, a linha some e o mapa ganha o espaço.
-let ultPend = { alertas: 0, recados: 0, erros: 0 };
+let ultPend = { alertas: 0, recados: 0, erros: 0, contagem: CTG.contarPendencias() };
 function desenharPendencias(alertas = ultPend.alertas, novos = aba === 'dupla' ? 0 : ultPend.recados) {
   if (!EU) return;
   ultPend = { ...ultPend, alertas, recados: novos };
   const naoVistasN = naoVistas.size + novos;
   const outro = outraPessoa() || 'a dupla', itens = [];
-  if (alertas && !emAtividade()) itens.push({ k: 'atencao', nivel: 'urgente', ic: 'mao', txt: `${alertas} ${alertas > 1 ? 'decisões' : 'decisão'} no estúdio`, sub: alertas > 1 ? 'Esperam você para seguir' : 'Espera você para seguir', acao: 'Resolver' });
+  if (alertas && !emAtividade()) itens.push({ k: 'atencao', nivel: 'urgente', ic: 'mao', txt: CTG.textoDecisoes(ultPend.contagem), sub: alertas > 1 ? 'Os agentes esperam você para seguir' : 'O agente espera você para seguir', acao: 'Resolver' });
   for (const c of CDu.conflitosAbertos()) itens.push({ k: 'conflito', nivel: 'aviso', ic: 'alerta', txt: c.arq ? `Conflito com o ${outro}` : 'Combine com ' + outro, sub: c.arq ? c.arqNome : c.curto, acao: 'Combinar' });
   const bolas = CDu.bolasParaMim();
   if (bolas) itens.push({ k: 'bola', nivel: 'aviso', ic: 'seta', txt: `${outro} mandou ${bolas > 1 ? `${bolas} pedidos` : 'um pedido'} para você`, sub: 'Assuma ou encaminhe à sua assistente', acao: 'Ver' });
@@ -1116,8 +1120,13 @@ function decisoesPendentes() {
   const meus = todosAgentes().filter((a) => a.m.pessoa === EU.pessoa && a.st.cls === 'alerta');
   const comAprov = new Set(aprovacoes.map((a) => { const j = lerJson(a.detalhe); return j.origem?.agente || j.pedidoDe?.agente; }).filter(Boolean));
   const alertas = meus.filter((a) => !comAprov.has(a.m.nome));
-  const n = aprovacoes.reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0) + alertas.length;
-  return { n, alertas };
+  // A conta em si fica em contagem.js (fonte única do topo e do Hoje). Pedido = a conversa; do terminal, o agente.
+  const pedidoDe = (a) => { if (a.conversa_id != null) return 'c' + a.conversa_id; const j = lerJson(a.detalhe); return 't' + (j.origem?.agente || j.pedidoDe?.agente || a.id); };
+  const contagem = CTG.contarPendencias({ decisoes: [
+    ...aprovacoes.map((a) => ({ pedido: pedidoDe(a), n: CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length })),
+    ...alertas.map((a) => ({ pedido: 'a' + (a.m.sessao || a.m.nome), n: 1 })),
+  ] });
+  return { n: contagem.decisoes, alertas, contagem };
 }
 
 // ---------- notificações no aparelho (Web Push mandado pela ponte do PC) ----------
@@ -1932,10 +1941,12 @@ function abasVisiveis() {
   if (conversaAtual && !abasAbertas.includes(conversaAtual)) { abasAbertas.push(conversaAtual); salvarAbas(); }
   return abasAbertas.map((id) => conversas.find((c) => c.id === id)).filter(Boolean);
 }
-// Selo: ✋ aprovação pendente, ⏳ rodando (ou na fila), ✅ respondeu e você não viu; nada = parada e vista.
+// Selo: o mesmo estado do cartão do pedido (estado-pedido.js: precisa de você > fazendo), ou ✅ respondeu e você não viu.
 function seloAba(id) {
-  if (aprovacoes.some((a) => a.conversa_id === id && !lerJson(a.detalhe).origem?.terminal)) return ['✋', 'pede sua aprovação'];
-  if (convOcupada(id)) return ['⏳', 'trabalhando'];
+  const ap = aprovacoes.filter((a) => a.conversa_id === id && !lerJson(a.detalhe).origem?.terminal);
+  const nDec = ap.reduce((s, a) => s + CA.nDecisoes(a) - Object.keys(escolhasAprov.get(a.id) || {}).length, 0);
+  const e = estadoDoChat({ nDec: ap.length ? Math.max(1, nDec) : 0, soPerguntas: ap.length > 0 && ap.every(Q.ehQuestionario), rodando: convOcupada(id) });
+  if (e) return [e.ic, e.txt.charAt(0).toLowerCase() + e.txt.slice(1), e.k];
   if (naoVistas.has(id)) return ['✅', 'respondeu: você ainda não viu'];
   return null;
 }
@@ -1958,7 +1969,9 @@ function desenharSeletorConversas() {
   if (!$('#listaAbasFechadas').hidden) desenharAbasFechadas();
   // Celular: no lugar das abas, um seletor com o nome inteiro e o estado da conversa aberta.
   const atual = conversas.find((c) => c.id === conversaAtual);
-  CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: atual ? seloAba(atual.id) : null, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
+  // O estado de "precisa de você" e "fazendo" já está no cartão do pedido logo abaixo: não repete no seletor.
+  const seloAtual = atual ? seloAba(atual.id) : null;
+  CC.desenharSeletor($('#seletorConvCel'), { v: atual ? visualAba(atual) : null, selo: seloAtual && !['voce', 'fazendo'].includes(seloAtual[2]) ? seloAtual : null, outras: Math.max(0, conversas.length - (atual ? 1 : 0)), aberta: !$('#listaAbasFechadas').hidden });
 }
 function desenharAbasFechadas() {
   const el = $('#listaAbasFechadas');
@@ -2627,7 +2640,7 @@ async function desenharEquipeVista() {
       $('#equipeVista .eq-topo h2').after(abasEq);
       abasEq.onclick = (e) => { const b = e.target.closest('[data-eqaba]'); if (b) { abaEq = b.dataset.eqaba; guarda('abaEq2', abaEq); desenharEquipeVista(); } };
     }
-    abasEq.innerHTML = [['cargos', 'Quem é quem'], ['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo e ajustes']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
+    abasEq.innerHTML = [['cargos', 'Quem é quem'], ['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo<span class="so-pc"> e ajustes</span>']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
     $('#equipeVista').dataset.aba = abaEq;
     if (abaEq === 'agora') { $('#equipeCorpo').innerHTML = await htmlEquipeAgora(); return; }
     if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas }); return; }
@@ -2706,7 +2719,7 @@ async function mandarPronto(texto, { alvo, projeto } = {}) {
 }
 function ligarHoje() {
   Hoje.ligar({ DEMO, R, esc, toast, retratoDe, nomeAgente, corPessoa, pessoas, mandar: mandarPronto, resumoIr: (q) => MC.irResumo(q),
-    contagens: () => ({ fazendo: quemTrabalha().length, esperando: ultPend.alertas }),
+    contagens: () => ({ fazendo: quemTrabalha().length, esperando: ultPend.alertas, pendencias: ultPend.contagem }),
     eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
     abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
 }

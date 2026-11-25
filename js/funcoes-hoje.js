@@ -9,6 +9,7 @@ import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
 import * as Rot from './hoje-rotinas.js';
 import { cargoDe } from './equipe.js';
+import { contarPendencias, comAvisos, textoDecisoes, textoPendencias } from './contagem.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -52,17 +53,18 @@ export async function desenhar(forcar = false) {
   const el = document.getElementById('hojeCorpo'); if (!el || !ctx) return;
   // Não apaga o que a pessoa está escrevendo (o painel se redesenha sozinho a cada 15-20 s).
   if (!forcar && (editando || confirmar || el.contains(document.activeElement) && document.activeElement.matches('textarea, input'))) return;
-  const abas = [['sugestoes', icoPx('sol'), 'Sugestões'], ['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Custo']];
+  const abas = [['sugestoes', icoPx('sol'), 'Seu dia'],['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Custo']];
   const topo = `<div class="hj-abas" role="tablist">${abas.map(([id, ic, t]) => `<button role="tab" data-hsub="${id}" class="${sub === id ? 'on' : ''}" aria-selected="${sub === id}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>`;
   let corpo = '';
   try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : await htmlSugestoes(); }
   catch (e) { console.warn('hoje:', e); corpo = `<p class="hj-vazio">Não consegui montar esta parte agora (${ctx.esc(e.message)}).</p>`; }
-  let cab = '';
-  try { cab = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
+  // O gasto de IA é contexto, não ação: vai para o fim, numa linha recolhida (a aba Custo já mostra tudo).
+  let pe = '';
+  if (sub !== 'custo') try { pe = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
   // O painel se redesenha sozinho: o que estava aberto (detalhes recolhidos) continua aberto.
-  const abertos = new Set([...el.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
-  el.innerHTML = cab + topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>`;
-  el.querySelectorAll('details > summary').forEach((x) => { if (abertos.has(x.textContent)) x.parentElement.open = true; });
+  const abertos = new Set([...el.querySelectorAll('details[open]')].map((x) => x.dataset.chave || x.querySelector(':scope > summary')?.textContent));
+  el.innerHTML = topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>` + pe;
+  el.querySelectorAll('details').forEach((x) => { if (abertos.has(x.dataset.chave || x.querySelector(':scope > summary')?.textContent)) x.open = true; });
   el.onclick = clique;
   atualizarSelo();
 }
@@ -108,19 +110,16 @@ export function htmlNumerosDia(r, { custo = false, curto = false } = {}) {
   const n = (v, rot, cls, tit) => `<button type="button" class="rd-n ${cls}" data-rd="${cls}" title="${tit}"><i class="rd-ind" aria-hidden="true"></i><b>${v}</b><span>${rot}</span></button>`;
   return `<div class="rd-linha${custo ? ' com-custo' : ''}">${n(r.fila, 'Na fila', 'fila', 'Pedidos esperando a vez: ver a fila do dia')}${n(r.fazendo, 'Fazendo', 'fazendo', 'Quem está trabalhando agora')}${n(r.esperando, r.esperando === 1 ? 'Decisão sua' : 'Decisões suas', 'esperando', 'Decisões e autorizações que só você pode dar')}${custo ? n('<small>US$</small>' + (r.hoje || 0).toFixed(2).replace('.', ','), 'IA hoje', 'custo', 'Gasto estimado de IA hoje: ver o custo') : ''}</div>`;
 }
-// Topo do Hoje: quanto já foi hoje, comparado com a média, e quanto a fila deve custar.
+// Fim do Hoje: uma linha recolhida com o gasto de IA; tocar abre média, ontem, fila e os números do dia.
 function htmlCabecaDia(r) {
   if (!r) return '';
   const { esc } = ctx;
-  // Uma linha só: quanto foi hoje e como está perto da média. O resto (média, ontem, fila, números) fica recolhido.
-  return `<section class="hj-dia r4" aria-label="Resumo de hoje">
-    <div class="hj-dia-linha"><span class="hj-dia-rot">Gasto de IA hoje</span><b>${dinheiro(r.hoje)}</b><span class="hj-dia-comp">${esc(comparacao(r))}</span></div>
-    <details class="hj-dia-mais"><summary>Ver média, fila e quem está trabalhando</summary>
-      <ul class="hj-dia-ul"><li><span>Média (${r.diasMedia || 0} ${r.diasMedia === 1 ? 'dia' : 'dias'})</span><b>${dinheiro(r.media)}</b></li><li><span>Ontem</span><b>${dinheiro(r.ontem)}</b></li><li><span>Fila (${r.fila})</span><b>≈ ${dinheiro(r.estimativaFila)}</b></li></ul>
-      ${htmlNumerosDia(r)}
-      <p class="hj-dia-nota">É uma estimativa pelo uso, não uma cobrança: a assinatura já cobre. A fila usa o custo médio por pedido da semana.</p>
-    </details>
-  </section>`;
+  return `<details class="hj-dia r5" data-chave="custo-dia" aria-label="Custo de IA hoje">
+    <summary><span class="hj-dia-rot">Custo de IA hoje:</span> <b>${dinheiro(r.hoje)}</b><i class="hj-dia-seta" aria-hidden="true">▾</i><span class="hj-dia-comp">${esc(comparacao(r))}</span></summary>
+    <ul class="hj-dia-ul"><li><span>Média (${r.diasMedia || 0} ${r.diasMedia === 1 ? 'dia' : 'dias'})</span><b>${dinheiro(r.media)}</b></li><li><span>Ontem</span><b>${dinheiro(r.ontem)}</b></li><li><span>Fila (${r.fila})</span><b>≈ ${dinheiro(r.estimativaFila)}</b></li></ul>
+    ${htmlNumerosDia(r)}
+    <p class="hj-dia-nota">É uma estimativa pelo uso, não uma cobrança: a assinatura já cobre. A fila usa o custo médio por pedido da semana. Detalhes na aba Custo.</p>
+  </details>`;
 }
 
 async function clique(e) {
@@ -224,7 +223,8 @@ async function linhaHoje({ quem, titulo, sub = '', botao = '', cls = '' }) {
   return `<article class="hj-item ${cls}"><img class="hj-rosto" src="${await ctx.retratoDe(quem.id)}" alt="" title="${esc(quem.nome)}">
     <div class="hj-item-txt"><b>${esc(titulo)}</b><small><span class="hj-it-quem">${esc(quem.nome)}</span>${sub ? ` · ${sub}` : ''}</small></div>${botao}</article>`;
 }
-const grupoHoje = (cls, titulo, itens, vazio) => `<section class="hj-grupo ${cls}"><h3><span>${titulo}</span>${itens.length ? `<i>${itens.length}</i>` : ''}</h3>${itens.length ? itens.join('') : `<p class="hj-grupo-vazio">${vazio}</p>`}</section>`;
+// selo: o número do grupo, sempre com unidade (ex.: "5 decisões · 1 aviso"); sem ele, "N itens".
+const grupoHoje = (cls, titulo, itens, vazio, selo = '', topo = '') => { const n = selo || (itens.length ? plural(itens.length, 'item', 'itens') : ''); return `<section class="hj-grupo ${cls}"><h3><span>${titulo}</span>${n ? `<i>${n}</i>` : ''}</h3>${topo}${itens.length ? itens.join('') : `<p class="hj-grupo-vazio">${vazio}</p>`}</section>`; };
 
 // Sugestões em três grupos: o que precisa de você, o que está andando e o que ficou pronto hoje.
 async function htmlSugestoes() {
@@ -239,21 +239,23 @@ async function htmlSugestoes() {
   const p = s ? projetoAtual(s) : null;
   const velho = s && (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
-  const precisa = [], andando = [], pronto = [], depois = [];
-  // 1. Decisões que só você pode dar.
-  const nDec = ctx.contagens?.().esperando || 0;
-  if (nDec) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: `${nDec} ${nDec === 1 ? 'decisão espera' : 'decisões esperam'} você`, sub: 'os agentes param até você responder', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
-  // 2. Teste da manhã (Programador): quebrou = precisa de você; passou = pronto hoje.
+  const precisa = [], andando = [], pronto = [], sugeridas = [], depois = [];
+  // 1. Decisões que só você pode dar: a MESMA conta do aviso do topo (contagem.js).
   const t = Rot.dados(ctx).teste, prog = quemFaz('programador');
+  const dec = ctx.contagens?.().pendencias || contarPendencias();
+  const cont = comAvisos(dec, t && !t.ok ? 1 : 0);
+  if (dec.decisoes) precisa.push(await linhaHoje({ quem: { id: 'Orquestrador', nome: 'Sua assistente' }, titulo: textoDecisoes(dec), sub: 'os agentes param até você responder', botao: `<button class="btn forte hj-item-btn" data-rd="esperando">Responder</button>`, cls: 'urgente' }));
+  // 2. Teste da manhã (Programador): quebrou = um aviso em "Precisa de você"; passou = pronto hoje.
   if (t && !t.ok) precisa.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã quebrou', sub: esc(String(t.erros?.[0] || 'veja o registro').slice(0, 80)), botao: '<button class="btn forte hj-item-btn" data-teste-preparar>Preparar pedido</button>', cls: 'urgente' }));
   if (t?.ok) pronto.push(await linhaHoje({ quem: prog, titulo: 'Teste da manhã passou', sub: `${esc(t.branch || 'main')} · ${D.hora(new Date(t.quando).getTime())}`, botao: '<span class="hj-selo-ok">ALL OK</span>' }));
-  // 3. Sugestões do dia: as não enviadas precisam de você; as enviadas estão em andamento.
+  // 3. Sugestões do dia: as não enviadas ficam em "Sugestões para mandar" (são opção, não pendência);
+  //    as enviadas estão em andamento.
   for (const [i, x] of (p?.prompts || []).entries()) {
     const enviada = foiEnviada(s, p, x), tam = TAMANHO[x.tamanho] || TAMANHO.M, mc = x.marco && marcos.get(x.marco), quem = quemFaz(x.agente, x.alvo);
-    if (editando && editando.i === i) { precisa.push(editor(x.titulo, i + 1, 8, `="${i}"`)); continue; }
+    if (editando && editando.i === i) { sugeridas.push(editor(x.titulo, i + 1, 8, `="${i}"`)); continue; }
     if (confirmar === i) {
       const destino = `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
-      (enviada ? andando : precisa).push(`<article class="hj-sug aberta ${enviada ? 'enviada' : ''}">
+      (enviada ? andando : sugeridas).push(`<article class="hj-sug aberta ${enviada ? 'enviada' : ''}">
         <header><span class="hj-n">${enviada ? '✓' : i + 1}</span><b>${esc(x.titulo)}</b></header>
         ${x.por ? `<p class="hj-motivo-todo"><b>Por quê:</b> ${esc(x.por)}</p>` : ''}
         <dl class="hj-ficha"><dt>Quem faz</dt><dd>${esc(quem.nome)}</dd><dt>Duração</dt><dd>${tam[1]}</dd>${mc || x.marco ? `<dt>Marco</dt><dd>${esc(mc ? mc.titulo : 'marco #' + x.marco)}</dd>` : ''}<dt>Vai para</dt><dd>${destino}${x.skill ? ` · receita “${esc(x.skill)}”` : ''}</dd></dl>
@@ -264,7 +266,7 @@ async function htmlSugestoes() {
       continue;
     }
     if (enviada) andando.push(await linhaHoje({ quem, titulo: x.titulo, sub: 'pedido enviado', botao: `<button class="btn hj-item-btn" data-mandar="${i}">Ver</button>`, cls: 'feito' }));
-    else precisa.push(await linhaHoje({ quem, titulo: x.titulo, sub: `${tam[2]}${mc ? ` · ${esc(mc.titulo)}` : ''}`, botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
+    else sugeridas.push(await linhaHoje({ quem, titulo: x.titulo, sub: `${tam[2]}${mc ? ` · ${esc(mc.titulo)}` : ''}`, botao: `<button class="btn forte hj-item-btn" data-mandar="${i}" title="Abre o pedido inteiro para conferir antes de enviar">Mandar</button>` }));
   }
   // 4. Quem está trabalhando agora e o que já entregou hoje (da fila do dia, só a sua equipe).
   try {
@@ -275,14 +277,16 @@ async function htmlSugestoes() {
   // 5. Ideias para preparar quando der: melhorias (Gerente) e posts (Estrategista).
   for (const [i, m] of (p?.melhorias || []).entries()) depois.push(editando?.melhoria === i ? editor(m.titulo, '★', 5) : await linhaHoje({ quem: quemFaz('gerente'), titulo: m.titulo, sub: 'melhoria do escritório', botao: `<button class="btn hj-item-btn" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button>` }));
   depois.push(...await Rot.linhasIdeias(ctx, editando, editor, linhaHoje, quemFaz('estrategista')));
-  const cab = s ? `<div class="hj-cab"><div><b>Seu dia</b><small>${esc(nomeProjeto(p.projeto))} · sugestões ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`
-    : `<div class="hj-cab"><div><b>Seu dia</b><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
+  const cab = s ? `<div class="hj-cab sub"><div><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'escritas ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : ((h) => h === 'agora' ? 'escritas agora' : 'escritas há ' + h)(D.ha(new Date(p.gerado || s.gerado).getTime()))}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`
+    : `<div class="hj-cab sub"><div><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
   const projs = s?.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
-  return livre + projs + cab
-    + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.')
-    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão acima.')
-    + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.')
-    + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '') : '')
+  // Ordem fixa: Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois.
+  return livre
+    + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.', textoPendencias(cont))
+    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', andando.length ? `${andando.length} agora` : '')
+    + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.', pronto.length ? plural(pronto.length, 'entrega') : '')
+    + grupoHoje('g-sugestoes', 'Sugestões para mandar', sugeridas, 'Todas as sugestões de hoje já foram mandadas.', sugeridas.length ? plural(sugeridas.length, 'sugestão', 'sugestões') : '', projs + cab)
+    + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia')) : '')
     + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Mandar</b> para ler o pedido inteiro antes de enviar; só “Enviar pedido” manda, numa conversa nova com a sua assistente. <b>Preparar pedido</b> abre o texto para você editar. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
 }
 
