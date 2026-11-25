@@ -1,23 +1,40 @@
-/* Chat como janela no centro da tela (PC), mais perto do VS Code: larga, alta e acima dos avisos.
+/* Chat no PC (classes postas pelo app.js):
+   #gaveta.grande       = aberto: janela no centro, escritório escurecido atrás (sem o cartão do pedido, que seria repetido)
+   #gaveta.grande.min   = minimizado: só o cartão do pedido no alto; dá para andar pelo escritório
+   fechado              = #gaveta.fechada (como o site abre)
    No celular (até 760 px) continua a folha de baixo de sempre. */
+.janela-chat { display: none; }
 @media (min-width: 761px) {
-  :root { --chat-l: min(1000px, calc(100vw - 240px)); --chat-a: min(900px, calc(100vh - 40px)); }
-  #gaveta.conversa:not(.fechada) {
-    position: fixed; left: 50%; top: 50%; translate: -50% -50%;
+  :root { --chat-l: min(860px, calc(100vw - 240px)); --chat-a: min(760px, calc(100vh - 110px)); }
+
+  /* ---------- aberto ---------- */
+  #gaveta.grande:not(.fechada):not(.min) {
+    position: fixed; left: 50%; top: calc(50% + 24px); translate: -50% -50%;
     width: var(--chat-l); height: var(--chat-a);
     margin: 0; z-index: 15;
   }
-  /* escurece o escritório atrás (só visual: Esc ou "Fechar" fecham) */
-  body:has(#gaveta.conversa:not(.fechada))::after {
+  body:has(#gaveta.grande:not(.fechada):not(.min))::after {
     content: ''; position: fixed; inset: 0; z-index: 14; pointer-events: none;
     background: rgba(14, 9, 6, .68);
   }
-  #gaveta.conversa:not(.fechada) .painel-chat { font-size: 16px; line-height: 1.55; }
-  /* os avisos (toasts) ficam embaixo do escuro e não cortam a conversa */
-  /* a alça "› Fechar" da lateral vai para fora da janela, no canto de cima à direita */
-  body:has(#gaveta.conversa:not(.fechada)) #alternaLateral {
-    position: fixed; z-index: 16; translate: none; right: auto;
-    top: calc(50% - var(--chat-a) / 2);
-    left: calc(50% + var(--chat-l) / 2 + 10px);
+  #gaveta.grande:not(.min) #hudChat { display: none !important; }
+  #gaveta.grande .painel-chat { font-size: 16px; line-height: 1.55; }
+  /* a alça "› Fechar" da lateral some: a janela tem os próprios botões */
+  body:has(#gaveta.grande:not(.fechada)) #alternaLateral { display: none; }
+
+  /* barra da janela: Detalhes do pedido · Minimizar · × (no minimizado: nome · Abrir conversa · ×) */
+  #gaveta.conversa .janela-chat { display: flex; align-items: center; gap: 8px; padding: 8px 12px 0; }
+  .janela-chat .espaco { flex: 1; }
+  .janela-chat .jc-tit { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .janela-chat [data-jc="fechar"] { font-size: 20px; min-width: 40px; }
+
+  /* ---------- minimizado ---------- */
+  #gaveta.grande.min:not(.fechada) {
+    position: fixed; top: 62px; left: 50%; translate: -50% 0;
+    width: min(460px, calc(100vw - 32px)); height: auto; max-height: calc(100vh - 160px);
+    margin: 0; z-index: 12; overflow: auto;
   }
+  #gaveta.min .painel-chat > :not(#hudChat) { display: none !important; }
+  #gaveta.min .painel-chat { padding-top: 6px; overflow: visible; }
+  #gaveta.min #hudChat { position: static; margin: 0; }
 }

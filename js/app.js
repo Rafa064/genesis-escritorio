@@ -641,16 +641,40 @@ function ligarAlternaLateral() {
   const b = document.createElement('button');
   b.type = 'button'; b.id = 'alternaLateral'; b.className = 'alterna-lateral';
   const marcar = () => { const fechada = $('#gaveta').classList.contains('fechada'); b.classList.toggle('fechada', fechada); b.innerHTML = fechada ? '<span aria-hidden="true">‹</span> Conversas' : '<span aria-hidden="true">›</span> Fechar'; b.title = fechada ? 'Abrir a lateral (conversas e detalhes)' : 'Fechar a lateral (o mapa fica maior)'; b.setAttribute('aria-label', b.title); };
-  const recolher = () => { $('#gaveta').classList.add('fechada'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); };
+  const recolher = () => { $('#gaveta').classList.add('fechada'); $('#gaveta').classList.remove('min'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); };
   b.onclick = () => {
     if ($('#gaveta').classList.contains('fechada')) { guarda('lateralPC', 'aberta'); abrirAba(guardado('abaConversa', 'dupla')); }
     else { guarda('lateralPC', 'fechada'); recolher(); }
   };
   new MutationObserver(marcar).observe($('#gaveta'), { attributes: true, attributeFilter: ['class'] });
   marcar(); $('#palco').appendChild(b);
-  // No PC o escritório abre inteiro: a lateral começa recolhida (abre ao selecionar alguém ou pela alça) — a não ser que a pessoa a tenha deixado aberta.
-  setTimeout(() => { if (innerWidth > 760 && guardado('lateralPC', 'fechada') === 'fechada' && ['chat', 'dupla'].includes(aba)) recolher(); }, 0);
+  // No PC o escritório abre inteiro: o chat começa fechado — ou minimizado, se a pessoa o deixou assim.
+  setTimeout(() => { if (innerWidth > 760) { if (guardado('lateralPC', 'fechada') === 'min' && ['chat', 'dupla'].includes(aba)) minimizarChat(true, false); else recolher(); } }, 0);
 }
+// ---------- Chat no PC: fechado, minimizado (só o cartão do pedido no alto; dá para andar pelo mapa) ou aberto no centro ----------
+function minimizarChat(sim, guardar = true) {
+  $('#gaveta').classList.toggle('min', !!sim);
+  if (guardar) guarda('lateralPC', sim ? 'min' : 'aberta');
+  marcarChatAberto(); desenharJanelaChat(); setTimeout(dimensionar, 0);
+}
+function desenharJanelaChat() {
+  const el = $('#janelaChat'); if (!el || !EU) return;
+  const min = $('#gaveta').classList.contains('min');
+  const conv = conversas.find((c) => c.id === conversaAtual);
+  const m = aba === 'chat' && conv ? missaoDaConversa(conv) : null;
+  el.innerHTML = min
+    ? `<b class="jc-tit">${esc(aba === 'chat' && conv ? visualAba(conv).nome : 'Conversas')}</b><span class="espaco"></span><button type="button" class="btn mini" data-jc="abrir">Abrir conversa</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar" aria-label="Fechar">×</button>`
+    : `${m ? '<button type="button" class="btn mini" data-jc="detalhes">Detalhes do pedido</button>' : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório">▁ Minimizar</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
+}
+$('#janelaChat').onclick = (e) => {
+  const k = e.target.closest('[data-jc]')?.dataset.jc; if (!k) return;
+  if (k === 'min') minimizarChat(true);
+  else if (k === 'abrir') minimizarChat(false);
+  else if (k === 'fechar') { guarda('lateralPC', 'fechada'); fecharGaveta(); }
+  else if (k === 'detalhes') { const m = missaoDaConversa(conversas.find((c) => c.id === conversaAtual)); fecharEquipeVista(); fecharQuadro(); PP.abrir({ conv: conversaAtual, missao: m?.id || null }); }
+};
+// Minimizado, "Ver resultado" abre a conversa grande (com o histórico); os detalhes do pedido ficam no botão de cima dela.
+$('#hudChat').addEventListener('click', (e) => { if ($('#gaveta').classList.contains('min') && e.target.closest('[data-cp="pagina"]')) { e.stopPropagation(); minimizarChat(false); } }, true);
 /// ======================= gaveta =======================
 const ABAS_ATIVIDADE = ['atencao', 'missoes', 'historico'];
 const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Passo a passo', pedido: 'Pedido', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco' };
@@ -669,13 +693,15 @@ function abrirAba(nome, empilhar = false) {
   $('#voltarGaveta').hidden = !pilha.length;
   $('#gaveta').classList.toggle('folha', nome === 'agente');
   $('#gaveta').classList.toggle('conversa', ['chat', 'dupla'].includes(nome));                         // no celular: ficha na metade de baixo
+  $('#gaveta').classList.toggle('grande', ['chat', 'dupla', 'pedido'].includes(nome));                 // no PC: janela no centro
+  $('#gaveta').classList.remove('min');                                                                  // abrir de propósito = aberto inteiro
   $('#gaveta').classList.toggle('raiz', !pilha.length && !['agente', 'missao', 'marco', 'item', 'pedido'].includes(nome));
-  desenharAba(); marcarChatAberto(); marcarNav(); if (EU) desenharPendencias();
+  desenharAba(); marcarChatAberto(); marcarNav(); desenharJanelaChat(); if (EU) desenharPendencias();
   setTimeout(dimensionar, 0);
 }
 // No PC, com o painel do chat aberto, a caixa de pedido é a de baixo da conversa (a barra central some).
 const marcarChatAberto = () => {
-  document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada'));
+  document.body.classList.toggle('chat-aberto', aba === 'chat' && !$('#gaveta').classList.contains('fechada') && !$('#gaveta').classList.contains('min'));
   // Com a Atividade aberta, as decisões já estão na tela: o aviso do topo passa para o próximo assunto.
   const emAtiv = emAtividade();
   if (document.body.classList.contains('em-atividade') !== emAtiv) { document.body.classList.toggle('em-atividade', emAtiv); desenharPendencias(); }
@@ -683,7 +709,7 @@ const marcarChatAberto = () => {
 const emAtividade = () => aba === 'atencao' && !$('#gaveta').classList.contains('fechada');
 function alternarAba(nome) { if (aba === nome && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba(nome); }
 function fecharGaveta() {
-  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); }
+  if (innerWidth > 760 && EU) { const c = guardado('abaConversa', 'dupla'); if (aba !== c) { abrirAba(c); return; } } $('#gaveta').classList.add('fechada'); $('#gaveta').classList.remove('min'); marcarChatAberto(); marcarNav(); setTimeout(dimensionar, 0); }
 $('#fecharGaveta').onclick = fecharGaveta;
 $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto = [...pilha]; abrirAba(a); pilha.push(...resto); $('#voltarGaveta').hidden = !pilha.length; } };
 
@@ -2356,6 +2382,7 @@ function missaoDaConversa(conv) {
 }
 async function desenharHudChat() {
   const el = $('#hudChat'); if (!el || !EU) return;
+  desenharJanelaChat();
   const conv = conversas.find((c) => c.id === conversaAtual), m = missaoDaConversa(conv), ocupada = convOcupada(conversaAtual);
   // Pendências desta conversa entram no mesmo cartão (com um resumo humano do que ela quer fazer).
   const pend = aprovacoes.filter((a) => !lerJson(a.detalhe).origem?.terminal && conv && a.conversa_id === conv.id).flatMap((a) => { const ja = escolhasAprov.get(a.id) || {}; return CA.explicar(a, infoAprovacao(a)).acoes.map((y, i) => ({ id: a.id, titulo: y.t, i })).filter((x) => ja[x.i] == null); });
