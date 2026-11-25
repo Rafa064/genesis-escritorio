@@ -7,6 +7,7 @@
 import * as D from './dados.js';
 import { primeiraFrase, frase } from './humano.js';
 import { icoPx, nomeProjeto, plural } from './leitura.js';
+import * as Rot from './hoje-rotinas.js';
 
 let ctx = null;
 const guardado = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -116,13 +117,22 @@ function htmlCabecaDia(r) {
 async function clique(e) {
   const mo = e.target.closest('[data-motivo]'); if (mo) { const ab = mo.classList.toggle('todo'); mo.setAttribute('aria-expanded', ab); return; }
   const rd = e.target.closest('[data-rd]'); if (rd) { ctx.resumoIr?.(rd.dataset.rd); return; }
-  const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo]');
+  const t = e.target.closest('[data-hsub],[data-hproj],[data-mandar],[data-editar],[data-cancelar],[data-enviar-ed],[data-gerar],[data-expandir],[data-pedir-melhoria],[data-ed-alvo],[data-post-preparar]');
   if (!t) return;
   if (t.dataset.hsub) { sub = t.dataset.hsub; guarda('hojeSub', sub); editando = confirmar = null; return desenhar(true); }
   if (t.dataset.hproj !== undefined) { projetoSel = t.dataset.hproj; guarda('hojeProjeto', projetoSel); editando = confirmar = null; return desenhar(true); }
   if (t.dataset.expandir !== undefined) { const alvo = document.getElementById(t.dataset.expandir); const aberto = alvo?.classList.toggle('curto') === false; t.setAttribute('aria-expanded', aberto); t.textContent = aberto ? 'Mostrar menos ▴' : 'Ler pedido completo ▾'; return; }
   if (t.dataset.gerar !== undefined) return gerarDeNovo(t);
   const s = minhasSugestoes(), proj = s && projetoAtual(s);
+  // Ideias de posts (Estrategista): o pedido vai para o projeto do jogo, numa conversa nova.
+  if (t.dataset.postPreparar !== undefined) { const x = Rot.dados(ctx).conteudo?.ideias?.[Number(t.dataset.postPreparar)]; if (x) { editando = { post: Number(t.dataset.postPreparar), texto: Rot.pedidoDaIdeia(x), alvo: 'claude' }; confirmar = null; await desenhar(true); document.getElementById('hjEditor')?.focus(); } return; }
+  if (t.dataset.enviarEd !== undefined && editando?.post != null) {
+    const texto = document.getElementById('hjEditor')?.value.trim(); if (!texto) return;
+    const c = Rot.dados(ctx).conteudo, x = c?.ideias?.[editando.post], alvo = editando.alvo;
+    editando = null;
+    try { await ctx.mandar(texto, { alvo, projeto: 'genesis-game' }); if (x) Rot.marcarIdeia(c, x); } catch (e) { ctx.toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); }
+    return desenhar(true);
+  }
   if (t.dataset.pedirMelhoria !== undefined) { const m = proj?.melhorias?.[Number(t.dataset.pedirMelhoria)]; if (m) { editando = { melhoria: Number(t.dataset.pedirMelhoria), texto: m.prompt || m.texto, alvo: 'claude' }; return desenhar(true); } return; }
   const i = Number(t.dataset.mandar ?? t.dataset.editar ?? t.dataset.enviarEd ?? t.dataset.cancelar ?? -1);
   const sug = proj?.prompts?.[i];
@@ -186,17 +196,17 @@ function textoParaMandar(x) {
 function htmlSugestoes() {
   const { esc } = ctx;
   const s = minhasSugestoes();
-  if (!s) return `<div class="hj-vazio"><b>Ainda não tem sugestões hoje.</b><p>Toda manhã (depois das 7h) a sua ponte lê os agentes, as skills, o quadro de marcos, os últimos commits e as pendências e escreve de 3 a 5 pedidos prontos para mandar.</p><button class="btn forte" data-gerar>Gerar agora</button><p class="hj-nota">Precisa da ponte ligada e atualizada.</p></div>`;
+  const editor = (titulo, n, rows, extra = '') => `<article class="hj-sug editando"><header><span class="hj-n">${n}</span><b>${esc(titulo)}</b></header>
+      <label class="hj-rot" for="hjEditor">Revise o pedido. Nada é enviado até você tocar em “Enviar pedido”.</label><textarea id="hjEditor" rows="${rows}">${esc(editando.texto)}</textarea>
+      <div class="hj-alvo"><span>Vai para</span><button data-ed-alvo="claude" class="${editando.alvo !== 'codex' ? 'on' : ''}">👑 Claude</button><button data-ed-alvo="codex" class="${editando.alvo === 'codex' ? 'on' : ''}">🧠 Codex</button></div>
+      <div class="hj-acoes"><button class="btn" data-cancelar${extra}>Cancelar</button><button class="btn forte" data-enviar-ed${extra}>Enviar pedido ▶</button></div></article>`;
+  if (!s) return Rot.htmlTeste(ctx) + `<div class="hj-vazio"><b>Ainda não tem sugestões hoje.</b><p>Toda manhã (depois das 7h) a sua ponte lê os agentes, as skills, o quadro de marcos, os últimos commits e as pendências e escreve de 3 a 5 pedidos prontos para mandar.</p><button class="btn forte" data-gerar>Gerar agora</button><p class="hj-nota">Precisa da ponte ligada e atualizada.</p></div>` + Rot.htmlIdeias(ctx, editando, editor);
   const p = projetoAtual(s);
   const velho = (s.dia || diaDe(s.gerado)) !== diaDe(Date.now());
   const marcos = new Map((ctx.marcos() || []).map((m) => [m.id, m]));
   const projs = s.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
   const cab = `<div class="hj-cab"><div><b>Sugestões para hoje</b><small>${esc(nomeProjeto(p.projeto))} · ${velho ? 'de ' + new Date(s.gerado).toLocaleDateString('pt-BR', { weekday: 'long' }) : 'escritas às ' + D.hora(new Date(p.gerado || s.gerado).getTime())}</small></div><button class="btn mini" data-gerar title="Pedir à ponte sugestões novas agora">↻ Atualizar</button></div>`;
   const destino = (x) => `${x.alvo === 'codex' ? '🧠 Codex' : `👑 sua assistente (Claude)${x.agente ? `, que chama o ${esc(ctx.nomeAgente(x.agente))}` : ''}`} · conversa nova · projeto ${esc(nomeProjeto(p.projeto))}`;
-  const editor = (titulo, n, rows, extra = '') => `<article class="hj-sug editando"><header><span class="hj-n">${n}</span><b>${esc(titulo)}</b></header>
-      <label class="hj-rot" for="hjEditor">Revise o pedido. Nada é enviado até você tocar em “Enviar pedido”.</label><textarea id="hjEditor" rows="${rows}">${esc(editando.texto)}</textarea>
-      <div class="hj-alvo"><span>Vai para</span><button data-ed-alvo="claude" class="${editando.alvo !== 'codex' ? 'on' : ''}">👑 Claude</button><button data-ed-alvo="codex" class="${editando.alvo === 'codex' ? 'on' : ''}">🧠 Codex</button></div>
-      <div class="hj-acoes"><button class="btn" data-cancelar${extra}>Cancelar</button><button class="btn forte" data-enviar-ed${extra}>Enviar pedido ▶</button></div></article>`;
   const cartoes = p.prompts.map((x, i) => {
     const enviada = foiEnviada(s, p, x), tam = TAMANHO[x.tamanho] || TAMANHO.M, mc = x.marco && marcos.get(x.marco);
     if (editando && editando.i === i) return editor(x.titulo, i + 1, 8, `="${i}"`);
@@ -221,7 +231,7 @@ function htmlSugestoes() {
   const melhorias = (p.melhorias || []).length ? `<h3 class="hj-sec">${icoPx('engrenagem')} Ideias de melhoria</h3>${p.melhorias.map((m, i) => editando && editando.melhoria === i
     ? editor(m.titulo, '★', 5)
     : `<div class="hj-melhoria"><div><b>${esc(m.titulo)}</b><p>${esc(m.texto)}</p></div><button class="btn mini" data-pedir-melhoria="${i}" title="Abre o pedido para você revisar; nada é enviado ainda">Preparar pedido</button></div>`).join('')}` : '';
-  return projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
+  return Rot.htmlTeste(ctx) + projs + cab + `<div class="hj-lista">${cartoes}</div>` + melhorias + Rot.htmlIdeias(ctx, editando, editor) + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Revisar pedido</b> para ler tudo antes de enviar. Enviar abre uma conversa nova com a sua assistente. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
 }
 
 // ======================= 📋 fila do dia =======================

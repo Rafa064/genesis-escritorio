@@ -1,0 +1,41 @@
+/* Painel Equipe: um cartão por cargo (pagina/js/equipe.js). Mesma casca de papel e madeira. */
+#equipeVista[data-aba=cargos] #buscaEquipe, #equipeVista[data-aba=cargos] #filtrosEquipe { display: none; }
+#equipeVista[data-aba=cargos] #equipeCorpo { max-width: 1080px; }
+.cg-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.cg-card { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: start; padding: 12px 14px; background: var(--papel-claro, var(--painel2)); color: var(--texto); cursor: pointer;
+  box-shadow: var(--cartao, inset 0 0 0 1px var(--borda)), inset 0 4px 0 var(--cor); font: 13px var(--ui); }
+.cg-card:hover, .cg-card:focus-visible { background: #fffbef; outline: none; box-shadow: var(--cartao, none), inset 0 4px 0 var(--cor), 0 0 0 2px var(--contorno, var(--borda-clara)); }
+.cg-card.vivo { box-shadow: var(--cartao, none), inset 0 4px 0 var(--cor), 0 0 0 2px var(--acao, #f0973d); }
+.cg-card > img { width: 52px; height: 52px; background: var(--papel-escuro, var(--painel3)); image-rendering: pixelated; }
+.cg-txt { min-width: 0; }
+.cg-nome { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cg-nome b { font: 22px/1 var(--titulo, var(--ui)); color: var(--tinta, var(--texto)); margin-right: 2px; }
+.cg-setor, .cg-nivel { font: 600 11px var(--ui); padding: 1px 7px; color: var(--cor); background: color-mix(in srgb, var(--cor) 14%, transparent); }
+.cg-nivel { --cor: var(--madeira, #8a5a32); }
+.cg-est { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 5px; font: 600 12px var(--ui); color: color-mix(in srgb, var(--cor) 70%, var(--texto)); }
+.cg-est i { font-style: normal; display: inline-grid; place-items: center; width: 16px; height: 16px; background: var(--cor); color: #fff; font: 700 11px var(--ui); flex: none; }
+.cg-est span { flex-basis: 100%; font-weight: 400; color: var(--fraco); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cg-papel { margin: 6px 0 8px; color: var(--fraco); font: 12.5px/1.45 var(--ui); }
+.cg-linha { display: grid; grid-template-columns: 1fr; gap: 3px; margin-top: 8px; }
+.cg-rot { font: 600 10.5px var(--ui); text-transform: uppercase; letter-spacing: .04em; color: var(--muito-fraco); padding-top: 2px; }
+.cg-linha > div { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.cg-skill { font: 600 11.5px var(--ui); padding: 1px 7px; background: var(--papel, var(--painel3)); color: var(--fraco); box-shadow: inset 0 0 0 1px var(--borda); }
+.cg-skill.tem { background: color-mix(in srgb, var(--verde, #3a8a4f) 16%, var(--papel-claro, #fff)); color: var(--verde, #3a8a4f); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde, #3a8a4f) 40%, transparent); }
+.cg-skill.falta { opacity: .75; }
+.cg-skill.trilha:not(.tem) { background: transparent; box-shadow: inset 0 0 0 1px var(--borda-clara); border: 1px dashed transparent; }
+.cg-pq { flex-basis: 100%; color: var(--muito-fraco); font: italic 11.5px/1.35 var(--ui) !important; }
+.cg-apelido { font: 11.5px ui-monospace, monospace; padding: 1px 6px; background: var(--papel, var(--painel3)); color: var(--tinta, var(--texto)); }
+.cg-rotina { font: 12px/1.4 var(--ui); color: var(--fraco); }
+.cg-nada { color: var(--muito-fraco); font: 12px var(--ui); }
+.cg-mais { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.cg-mini { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: start; padding: 10px 12px; background: var(--papel, var(--painel2)); box-shadow: var(--cartao, none); font: 12.5px var(--ui); }
+.cg-mini img, .cg-ic { width: 40px; height: 40px; background: var(--papel-escuro, var(--painel3)); display: grid; place-items: center; font-size: 22px; }
+.cg-mini p { margin: 3px 0 0; color: var(--fraco); line-height: 1.4; }
+.cg-mini code, .cg-ficha { font-size: 11.5px; }
+.cg-ficha { margin-top: 6px; color: var(--fraco); }
+@media (max-width: 760px) {
+  .cg-grade, .cg-mais { grid-template-columns: 1fr; }
+  .cg-linha { grid-template-columns: 1fr; gap: 3px; }
+  .cg-card { grid-template-columns: 42px 1fr; padding: 10px; }
+  .cg-card > img { width: 42px; height: 42px; }
+}

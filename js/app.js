@@ -16,6 +16,7 @@ import * as CP from './comando-progresso.js';
 import * as CDu from './comando-dupla.js';
 import * as CB from './comando-barra.js';
 import * as CA from './comando-aprovacao.js';
+import * as Q from './questionario.js';
 import * as MC from './mapa-cel.js';
 import { ico } from './comando-icones.js';
 import { plural, icoDeEmoji, icoPx, nomeProjeto, seloEstado } from './leitura.js';
@@ -23,6 +24,7 @@ import * as CT from './comando-topo.js';
 import * as NP from './comando-pedido.js';
 import * as PP from './pedido-pagina.js';
 import * as A from './anexos.js';
+import * as EQ from './equipe.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -145,19 +147,41 @@ const agentesInfo = (p) => estados.get(p)?.info?.agentes || [];
 const modelo = (nome, p) => D.modeloDe(nome, agentesInfo(p));
 const tagModelo = (nome, p) => { const m = modelo(nome, p); return `<span class="modelo ${m.familia}" title="${esc(m.descricao || '')}">${esc(m.rotulo)}</span>`; };
 const vazioMesa = (p, nome) => ({ k: `${p}|${nome}`, pessoa: p, nome, titulo: tituloDe(nome), hist: [], miniaturas: [], nomes: [] });
-// Onde cada agente fica: assistente e Codex na recepção da sala do dono; quem está trabalhando
-// senta numa mesa livre da ala (setor) e da fileira (jogo) da tarefa; quem está livre vai para a copa.
-const ocupacao = new Map(); // agente -> id do lugar (para ninguém trocar de mesa à toa)
+// Onde cada um fica: a assistente na recepção da sala do dono; a EQUIPE (um boneco por cargo, dos
+// dois devs: equipe.js) senta numa mesa da ala do setor dela quando trabalha e vai para a copa quando
+// está livre; sub-agente de fora da equipe é visitante (só aparece enquanto trabalha).
+const ocupacao = new Map(); // boneco -> id do lugar (para ninguém trocar de mesa à toa)
 const TRABALHANDO = ['trab', 'semsinal', 'alerta', 'erro']; // sem sinal: ainda rodando (fica na mesa), só está calado
-const TIME_SEMPRE = ['explorador', 'balanceador', 'revisor-godot', 'artista-3d', 'criador-de-conteudo', 'editor-de-video', 'mixador-de-audio', 'critico'];
+const cargosAgora = () => EQ.cargos(estados, EU?.pessoa);
+// Estado de um cargo = a mesa (de quem for) mais urgente/recente entre o id do cargo e os apelidos dele.
+function mesaDoCargo(c) {
+  let melhor = null;
+  for (const [, mesas] of D.equipes()) for (const m of mesas.values()) {
+    if (EQ.cargoDe(m.nome, cargosAgora())?.id !== c.id) continue;
+    let st = D.estadoDe(m);
+    if (m.nome === 'Codex' && m.pessoa === EU.pessoa && algumaOcupada('codex')) st = { cls: 'trab', ...D.ESTADOS.trab };
+    if (!melhor || st.ordem < melhor.st.ordem || (st.ordem === melhor.st.ordem && (m.ult?.t || 0) > (melhor.m.ult?.t || 0))) melhor = { m, st };
+  }
+  if (!melhor && c.id === 'critico' && algumaOcupada('codex')) melhor = { m: vazioMesa(EU.pessoa, 'Codex'), st: { cls: 'trab', ...D.ESTADOS.trab } };
+  return melhor || { m: vazioMesa(EU.pessoa, c.id), st: D.estadoDe(null) };
+}
+// Para o painel Equipe: o que o cargo está fazendo agora (ou null = livre).
+function estadoDoCargo(c) {
+  const { m, st } = mesaDoCargo(c), vivo = TRABALHANDO.includes(st.cls);
+  return { st, vivo, pessoa: vivo ? m.pessoa : '', acao: vivo && m.ult ? primeiraFrase(frase(m.ult), 80) : '' };
+}
+function localizarCargo(id) {
+  const b = mundo?.agentes.get(`cargo|${id}`);
+  if (!b) return;
+  abrirAgente(b); cam.alvo = [b.x, b.y - 10]; // abrirAgente solta a câmera; aqui ela vai até o boneco
+}
 function mesasDoMundo() {
   const ps = pessoas(), eq = D.equipes(), lista = [], usados = new Set();
   for (const l of mundo.planta.lugares) {
-    const p = ps[l.equipe]; if (!p) continue;
+    const p = ps[l.equipe]; if (!p || l.codex) continue; // o Codex não tem mais boneco por pessoa: é o cargo Crítico
     const m = (l.nome === 'Orquestrador' ? D.abas().find((a) => a.pessoa === p) : null) || eq.get(p)?.get(l.nome) || vazioMesa(p, l.nome);
     let st = D.estadoDe(m).cls;
     if (l.assistente && p === EU.pessoa && algumaOcupada('claude')) st = 'trab';
-    if (l.codex && p === EU.pessoa && algumaOcupada('codex')) st = 'trab';
     const fr = TRABALHANDO.includes(st) ? D.frenteDaMesa(m) : null;
     lista.push({ id: m.k, nome: l.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: p, m, anel: fr?.cor });
   }
@@ -169,27 +193,31 @@ function mesasDoMundo() {
     }
     return null;
   };
-  // as outras abas do Claude (além da que está na recepção) entram como se fossem agentes
-  const outrasAbas = ps.flatMap((p) => D.abas().filter((a) => a.pessoa === p).slice(1));
-  // O time inteiro sempre aparece (quem está livre faz a rotina: café, sofá, papo); ferramentas viram itens, não bonecos.
-  const ehFerramenta = (n) => ['conector', 'programa'].includes(tipoDe(n));
-  const outros = [...ps.flatMap((p) => {
-    const mesas = [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador' && m.nome !== 'Codex'), tem = new Set(mesas.map((m) => m.nome));
-    for (const n of new Set([...TIME_SEMPRE, ...agentesInfo(p).map((a) => a.nome)])) if (n && !tem.has(n)) mesas.push(vazioMesa(p, n));
-    return mesas;
-  }), ...outrasAbas];
-  for (const m of outros) if (ehFerramenta(m.nome)) lista.push({ id: m.k, nome: m.nome, item: true, status: D.estadoDe(m).cls, pessoa: m.pessoa, m });
-  const comEstado = outros.filter((m) => !ehFerramenta(m.nome)).map((m) => ({ m, st: D.estadoDe(m).cls })).sort((a, b) => (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
   const A = mundo.planta.assentos;
-  for (const { m, st } of comEstado.filter((x) => TRABALHANDO.includes(x.st))) {
-    const fr = D.frenteDaMesa(m) || frente('genesis', 'criacao');
-    const l = pega(m.k, [A.filter((a) => a.setor === fr.setor && a.jogo === fr.jogo), A.filter((a) => a.setor === fr.setor), A]);
-    if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor });
+  const naMesa = (id, setor, fr) => pega(id, [A.filter((a) => a.setor === setor && a.jogo === fr.jogo), A.filter((a) => a.setor === setor), A]);
+  // ferramentas viram itens (voam até quem usa), não bonecos
+  const ehFerramenta = (n) => ['conector', 'programa'].includes(tipoDe(n));
+  const mesas = ps.flatMap((p) => [...(eq.get(p) || new Map()).values()].filter((m) => m.nome !== 'Orquestrador'));
+  for (const m of mesas) if (ehFerramenta(m.nome) && !EQ.cargoDe(m.nome, cargosAgora())) lista.push({ id: m.k, nome: m.nome, item: true, status: D.estadoDe(m).cls, pessoa: m.pessoa, m });
+  // A equipe: um boneco por cargo. Trabalhando = mesa da ala do setor dele; livre = copa (e a rotina dela).
+  const equipe = cargosAgora().map((c) => ({ c, ...mesaDoCargo(c) }));
+  for (const { c, m, st } of equipe.filter((x) => TRABALHANDO.includes(x.st.cls))) {
+    const fr = D.frenteDaMesa(m) || frente('genesis', c.setor || 'criacao');
+    const l = naMesa(`cargo|${c.id}`, c.setor || fr.setor, fr);
+    if (l) lista.push({ id: `cargo|${c.id}`, nome: c.id, cargo: c, lugar: l, status: st.cls, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor });
   }
-  // Na copa (e na rotina dela): todo o time que não está trabalhando.
-  for (const { m, st } of comEstado.filter((x) => !TRABALHANDO.includes(x.st))) {
-    const l = pega(m.k, [mundo.planta.copa]);
-    if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st === 'fim' ? 'fim' : 'livre', ferramenta: null, pessoa: m.pessoa, m });
+  // Visitantes (sub-agente fora da equipe) e as outras abas da assistente: só enquanto trabalham.
+  const outrasAbas = ps.flatMap((p) => D.abas().filter((a) => a.pessoa === p).slice(1));
+  const visitas = [...mesas.filter((m) => !ehFerramenta(m.nome) && !EQ.cargoDe(m.nome, cargosAgora()) && !EQ.daAssistente(m.nome)), ...outrasAbas]
+    .map((m) => ({ m, st: D.estadoDe(m).cls })).filter((x) => TRABALHANDO.includes(x.st)).sort((a, b) => (b.m.ult?.t || 0) - (a.m.ult?.t || 0));
+  for (const { m, st } of visitas) {
+    const fr = D.frenteDaMesa(m) || frente('genesis', 'criacao');
+    const l = naMesa(m.k, fr.setor, fr);
+    if (l) lista.push({ id: m.k, nome: m.nome, lugar: l, status: st, ferramenta: m.modo, pessoa: m.pessoa, m, anel: fr.cor, visitante: !m.aba });
+  }
+  for (const { c, m, st } of equipe.filter((x) => !TRABALHANDO.includes(x.st.cls))) {
+    const l = pega(`cargo|${c.id}`, [mundo.planta.copa]);
+    if (l) lista.push({ id: `cargo|${c.id}`, nome: c.id, cargo: c, lugar: l, status: st.cls === 'fim' ? 'fim' : 'livre', ferramenta: null, pessoa: m.pessoa, m });
   }
   return lista;
 }
@@ -243,7 +271,7 @@ function ligarRede() {
   });
   R.on('aprovacao', (a) => {
     aprovacoes = [...aprovacoes.filter((x) => x.id !== a.id), a].filter((x) => x.status === 'pendente');
-    if (a.status === 'pendente') { som('alerta'); const dt = lerJson(a.detalhe), ag = dt.origem?.agente || dt.pedidoDe?.agente, f = (ag && ag !== 'Orquestrador' ? tituloDe(ag) + ': ' : '') + passo(a.ferramenta, null, dt); notificar('Pedido de permissão', f); toast({ titulo: 'Pedido de permissão', texto: f, cor: '#ffd23f', acao: () => abrirAba('atencao') }); }
+    if (a.status === 'pendente') { som('alerta'); const dt = lerJson(a.detalhe), ag = dt.origem?.agente || dt.pedidoDe?.agente, f = (ag && ag !== 'Orquestrador' ? tituloDe(ag) + ': ' : '') + passo(a.ferramenta, null, dt); const tq = Q.ehQuestionario(a) ? 'Sua assistente tem perguntas antes de começar' : 'Pedido de permissão'; notificar(tq, Q.ehQuestionario(a) ? (Q.perguntasDe(a)[0]?.question || f) : f); toast({ titulo: tq, texto: Q.ehQuestionario(a) ? (Q.perguntasDe(a)[0]?.question || f) : f, cor: '#ffd23f', acao: () => abrirAba('atencao') }); }
     agendarInterface(); desenharChat();
   });
   R.on('marco', (p) => {
@@ -504,14 +532,16 @@ tela.addEventListener('pointermove', (ev) => { if (!mundo) return; const [x, y] 
 function rotulo(id, cls) { let el = poolRotulos.get(id); if (!el) { el = document.createElement('div'); camada.appendChild(el); poolRotulos.set(id, el); } if (el.className !== cls) el.className = cls; el.dataset.v = '1'; return el; }
 const colocar = (el, x, y, c, cima = false) => { el.style.transform = `translate(calc(${Math.round((x - c.x) * zoom)}px - 50%), calc(${Math.round((y - c.y) * zoom)}px - ${cima ? '100%' : '0px'}))`; };
 function nomeBase(b) {
+  if (b.cargo) return b.cargo.curto;
   if (b.m?.aba && !b.lugar.assistente) return tituloAgente(b.m);
   if (b.lugar.assistente) return b.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${b.pessoa}`;
   if (b.lugar.codex) return b.pessoa === EU.pessoa ? 'Codex · GPT' : `Codex de ${b.pessoa}`;
+  if (b.visitante) return `${CURTO[b.nome] || tituloDe(b.nome)} (visita)`;
   return CURTO[b.nome] || tituloDe(b.nome === '*' ? 'agente' : b.nome);
 }
 // No mapa: ícone do tipo (👑 assistente, 🤖 agente, 🧠 GPT, 🔌 conector, 🛠️ programa) + ícone da frente quando está trabalhando.
 function nomeNoMapa(b) {
-  const nome = b.m?.nome || b.nome, tipo = b.lugar.assistente ? 'assistente' : b.lugar.codex ? 'ia' : tipoDe(nome);
+  const nome = b.m?.nome || b.nome, tipo = b.lugar.assistente ? 'assistente' : b.lugar.codex ? 'ia' : b.cargo ? 'agente' : tipoDe(nome);
   const fr = ['trab', 'alerta', 'erro'].includes(b.status) ? D.frenteDaMesa(b.m) : null;
   return `${TIPOS[tipo].icone} ${nomeBase(b)}${fr ? ' · ' + fr.icone : ''}`;
 }
@@ -807,9 +837,10 @@ function montarInterface() {
   $('#buscaEquipe').oninput = (e) => { buscaEq = e.target.value; desenharEquipeVista(); };
   $('#filtrosEquipe').onclick = (e) => { const p = e.target.closest('[data-fpes]'), t = e.target.closest('[data-ftipo]'); if (p) filtroPesEq = p.dataset.fpes; if (t) filtroTipoEq = t.dataset.ftipo; if (p || t) desenharEquipeVista(); };
   $('#equipeCorpo').onclick = (e) => {
-    const ir = e.target.closest('[data-eqaba-ir]'); if (ir) { abaEq = ir.dataset.eqabaIr; guarda('abaEq', abaEq); desenharEquipeVista(); return; }
+    const ir = e.target.closest('[data-eqaba-ir]'); if (ir) { abaEq = ir.dataset.eqabaIr; guarda('abaEq2', abaEq); desenharEquipeVista(); return; }
     if (e.target.closest('[data-revisar-permissao]')) { abrirAba('atencao'); return; }
     const ag = e.target.closest('.eqa-card[data-k]'); if (ag) { fecharEquipeVista(); localizar(ag.dataset.k); return; }
+    const cg = e.target.closest('[data-cargo]'); if (cg) { fecharEquipeVista(); localizarCargo(cg.dataset.cargo); return; }
     const c = e.target.closest('[data-item]'); if (!c) return; const [t, ...n] = c.dataset.item.split('|'); const x = itensEquipe().find((i) => i.k === c.dataset.item); abrirItem(t, x ? x.nome : n.join('|')); };
   ligarEscalacao($('#hudChat')); ligarEscalacao($('#hudMapa')); ligarEscalacao($('#detalheMissao'));
   ligarComandoNoApp();
@@ -926,7 +957,8 @@ function filtros(el, atual, opcoes, fn) {
 }
 const pastaCurta = (a) => String(a.pasta || a.projeto || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'outra aba';
 const ehRecepcao = (m) => !m.aba || D.abas().find((a) => a.pessoa === m.pessoa) === m;
-const tituloAgente = (m) => m.nome === 'Orquestrador' ? (!ehRecepcao(m) ? `Assistente · ${pastaCurta(m)}` : m.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${m.pessoa}`) : m.nome === 'Codex' ? (m.pessoa === EU.pessoa ? 'Codex' : `Codex de ${m.pessoa}`) : m.titulo || tituloDe(m.nome);
+const tituloAgente = (m) => { const c = m.nome !== 'Orquestrador' && EQ.cargoDe(m.nome, cargosAgora()); if (!c) return tituloSemCargo(m); return c.id === m.nome ? c.nome : `${c.nome} · ${tituloSemCargo(m)}`; };
+const tituloSemCargo = (m) => m.nome === 'Orquestrador' ? (!ehRecepcao(m) ? `Assistente · ${pastaCurta(m)}` : m.pessoa === EU.pessoa ? 'Sua assistente' : `Assistente de ${m.pessoa}`) : m.nome === 'Codex' ? (m.pessoa === EU.pessoa ? 'Codex' : `Codex de ${m.pessoa}`) : m.titulo || tituloDe(m.nome);
 // Etiquetas: tipo (👑 🤖 🧠 🔌 🛠️) + modelo só para quem pensa (Claude Haiku, GPT) + frente atual.
 function etiquetasDe(m) {
   const tipo = tipoDe(m.nome), mod = modelo(m.nome, m.pessoa);
@@ -1157,7 +1189,11 @@ addEventListener('online', () => ressincronizar());
 // Redesenha onde houver cartões de autorização (Atividade, folha do pedido, topo).
 function redesenharAprovacoes() { agendarInterface(); desenharChat(); if (aba === 'atencao') desenharAtencao(); if (!$('#folhaAprov').hidden) abrirAutorizacoes(); }
 function ligarAprovacoes(el) {
+  // Questionário (AskUserQuestion): formulário com as respostas no lugar do Autorizar/Recusar (questionario.js).
+  const achar = (id) => aprovacoes.find((x) => x.id === id);
+  el.oninput = (e) => Q.digitar(e, achar);
   el.onclick = async (e) => {
+    if (await Q.clique(e, { achar, toast, enviar: async (a, status, detalhe) => { if (!DEMO) await R.decidir(a.id, status, detalhe); aprovacoes = aprovacoes.filter((x) => x.id !== a.id); redesenharAprovacoes(); } })) return;
     // Uma decisão por cartão (comando-aprovacao.js): guarda aqui e responde à ponte quando o pedido estiver completo.
     const dec = e.target.closest('[data-ap-dec],[data-ap-mudar]');
     if (dec) {
@@ -1279,14 +1315,14 @@ async function desenharAgente() {
   let [p, nome] = (selecionado || '').split('|');
   const m = (nome === 'aba' ? D.abas().find((a) => a.k === selecionado) : null) || D.mesa(p, nome) || vazioMesa(p, nome);
   if (nome === 'aba') nome = 'Orquestrador';
-  const st = D.estadoDe(m), mod = modelo(nome, p), meu = p === EU.pessoa;
+  const st = D.estadoDe(m), mod = modelo(nome, p), meu = p === EU.pessoa, cg = nome !== 'Orquestrador' && EQ.cargoDe(nome, cargosAgora());
   const urls = await R.urlsMiniaturas(m.miniaturas.map((x) => x.caminho)).catch(() => []);
   const linhas = m.hist.filter((e) => e.texto !== 'esperando você').slice(-40).reverse();
   $('#detalheAgente').innerHTML = `
     <div class="det-topo"><img src="${await retratoDe(nome)}" alt=""><div><h3>${esc(tituloAgente(m))}</h3>
       <div class="etqs">${etiquetasDe(m)} <span class="sub">equipe de ${esc(p)}</span></div>
       <div class="estado" style="--cor:${st.cor}"><i>${st.glifo}</i>${st.rot}${m.ult ? ' · ' + D.ha(m.ult.t) : ''}</div></div></div>
-    <div class="bloco explica" style="--cor:${TIPOS[tipoDe(nome)].cor}"><h4>${TIPOS[tipoDe(nome)].icone} O que é</h4>${esc(mod.descricao ? descricaoHumana(mod.descricao) : TIPOS[tipoDe(nome)].explica)}</div>
+    <div class="bloco explica" style="--cor:${TIPOS[tipoDe(nome)].cor}"><h4>${TIPOS[tipoDe(nome)].icone} O que é</h4>${esc(cg ? cg.papel : mod.descricao ? descricaoHumana(mod.descricao) : TIPOS[tipoDe(nome)].explica)}${cg ? `<div class="cg-ficha">Skills: ${cg.skills.map((s) => esc(s.nome)).join(', ') || 'nenhuma ainda'}${cg.apelidos.length ? ` · também atende por ${cg.apelidos.map((a) => esc(a.nome)).join(', ')}` : ''}</div>` : ''}</div>
     ${m.ult?._m ? `<div class="bloco"><h4>Missão atual</h4><a href="#" class="link-missao" data-abrir-missao="${esc(m.ult._m.id)}">${chipFrente(m.ult._m.frente)} ${esc(m.ult._m.titulo)}</a></div>` : m.pedido && nome !== 'Orquestrador' ? `<div class="bloco"><h4>Pedido</h4>${esc(frase(m.pedido))}</div>` : ''}
     ${htmlPorque(m)}
     ${m.ult && st.cls !== 'fim' ? `<div class="bloco"><h4>Agora</h4>${esc(frase(m.ult))}</div>` : ''}
@@ -1295,7 +1331,7 @@ async function desenharAgente() {
     ${linhas.length ? `<div class="bloco"><h4>O que andou fazendo</h4>${fases([...linhas].reverse()).reverse().slice(0, 25).map((f) => `<div class="etapa ${esc(f.tipo)}"><span class="h">${D.hora(f.t)}</span><span>${ICONE_CAT[f.cat] || '•'}</span><span>${esc(f.texto)}</span></div>`).join('')}</div>` : ''}`;
   $$('#detalheAgente [data-abrir-missao]').forEach((el) => el.addEventListener('click', (e) => { e.preventDefault(); abrirMissao(e.currentTarget.dataset.abrirMissao); }));
   $('#irAoAgente').onclick = () => { const b = [...mundo.agentes.values()].find((x) => x.pessoa === p && (x.m?.nome === nome || x.nome === nome)); if (b) teleportar(b.lugar.x + 24, b.lugar.y); };
-  $('#pedirAgente')?.addEventListener('click', () => { if (nome === 'Codex') abrirChatCom('codex'); else { abrirChatCom('claude'); if (nome !== 'Orquestrador') { $('#entrada').value = `Use o sub-agente ${nome} para: `; $('#entrada').focus(); } } });
+  $('#pedirAgente')?.addEventListener('click', () => { if (nome === 'Codex') abrirChatCom('codex'); else { abrirChatCom('claude'); if (nome !== 'Orquestrador') { $('#entrada').value = `Use o sub-agente ${cg && nome === cg.id ? cg.apelidos.find((a) => a.nome !== 'Codex')?.nome || 'general-purpose' : nome} para: `; $('#entrada').focus(); } } });
   $$('#detalheAgente [data-mini]').forEach((el) => { el.onclick = () => abrirMidia(m.miniaturas[Number(el.dataset.mini)], urls[Number(el.dataset.mini)], m.pessoa); });
 }
 
@@ -2527,7 +2563,7 @@ function abrirEquipeVista() {
 }
 function fecharEquipeVista() { if (!$('#equipeVista').hidden) { $('#equipeVista').hidden = true; marcarNav(); } }
 let pendenteEq = false, deNovoEq = false; // se pedirem enquanto desenha, desenha de novo no fim (não perde o filtro)
-let abaEq = guardado('abaEq', 'agora');
+let abaEq = guardado('abaEq2', 'cargos'); // 'abaEq2': a aba nova (Equipe) abre primeiro, mesmo para quem tinha outra guardada
 // "Quem está trabalhando em quê": um cartão por agente ocupado (o que faz, para qual pedido/marco, desde quando).
 async function htmlEquipeAgora() {
   const ativos = quemTrabalha();
@@ -2563,11 +2599,12 @@ async function desenharEquipeVista() {
     if (!abasEq) {
       abasEq = document.createElement('div'); abasEq.id = 'abasEquipe'; abasEq.className = 'eq-abas'; abasEq.setAttribute('role', 'tablist');
       $('#equipeVista .eq-topo h2').after(abasEq);
-      abasEq.onclick = (e) => { const b = e.target.closest('[data-eqaba]'); if (b) { abaEq = b.dataset.eqaba; guarda('abaEq', abaEq); desenharEquipeVista(); } };
+      abasEq.onclick = (e) => { const b = e.target.closest('[data-eqaba]'); if (b) { abaEq = b.dataset.eqaba; guarda('abaEq2', abaEq); desenharEquipeVista(); } };
     }
-    abasEq.innerHTML = [['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo e ajustes']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
+    abasEq.innerHTML = [['cargos', 'Quem é quem'], ['agora', 'Trabalhando agora'], ['catalogo', 'Catálogo e ajustes']].map(([id, t]) => `<button role="tab" data-eqaba="${id}" class="${abaEq === id ? 'on' : ''}" aria-selected="${abaEq === id}">${t}</button>`).join('');
     $('#equipeVista').dataset.aba = abaEq;
     if (abaEq === 'agora') { $('#equipeCorpo').innerHTML = await htmlEquipeAgora(); return; }
+    if (abaEq === 'cargos') { $('#equipeCorpo').innerHTML = await EQ.htmlCargos({ lista: cargosAgora(), estado: estadoDoCargo, retratoDe, esc, corPessoa, pessoas }); return; }
     const pes = ['', ...pessoas()];
     $('#filtrosEquipe').innerHTML = `<div class="eq-grupo">${pes.map((p) => `<button data-fpes="${esc(p)}" class="${p === filtroPesEq ? 'on' : ''}">${p ? esc(p) : 'Os dois'}</button>`).join('')}</div><div class="eq-grupo">${FILTROS_TIPO_EQ.map(([t, r]) => `<button data-ftipo="${t}" class="${t === filtroTipoEq ? 'on' : ''}">${r}</button>`).join('')}</div>`;
     const q = buscaEq.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -2818,7 +2855,8 @@ async function iniciarDemo() {
   ]);
   estados.set('Rafael', { pessoa: 'Rafael', ponte_visto: new Date().toISOString(), branch: 'gen-186-trailer-v2', projeto: 'genesis-game', info: { projetos: [{ nome: 'genesis-game' }], ffmpeg: true, vapid: 'demo', push: [], longe: false, agentes: [{ nome: 'balanceador', modelo: 'haiku', descricao: 'Ajusta números de gameplay em data/.' }, { nome: 'explorador', modelo: 'haiku', descricao: 'Lê o projeto e responde perguntas sem mexer em nada.' }, { nome: 'revisor-godot', modelo: 'sonnet', descricao: 'Revisa código GDScript antes do commit.' }, { nome: 'editor-de-video', modelo: 'sonnet', descricao: 'Monta Shorts e trailers no Remotion com cortes no compasso.' }],
     skills: [{ nome: 'video-do-jogo', descricao: 'Use quando for gravar, montar ou renderizar um vídeo do Genesis', origem: 'projeto' }, { nome: 'balanceamento-com-bots', descricao: 'Use quando for balancear uma dificuldade com bots jogando', origem: 'projeto' }, { nome: 'hud-em-jogo', descricao: 'Use quando for desenhar ou mudar a HUD dentro da partida', origem: 'projeto' }],
-    mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official', descricao: 'Recomenda automações do Claude Code (hooks, skills, MCP, sub-agentes).' }], programas: [{ nome: 'Godot', descricao: 'O motor do jogo: abre, roda e testa o Genesis pelo terminal.', instalado: true }, { nome: 'Render', descricao: 'Remotion: monta e exporta os vídeos a partir de código.' }, { nome: 'ffmpeg', descricao: 'Corta e converte vídeo e imagem; faz miniaturas.', instalado: true }, { nome: 'Codex', descricao: 'IA da OpenAI (GPT): revisão crítica e nota de vídeo/arte.', instalado: true }] } });
+    mcp: [{ nome: 'pixellab', origem: 'pessoal' }, { nome: 'blender', origem: 'pessoal' }, { nome: 'notion', origem: 'projeto' }], plugins: [{ nome: 'claude-code-setup', origem: 'claude-plugins-official', descricao: 'Recomenda automações do Claude Code (hooks, skills, MCP, sub-agentes).' }], programas: [{ nome: 'Godot', descricao: 'O motor do jogo: abre, roda e testa o Genesis pelo terminal.', instalado: true }, { nome: 'Render', descricao: 'Remotion: monta e exporta os vídeos a partir de código.' }, { nome: 'ffmpeg', descricao: 'Corta e converte vídeo e imagem; faz miniaturas.', instalado: true }, { nome: 'Codex', descricao: 'IA da OpenAI (GPT): revisão crítica e nota de vídeo/arte.', instalado: true }],
+    equipe: EQ.equipeDemo(['orquestrar', 'wiki-genesis', 'kit-de-classe', 'cartas-de-classe', 'hud-em-jogo', 'balanceamento-com-bots', 'arte-de-menu', 'efeito-em-monstro', 'video-do-jogo', 'remotion-best-practices', 'salvar-vitoria']) } });
   estados.set('Kenny', { pessoa: 'Kenny', ponte_visto: new Date().toISOString(), branch: 'v0.2-loja-classes', projeto: 'genesis-game' });
   const quando = (min) => new Date(ag - min * 60e3).toISOString();
   recados = [
@@ -2859,6 +2897,8 @@ async function iniciarDemo() {
   D.adicionar([
     ev(20, 'Rafael', 'editor-de-video', 'atividade', '', { aid: 'a1', ferramenta: 'Edit', alvo: 'beatgrid.mjs', arq: 'tools/video/beatgrid.mjs', modo: 'escrever' }),
     ev(5, 'Kenny', 'Orquestrador', 'atividade', '', { ferramenta: 'Edit', alvo: 'beatgrid.mjs', arq: 'tools/video/beatgrid.mjs', modo: 'escrever' }),
+    ev(240, 'Rafael', 'gerente', 'inicio', 'Sugestões do dia', { sessao: 'rot1' }), ev(238, 'Rafael', 'gerente', 'fim', '4 pedidos prontos para hoje no painel Hoje', { sessao: 'rot1' }),
+    ev(1.5, 'Kenny', 'tradutor-de-falas', 'inicio', 'começou', { aid: 'v1', sessao: 's6', projeto: 'jogo-novo' }), ev(0.6, 'Kenny', 'tradutor-de-falas', 'atividade', '', { aid: 'v1', sessao: 's6', projeto: 'jogo-novo', ferramenta: 'Read', alvo: 'locale/en.json', modo: 'ler' }),
   ]);
   recados.unshift(
     { id: 9, pessoa: 'Kenny', texto: JSON.stringify({ id: 8, acao: 'feito' }), cor: 'bola-ok', criado: quando(60) },
@@ -2866,7 +2906,10 @@ async function iniciarDemo() {
     { id: 11, pessoa: 'Rafael', texto: `🔥 Kenny|s3|${ag - 15 * 60e3}`, cor: 'reacao', criado: quando(7) },
   );
   recados.push({ id: 8, pessoa: 'Rafael', texto: JSON.stringify({ para: 'Kenny', alvo: 'pessoa', texto: 'Dá uma olhada no Short antes de eu subir?', ctx: 'marco Short "Raio + Fogo = ?" · branch gen-186-trailer-v2' }), cor: 'bola', criado: quando(120) });
-  aprovacoes = [{ id: 8, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'git push origin gen-186-trailer-v2 && rm -rf _video/tmp', description: 'Sobe a branch e limpa os temporários', arquivos: ['_video/tmp/corte1_raio.mp4', '_video/tmp/corte2_fogo.mp4', '_video/tmp/trilha_129bpm.wav', '_video/tmp/frames/ (412 imagens do render)'], pedidoDe: { agente: 'editor-de-video', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }, { id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly', pedidoDe: { agente: 'artista-3d', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
+  aprovacoes = [{ id: 7, ferramenta: 'AskUserQuestion', detalhe: JSON.stringify({ perguntas: [
+    { question: 'Qual versão do trailer eu monto primeiro?', header: 'Formato', multiSelect: false, options: [{ label: 'Steam 1:30', description: 'Deitado, com a música do menu e o logo no fim' }, { label: 'Reels 15 s', description: 'Em pé, gancho nos 2 primeiros segundos' }, { label: 'Os dois', description: 'Leva o dobro do tempo de render' }] },
+    { question: 'O que entra no vídeo?', header: 'Partes', multiSelect: true, options: [{ label: 'Gameplay novo', description: 'Gravo as cenas de novo com o bot' }, { label: 'Narração', description: 'Você grava depois' }, { label: 'Legendas' }] },
+  ], pedidoDe: { agente: 'Orquestrador', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 20e3).toISOString(), status: 'pendente' }, { id: 8, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'git push origin gen-186-trailer-v2 && rm -rf _video/tmp', description: 'Sobe a branch e limpa os temporários', arquivos: ['_video/tmp/corte1_raio.mp4', '_video/tmp/corte2_fogo.mp4', '_video/tmp/trilha_129bpm.wav', '_video/tmp/frames/ (412 imagens do render)'], pedidoDe: { agente: 'editor-de-video', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }, { id: 9, ferramenta: 'mcp__blender__generate_3d', detalhe: JSON.stringify({ prompt: 'espada do Gatuno, low poly', pedidoDe: { agente: 'artista-3d', projeto: 'genesis-game' } }), conversa_id: 1, criado: new Date(ag - 60e3).toISOString(), status: 'pendente' },
     { id: 10, ferramenta: 'Bash', detalhe: JSON.stringify({ command: 'npx remotion render ShortRaioFogo out/short-raio-fogo.mp4 --concurrency=4', description: 'Renderiza o Short', origem: { terminal: true, projeto: 'genesis-game', agente: 'editor-de-video' } }), conversa_id: null, criado: new Date(ag - 30e3).toISOString(), status: 'pendente' }];
   jornais = [{ dia: hoje(), gerado_por: 'Rafael', conteudo: { manchete: 'Short do Raio + Fogo leva 8/10 do Codex e sai do forno hoje', linha_fina: 'Editor de vídeo vira a madrugada; Revisor encontra um "dash" que não existe', numeros: [{ rotulo: 'commits', valor: '12' }, { rotulo: 'missões', valor: '7' }, { rotulo: 'renders', valor: '3' }], secoes: [{ titulo: 'Genesis', itens: [{ titulo: 'Dragão do Inverno mais justo', texto: 'O Balanceador cortou 10% da vida e a recarga do sopro caiu para 6 s.' }, { titulo: 'Dash fantasma', texto: 'O teste do Godot achou uma chamada a "dash" num objeto vazio. Kenny já subiu a correção.' }] }, { titulo: 'Marketing e YouTube', itens: [{ titulo: 'Raio + Fogo = ?', texto: 'O Short de 19 s com 5 cortes no compasso teve nota 8 do Codex. Falta ajustar o corte 3.' }] }, { titulo: 'Jogo novo', itens: [{ titulo: 'Inventário de cara nova', texto: 'O Codex separou modelo e tela do inventário em 14 arquivos.' }] }], fofoca: 'Fontes não confirmadas dizem que o Explorador passou mais tempo no café do que nas baias. Ele nega: “estava explorando o salão”.', previsao: 'Céu limpo com chance de merge à tarde.' } }];
   mundo = await criarMundo();

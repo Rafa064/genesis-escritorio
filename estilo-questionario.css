@@ -1,0 +1,33 @@
+/* Questionário da assistente (AskUserQuestion): formulário no lugar do Autorizar/Recusar (js/questionario.js). */
+.aprovacao.qz { box-shadow: 0 0 0 2px var(--contorno), inset 6px 0 0 var(--azul), 3px 3px 0 1px rgba(30, 18, 8, .25); padding-left: 16px; }
+.qz .ap3-cab .ap-ic { background: #d6e7f7; color: #1f4f80; }
+.qz-perg { min-width: 0; display: grid; gap: 8px; }
+.qz-perg + .qz-perg { padding-top: 12px; border-top: 2px dashed rgba(90, 58, 34, .25); }
+.qz-enunc { display: grid; gap: 3px; }
+.qz-enunc b { font: 600 17px/1.35 var(--ui); color: var(--tinta); overflow-wrap: anywhere; }
+.qz-enunc small { font: 13.5px var(--ui); color: var(--meta); }
+.qz-tag { justify-self: start; font: 600 12px var(--ui); font-style: normal; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; background: var(--madeira); color: var(--papel-claro); }
+.qz-ops { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.qz-op { display: flex; align-items: flex-start; gap: 10px; min-height: 52px; padding: 10px 12px; text-align: left; cursor: pointer; border: 0; border-radius: 0; background: #fffbef; color: var(--tinta); box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .35); font: 15px/1.35 var(--ui); min-width: 0; }
+.qz-op:hover { box-shadow: inset 0 0 0 2px var(--madeira); }
+.qz-op:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+.qz-op span { display: grid; gap: 2px; min-width: 0; }
+.qz-op b { font: 600 16px/1.3 var(--ui) !important; overflow-wrap: anywhere; }
+.qz-op small { font: 13.5px/1.35 var(--ui); color: var(--meta); overflow-wrap: anywhere; }
+.qz-marca { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50% !important; box-shadow: inset 0 0 0 2px var(--madeira-escura); background: #fff; }
+.qz-marca.quad { border-radius: 2px !important; }
+.qz-op.on { background: #e1eefa; box-shadow: inset 0 0 0 3px var(--azul); }
+.qz-op.on .qz-marca { background: var(--azul); box-shadow: inset 0 0 0 2px var(--azul), inset 0 0 0 5px #fff; }
+.qz-op.on .qz-marca.quad { box-shadow: inset 0 0 0 2px var(--azul), inset 0 0 0 4px #fff; }
+.aprovacao.qz .qz-outro { display: grid; justify-items: stretch; text-align: left; grid-template-columns: auto 1fr; align-items: center; gap: 10px; font: 600 14px var(--ui); color: var(--meta); }
+.aprovacao.qz .qz-outro input { min-width: 0; min-height: 46px; padding: 0 12px; border: 0; border-radius: 0; background: #fffbef; color: var(--tinta); box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .35); font: 16px var(--ui); }
+.aprovacao.qz .qz-outro input:focus { outline: none; box-shadow: inset 0 0 0 3px var(--azul); }
+.qz-botoes { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 4px; }
+.qz-botoes .btn { min-height: 50px; }
+.qz-botoes .qz-enviar { font: 600 21px var(--titulo); }
+.qz-botoes .qz-enviar:disabled { opacity: .55; cursor: not-allowed; }
+.qz-nota { margin: 0; font: 13px/1.4 var(--ui); color: var(--meta); }
+@media (max-width: 560px) {
+  .qz-ops { grid-template-columns: 1fr; }
+  .aprovacao.qz .qz-outro { grid-template-columns: 1fr; gap: 4px; }
+}

@@ -4,6 +4,7 @@
 import { esc, lerJson, nomeArq } from './comando-ctx.js';
 import { ico } from './comando-icones.js';
 import { nomeProjeto } from './leitura.js';
+import * as Q from './questionario.js';
 
 const curto = (t, n = 60) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const code = (t) => `<code>${esc(curto(t, 48))}</code>`;
@@ -79,7 +80,9 @@ const nomeAcao = (y) => y.sim.replace(/^Autorizar\s*(e\s+)?/, '') || minusc(y.t)
 export function explicar(a, { passoTxt = '', projeto = '' } = {}) {
   const { origem, cortado, pedidoDe, ...campos } = lerJson(a.detalhe);
   let acoes;
-  if (campos.command) {
+  // Questionário: uma decisão só (responder), mostrada como formulário em html().
+  if (Q.ehQuestionario(a)) acoes = [{ ic: 'ajuda', t: 'Responder às perguntas da assistente', d: 'Ela espera as suas respostas para começar.', sim: 'Responder' }];
+  else if (campos.command) {
     const partes = String(campos.command).split(/\s*(?:&&|\|\||;)\s*/).map((x) => x.trim()).filter(Boolean);
     acoes = partes.map((p) => ({ ...acaoDoComando(p, partes.length === 1 ? campos.description : ''), cmd: p }));
     // Duas partes que viram a mesma ação genérica: junta numa só.
@@ -125,6 +128,7 @@ export const nDecisoes = (a) => explicar(a).acoes.length;
 // Um comando com várias ações vira vários cartões ("1 de 2"); a resposta vai à ponte quando todos forem decididos.
 // info: { quem, projeto, dentroHtml, origemTxt, quando }. escolhas: { [i]: 'sim' | 'nao' } já marcadas aqui.
 export function html(a, info, escolhas = {}) {
+  if (Q.ehQuestionario(a)) return Q.html(a, info);
   const x = explicar(a, info), n = x.acoes.length;
   const lista = Array.isArray(x.campos.arquivos) ? x.campos.arquivos.map(String) : null;
   const decididas = Object.keys(escolhas).length;

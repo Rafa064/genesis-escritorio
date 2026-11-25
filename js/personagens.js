@@ -31,9 +31,14 @@ export const VISUAL = {
   Render: { olhos: '#2b1d14', top: ['turtleneck', '#8a2a2a'], pants: ['jeans', 'Navy'], shoes: ['boots', 'Black'], hair: ['long', '#3a2a20'], watch: ['watch', 'Silver'] },
   Godot: { pele: 'Dark', olhos: '#2b1d14', top: ['tshirt', '#478cbf'], pants: ['jeans', 'Original'], shoes: ['sneakers', 'White'], hair: ['shoulder_length', '#1d1414'], lanyard: ['lanyard', 'Original'] },
 
+  // Cargos da equipe fixa (equipe.js): um boneco por cargo (os outros reaproveitam o visual do apelido principal, abaixo).
+  gerente: { olhos: '#2f7f45', top: ['turtleneck', '#ecebe6'], jacket: ['blazer', '#2f4f7f'], pants: ['jeans', 'Navy'], shoes: ['boots', 'Black'], hair: ['high_ponytail', '#4a2a1a'], lanyard: ['lanyard', 'Original'], shades: ['glasses', 'Tortoise'] },
+
   // Qualquer outro agente
   '*': { olhos: '#2b1d14', top: ['long_sleeved_shirt', 'White'], pants: ['jeans', 'Navy'], shoes: ['sneakers', 'Black'], hair: ['side_swept', '#6b3f1d'], lanyard: ['lanyard', 'Original'] },
 };
+
+Object.assign(VISUAL, { programador: VISUAL['revisor-godot'], artista: VISUAL['artista-3d'], editor: VISUAL['editor-de-video'], estrategista: VISUAL['criador-de-conteudo'] });
 
 // Agente sem visual próprio ganha um visual montado a partir do NOME: sempre o mesmo para o mesmo
 // nome, e diferente entre agentes (em vez de todos iguais ao '*'). A "cor" da ficha vira a roupa de cima.

@@ -211,7 +211,8 @@ export async function carregarChat(conversa_id) {
   return data;
 }
 // Só decide o que ainda está pendente (se a ponte já deu por vencido, avisa em vez de fingir que valeu).
-export async function decidir(id, status) { const { data, error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString() }).eq('id', id).eq('status', 'pendente').select('id'); if (error) throw error; if (!data?.length) throw new Error('Esse pedido já tinha vencido (ou você voltou ao PC e ele foi para a tela de lá).'); }
+// detalhe (opcional): o questionário grava as respostas no mesmo campo (a ponte lê de lá).
+export async function decidir(id, status, detalhe) { const { data, error } = await sb.from('aprovacoes').update({ status, decidido: new Date().toISOString(), ...(detalhe != null ? { detalhe } : {}) }).eq('id', id).eq('status', 'pendente').select('id'); if (error) throw error; if (!data?.length) throw new Error('Esse pedido já tinha vencido (ou você voltou ao PC e ele foi para a tela de lá).'); }
 export const pedirJornal = () => sb.from('comandos').insert({ tipo: 'jornal' });
 // Com conversa: a ponte para só aquela conversa (sem: para tudo).
 export const parar = (conversa_id = null) => sb.from('comandos').insert({ tipo: 'parar', ...(conversa_id ? { conversa_id } : {}) });

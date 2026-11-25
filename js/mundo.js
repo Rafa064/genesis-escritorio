@@ -103,7 +103,7 @@ class Mundo {
         this.agentes.set(a.id, b);
         b.novo = true;
       }
-      Object.assign(b, { status: a.status, ferramenta: a.ferramenta, pessoa: a.pessoa, m: a.m, lugar: a.lugar, anel: a.anel || null });
+      Object.assign(b, { status: a.status, ferramenta: a.ferramenta, pessoa: a.pessoa, m: a.m, lugar: a.lugar, anel: a.anel || null, cargo: a.cargo || null, visitante: !!a.visitante });
       vida.notarEventos(this, b, b.novo); b.novo = false;
     }
     for (const id of [...this.agentes.keys()]) if (!vistos.has(id)) { vida.liberar(this, this.agentes.get(id)); this.agentes.delete(id); }

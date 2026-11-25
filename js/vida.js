@@ -229,7 +229,7 @@ export function definirUsos(w, avatares, itens) {
     const it = ITEM_DO_NOME[t.nome];
     if (!it || usos.has(it) || !OCUPADO.includes(t.status)) continue;
     const quem = t.m?.pedido?.chamou || /^([\w-]+):/.exec(t.m?.ult?.texto || '')?.[1] || 'Orquestrador';
-    const dono = avatares.find((a) => a.pessoa === t.pessoa && a.nome === quem && !a.lugar?.copa) || avatares.find((a) => a.pessoa === t.pessoa && a.lugar?.assistente);
+    const dono = avatares.find((a) => a.pessoa === t.pessoa && (a.m?.nome || a.nome) === quem && !a.lugar?.copa) || avatares.find((a) => a.pessoa === t.pessoa && a.lugar?.assistente);
     if (dono) usos.set(it, { quem: dono.id, texto: String(t.m?.ult?.texto || '').replace(/^[\w-]+:\s*/, '') });
   }
   w.usosReais = usos;
