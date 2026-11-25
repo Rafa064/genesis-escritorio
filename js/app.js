@@ -663,7 +663,7 @@ function desenharJanelaChat() {
   const conv = conversas.find((c) => c.id === conversaAtual);
   const m = aba === 'chat' && conv ? missaoDaConversa(conv) : null;
   el.innerHTML = min
-    ? `<b class="jc-tit">${esc(aba === 'chat' && conv ? visualAba(conv).nome : 'Conversas')}</b><span class="espaco"></span><button type="button" class="btn mini" data-jc="abrir">Abrir conversa</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar" aria-label="Fechar">×</button>`
+    ? `<b class="jc-tit">${aba === 'dupla' ? '✉ Dupla' : '✦ Assistente'}</b><span class="espaco"></span><button type="button" class="btn mini" data-jc="abrir">Abrir conversa</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar" aria-label="Fechar">×</button>`
     : `${m ? '<button type="button" class="btn mini" data-jc="detalhes">Detalhes do pedido</button>' : ''}<span class="espaco"></span><button type="button" class="btn mini" data-jc="min" title="Minimizar: fica só o cartão do pedido e você anda pelo escritório">▁ Minimizar</button><button type="button" class="btn mini" data-jc="fechar" title="Fechar (Esc)" aria-label="Fechar">×</button>`;
 }
 $('#janelaChat').onclick = (e) => {
