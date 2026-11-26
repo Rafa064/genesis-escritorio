@@ -53,7 +53,7 @@ export async function desenhar(forcar = false) {
   const el = document.getElementById('hojeCorpo'); if (!el || !ctx) return;
   // Não apaga o que a pessoa está escrevendo (o painel se redesenha sozinho a cada 15-20 s).
   if (!forcar && (editando || confirmar || el.contains(document.activeElement) && document.activeElement.matches('textarea, input'))) return;
-  const abas = [['sugestoes', icoPx('sol'), 'Seu dia'],['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Custo']];
+  const abas = [['sugestoes', icoPx('sol'), 'Seu dia'],['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Limites']];
   const topo = `<div class="hj-abas" role="tablist">${abas.map(([id, ic, t]) => `<button role="tab" data-hsub="${id}" class="${sub === id ? 'on' : ''}" aria-selected="${sub === id}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>`;
   let corpo = '';
   try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : await htmlSugestoes(); }
@@ -459,6 +459,49 @@ function grafico(dias, porPessoa, pessoas) {
 }
 const barraH = (rot, v, max, txt, cor = 'var(--hj-acento)') => `<div class="hj-barra"><span class="r">${rot}</span><span class="b"><i style="width:${Math.max(3, (v / (max || 1)) * 100).toFixed(1)}%;background:${cor}"></i></span><span class="v">${txt}</span></div>`;
 
+// ======================= limites da assinatura (sessão 5 h, semana, mês) =======================
+// A ponte de cada PC manda info.uso.limites: o Claude Code avisa a cada pedido (rate_limit_event) e o Codex
+// grava nos arquivos de sessão. Nenhum dos dois tem limite mensal: o "mês" é o total usado no mês.
+const NOME_JANELA = { five_hour: 'Sessão (5 h)', seven_day: 'Semana', seven_day_opus: 'Semana · Opus', seven_day_sonnet: 'Semana · Sonnet' };
+function quandoReinicia(s) {
+  if (!s) return '';
+  const ms = s * 1000 - Date.now();
+  if (ms <= 0) return 'já reiniciou';
+  const min = Math.round(ms / 60e3), h = Math.floor(min / 60), m = min % 60;
+  const hora = new Date(s * 1000).toLocaleString('pt-BR', h >= 24 ? { weekday: 'short', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
+  return h >= 24 ? `reinicia ${hora}` : `reinicia em ${h ? h + ' h ' : ''}${m} min (${hora})`;
+}
+function barraLimite(nome, w) {
+  if (!w) return `<div class="hj-lim vazio"><span class="r">${nome}</span><span class="b"><i style="width:0"></i></span><span class="v">sem leitura</span></div>`;
+  const passou = w.reinicia && w.reinicia * 1000 < Date.now();
+  const usado = passou ? 0 : w.usado;
+  const cor = usado == null ? 'var(--hj-acento)' : usado >= 90 ? '#e0524a' : usado >= 70 ? '#e8a23a' : '#3fb37f';
+  const txt = usado == null ? (w.status === 'rejected' ? 'esgotado' : w.status === 'allowed_warning' ? 'perto do limite' : 'liberado') : `${Math.round(usado)}%`;
+  const sub = [quandoReinicia(w.reinicia) || (w.aviso ? 'reinicia ' + w.aviso : ''), w.t ? 'lido ' + D.ha(w.t) : ''].filter(Boolean).join(' · ');
+  return `<div class="hj-lim"><span class="r">${nome}</span><span class="b"><i style="width:${Math.max(usado ? 3 : 0, Math.min(100, usado || 0)).toFixed(1)}%;background:${cor}"></i></span><span class="v">${txt}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+}
+function htmlLimites() {
+  const u = ctx.estados().get(ctx.eu().pessoa)?.info?.uso || (ctx.DEMO ? demoLimites() : null);
+  if (!u?.limites) return `<p class="hj-nota">Limites: a ponte deste PC ainda não manda (no PC: <code>git pull</code> em genesis-estudio e reinicie a ponte).</p>`;
+  const cl = u.limites.claude || {}, cx = u.limites.codex || {}, mes = u.mes || {};
+  const extras = Object.keys(cl).filter((k) => !['five_hour', 'seven_day'].includes(k) && NOME_JANELA[k]);
+  const nomeMes = new Date().toLocaleDateString('pt-BR', { month: 'long' });
+  return `<div class="hj-limites">
+    <div class="hj-lim-card claude"><h4>Claude</h4>
+      ${barraLimite(NOME_JANELA.five_hour, cl.five_hour)}${barraLimite(NOME_JANELA.seven_day, cl.seven_day)}${extras.map((k) => barraLimite(NOME_JANELA[k], cl[k])).join('')}
+      <p class="hj-mes">Mês (${nomeMes}): <b>${mes.claude?.pedidos || 0}</b> pedidos · ${milhar(mes.claude?.tokens || 0)} tokens · ≈ ${dinheiro(mes.claude?.custo || 0)}</p></div>
+    <div class="hj-lim-card gpt"><h4>ChatGPT / Codex</h4>
+      ${barraLimite(NOME_JANELA.five_hour, cx.five_hour)}${barraLimite(NOME_JANELA.seven_day, cx.seven_day)}
+      <p class="hj-mes">Mês (${nomeMes}): <b>${mes.codex?.pedidos || 0}</b> pedidos pela ponte · ${D.duracao(mes.codex?.ms || 0)}</p></div>
+  </div><p class="hj-nota">Nenhum dos dois tem limite por mês: o "mês" mostra quanto já foi usado. A barra do Claude se atualiza a cada pedido.</p>`;
+}
+function demoLimites() {
+  const s = Math.round(Date.now() / 1000);
+  return { mes: { claude: { pedidos: 214, tokens: 18.4e6, custo: 182.4 }, codex: { pedidos: 37, ms: 5.2 * 3600e3 } },
+    limites: { claude: { five_hour: { usado: 64, reinicia: s + 2 * 3600 + 1200, t: Date.now() - 5 * 60e3 }, seven_day: { usado: 38, reinicia: s + 3 * 86400, t: Date.now() - 5 * 60e3 } },
+      codex: { five_hour: { usado: 12, reinicia: s + 4 * 3600, t: Date.now() - 30 * 60e3 }, seven_day: { usado: 91, reinicia: s + 86400 * 2, t: Date.now() - 30 * 60e3 } } } };
+}
+
 async function htmlCusto() {
   const { esc } = ctx;
   const pessoas = ctx.pessoas(), eu = ctx.eu().pessoa;
@@ -470,7 +513,7 @@ async function htmlCusto() {
   const cxHoje = pessoas.reduce((s, p) => s + codex[p][H].pedidos, 0), cxOntem = pessoas.reduce((s, p) => s + codex[p][O].pedidos, 0);
   const cxSemana = pessoas.reduce((s, p) => s + codex[p].reduce((a, x) => a + x.pedidos, 0), 0), cxMs = pessoas.reduce((s, p) => s + codex[p].reduce((a, x) => a + x.ms, 0), 0);
   const semFonte = pessoas.filter((p) => !porPessoa[p].fonte);
-  let html = `<div class="hj-tiles">
+  let html = `<h3 class="hj-sec">Limites <small>sessão · semana · mês</small></h3>${htmlLimites()}<div class="hj-tiles">
     <div class="hj-tile"><small>Uso de hoje, estimado em US$</small><b>${dinheiro(soma(H, 'custo'))}</b><span>ontem ${dinheiro(soma(O, 'custo'))} ${delta(soma(H, 'custo'), soma(O, 'custo'))}</span><span class="hj-aviso">estimativa, não é cobrança</span></div>
     <div class="hj-tile"><small>Pedidos Claude</small><b>${soma(H, 'pedidos')}</b><span>ontem ${soma(O, 'pedidos')} ${delta(soma(H, 'pedidos'), soma(O, 'pedidos'))}</span></div>
     <div class="hj-tile"><small>Tokens hoje</small><b>${milhar(soma(H, 'tokens'))} <span class="un">tokens</span></b><span>ontem ${milhar(soma(O, 'tokens'))}</span></div>

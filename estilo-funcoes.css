@@ -343,3 +343,15 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
 /* o título do grupo nunca quebra no meio ("Em / andamento"): se o selo não couber, ele desce inteiro */
 .hoje .hj-grupo h3 { flex-wrap: wrap; row-gap: 6px; }
 .hoje .hj-grupo h3 > span { white-space: nowrap; }
+
+/* Limites da assinatura (aba Limites do painel Hoje): Claude e Codex lado a lado; no celular, um embaixo do outro. */
+.hj-limites { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 4px 0 6px; }
+.hj-lim-card { background: var(--hj-cartao2); border-radius: 8px; padding: 10px 12px; border-left: 4px solid #d97757; }
+.hj-lim-card.gpt { border-left-color: #3fb37f; }
+.hj-lim-card h4 { margin: 0 0 6px; font-size: 15px; }
+.hj-lim { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "r v" "b b" "s s"; gap: 3px 8px; align-items: center; font-size: 14px; padding: 5px 0; }
+.hj-lim .r { grid-area: r; } .hj-lim .v { grid-area: v; font-weight: 700; font-size: 16px; } .hj-lim .b { grid-area: b; } .hj-lim small { grid-area: s; opacity: .7; font-size: 12px; }
+.hj-lim .b { height: 12px; background: rgba(0,0,0,.25); border-radius: 6px; overflow: hidden; }
+.hj-lim .b i { display: block; height: 100%; border-radius: 6px; transition: width .4s; }
+.hj-lim.vazio { opacity: .55; }
+.hj-mes { margin: 6px 0 0; font-size: 13px; opacity: .85; }

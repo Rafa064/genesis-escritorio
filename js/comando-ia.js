@@ -52,11 +52,11 @@ export function rotulo(alvo) {
   return [m?.nome, e.esforco && NOME_ESF[e.esforco]?.toLowerCase()].filter(Boolean).join(' · ');
 }
 
-// Os dois <select> (Modelo e Esforço). linha/rot = classes CSS da linha e do rótulo; curto = textos menores (caixa da conversa).
-export function htmlSelects(alvo, { linha = 'bc-op', rot = 'bc-op-rot', curto = false } = {}) {
+// Os dois <select> (Modelo e Esforço). linha/rot = classes CSS da linha e do rótulo.
+export function htmlSelects(alvo, { linha = 'bc-op', rot = 'bc-op-rot' } = {}) {
   const e = escolha(alvo), ms = modelos(alvo);
-  const padrao = curto ? 'Padrão' : alvo === 'codex' ? 'Padrão do Codex' : 'Padrão do Claude Code';
-  const opM = [`<option value="">${padrao}</option>`, ...ms.map((m) => `<option value="${esc(m.id)}" ${m.id === e.modelo ? 'selected' : ''}>${esc(m.nome)}${m.sobre && !curto ? ` (${esc(m.sobre)})` : ''}</option>`)].join('');
+  const padrao = alvo === 'codex' ? 'Padrão do Codex' : 'Padrão do Claude Code';
+  const opM = [`<option value="">${padrao}</option>`, ...ms.map((m) => `<option value="${esc(m.id)}" ${m.id === e.modelo ? 'selected' : ''}>${esc(m.nome)}${m.sobre ? ` (${esc(m.sobre)})` : ''}</option>`)].join('');
   const opE = [`<option value="">Padrão</option>`, ...esforcos(alvo, e.modelo).map((n) => `<option value="${n}" ${n === e.esforco ? 'selected' : ''}>${NOME_ESF[n] || n}</option>`)].join('');
   return `<label class="${linha}"><span class="${rot}">Modelo</span><select data-ia-modelo="${alvo}" aria-label="Modelo">${opM}</select></label>
     <label class="${linha}"><span class="${rot}">Esforço</span><select data-ia-esforco="${alvo}" aria-label="Esforço">${opE}</select></label>`;
