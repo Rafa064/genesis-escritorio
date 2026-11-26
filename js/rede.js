@@ -57,6 +57,12 @@ export async function comandosAbertos() {
   const { data, error } = await sb.from('comandos').select('id,conversa_id,status,tipo').eq('tipo', 'chat').in('status', ['novo', 'rodando']).order('id').limit(50);
   return error ? null : data;
 }
+// Painel "Agora": os últimos pedidos de chat (rodando, na fila e os que acabaram de terminar).
+export async function pedidosRecentes() {
+  const { data, error } = await sb.from('comandos').select('id,conversa_id,status,texto,criado,atualizado').eq('tipo', 'chat').order('id', { ascending: false }).limit(40);
+  if (error) throw error;
+  return data || [];
+}
 
 // Resumo leve dos últimos dias: só os eventos que contam a história (pedido, resposta, entrega, erro,
 // escalação), sem cada passo. Vem em páginas de 1000 (o limite da API), mais antigos que "ate".

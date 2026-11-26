@@ -1,0 +1,31 @@
+/* Painel "Agora" (js/agora.js): fazendo agora, fila e o que terminou. Selo no botão da barra. */
+.selo-agora { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--laranja); color: #1a1208; font: 700 10.5px/16px var(--ui); text-align: center; box-shadow: 0 0 0 2px var(--painel2); }
+@media (max-width: 760px) { .nav .selo-agora { top: 4px; right: calc(50% - 20px); } }
+
+.agora { display: flex; flex-direction: column; gap: var(--esp-4); padding: var(--esp-2) 0; }
+.ag-secao h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 var(--esp-2); font: 600 13px var(--ui); color: var(--fraco); text-transform: uppercase; letter-spacing: .04em; }
+.ag-secao h3 i { font-style: normal; background: var(--painel3); color: var(--texto); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+.ag-luz { width: 9px; height: 9px; border-radius: 50%; background: var(--muito-fraco); }
+.ag-luz.on { background: var(--verde); box-shadow: 0 0 0 3px rgba(79, 191, 130, .25); animation: ag-pulso 1.4s ease-in-out infinite; }
+.ag-luz.fila { background: var(--laranja); }
+@keyframes ag-pulso { 50% { box-shadow: 0 0 0 6px rgba(79, 191, 130, 0); } }
+
+.ag-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--alvo); margin-bottom: 6px; padding: 10px 12px; text-align: left; border: 1px solid var(--borda); border-left: 4px solid var(--cor, var(--borda-clara)); border-radius: var(--raio-p); background: var(--painel2); color: var(--texto); font: 14px var(--ui); cursor: pointer; }
+.ag-item:hover, .ag-item:focus-visible { background: var(--painel3); border-color: var(--borda-clara); border-left-color: var(--cor); }
+.ag-item.rodando { background: color-mix(in srgb, var(--verde) 9%, var(--painel2)); }
+.ag-item.feito { opacity: .78; }
+.ag-ic { font-size: 18px; flex: none; }
+.ag-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ag-tx b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-tx small { color: var(--fraco); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-tx em { font-style: normal; font-size: 12px; color: var(--muito-fraco); }
+.ag-item.rodando em { color: var(--verde); }
+.ag-item.fila em { color: var(--laranja); }
+.ag-item.erro em { color: var(--vermelho); }
+.ag-ir { color: var(--muito-fraco); font-size: 20px; flex: none; }
+.ag-vazio { margin: 0; color: var(--muito-fraco); font-size: 13px; }
+.ag-aviso { margin: 0; padding: 10px 12px; border-radius: var(--raio-p); background: rgba(255, 210, 63, .12); border: 1px solid rgba(255, 210, 63, .4); color: var(--amarelo); font-size: 13px; line-height: 1.45; }
+.ag-rodape { margin: 0; color: var(--muito-fraco); font-size: 12px; line-height: 1.45; }
+
+/* "＋ Nova conversa" no topo das abas: botão com texto, para ninguém confundir com outra coisa. */
+.btn-nova-conv { white-space: nowrap; font-weight: 600; }

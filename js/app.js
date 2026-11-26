@@ -29,6 +29,7 @@ import * as CC from './chat-cel.js';
 import { estadoPedido as estadoDoChat, pendentes } from './estado-pedido.js';
 import * as CTG from './contagem.js';
 import * as CI from './comando-ia.js';
+import * as AG from './agora.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -92,7 +93,7 @@ async function iniciar() {
     $('#textoCarregando').textContent = 'Carregando o escritório…';
     const tudo = await R.carregarTudo();
     membros = tudo.membros; recados = tudo.recados; temSql2 = tudo.temSql2;
-    conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || []; lembrarComandos(tudo.comandos);
+    conversas = tudo.conversas || []; aprovacoes = tudo.aprovacoes || []; jornais = tudo.jornal || []; lembrarComandos(tudo.comandos); seloAgora();
     temQuadro = tudo.temQuadro; marcos = tudo.marcos || []; comentarios = tudo.comentarios || [];
     vinculos = new Map((tudo.vinculos || []).map((v) => [v.missao, v.marco_id]));
     for (const e of tudo.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); lerFichas(e); }
@@ -286,6 +287,7 @@ function ligarRede() {
   R.on('comando', (c) => {
     if (c.tipo && c.tipo !== 'chat') return;
     if (['novo', 'rodando'].includes(c.status)) comandosAbertos.set(c.id, c.conversa_id ?? null); else comandosAbertos.delete(c.id);
+    seloAgora(); if (aba === 'agora') desenharAgora();
     versaoMundo = -1; sincronizarMundo(); desenharSeletorConversas(); desenharChat(); desenharBarra();
   });
   R.on('conversa', (p) => {
@@ -421,6 +423,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'g') alternarAba('galeria');
   else if (k === 'm') { alternarAba('dupla'); setTimeout(() => aba === 'dupla' && $('#textoRecado').focus(), 0); }
   else if (k === 'l') alternarAba('historico');
+  else if (k === 'f') alternarAba('agora');
   else if (k === 'i') alternarAba('catalogo');
   else if (k === 'b') { if ($('#quadro').hidden) abrirQuadro(); else fecharQuadro(); }
   else if (k === 'j') abrirJornal();
@@ -744,7 +747,7 @@ $('#janelaChat').onclick = (e) => {
 $('#hudChat').addEventListener('click', (e) => { if ($('#gaveta').classList.contains('min') && e.target.closest('[data-cp="pagina"]')) { e.stopPropagation(); minimizarChat(false); } }, true);
 /// ======================= gaveta =======================
 const ABAS_ATIVIDADE = ['atencao', 'missoes', 'historico'];
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Passo a passo', pedido: 'Pedido', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Passo a passo', pedido: 'Pedido', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco', agora: 'Agora: fazendo e fila' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (nome === 'equipe' || nome === 'catalogo') { abrirEquipeVista(); return; }
@@ -784,7 +787,7 @@ $('#voltarGaveta').onclick = () => { const a = pilha.pop(); if (a) { const resto
 // Escritório · Conversas · Atividade · Mais (Quadro, Equipe, Hoje, Diário, Galeria e Ajuda moram no Mais).
 // No PC o mapa/quadro/equipe ficam no meio e a gaveta ao lado: os dois destinos acendem.
 // No celular a gaveta cobre a tela: acende só o que está por cima.
-const NAV_DA_ABA = { chat: 'conversas', dupla: 'conversas', atencao: 'atividade', missoes: 'atividade', missao: 'atividade', pedido: 'atividade', historico: 'atividade', galeria: 'mais', mais: 'mais', marco: 'mais', item: 'mais' };
+const NAV_DA_ABA = { chat: 'conversas', dupla: 'conversas', atencao: 'atividade', missoes: 'atividade', missao: 'atividade', pedido: 'atividade', historico: 'atividade', galeria: 'mais', mais: 'mais', marco: 'mais', item: 'mais', agora: 'agora' };
 function marcarNav() {
   const centro = !$('#equipeVista').hidden || !$('#quadro').hidden ? 'mais' : 'mapa';
   const aberta = !$('#gaveta').classList.contains('fechada');
@@ -800,6 +803,7 @@ function irPara(destino) {
   else if (destino === 'conversas') { if (NAV_DA_ABA[aba] === 'conversas' && aberta && cel) fecharGaveta(); else abrirAba(guardado('abaConversa', 'dupla')); }
   else if (destino === 'atividade') { if (NAV_DA_ABA[aba] === 'atividade' && aberta) fecharGaveta(); else abrirAba(guardado('abaAtividade', 'atencao')); }
   else if (destino === 'mais') { if (aba === 'mais' && aberta) fecharGaveta(); else abrirAba('mais'); }
+  else if (destino === 'agora') { if (aba === 'agora' && aberta) fecharGaveta(); else abrirAba('agora'); }
   marcarNav();
 }
 $('#nav').onclick = (e) => { const b = e.target.closest('[data-nav]'); if (b) irPara(b.dataset.nav); };
@@ -840,7 +844,7 @@ function montarInterface() {
   document.addEventListener('click', (e) => { if (e.target.closest('[data-voltar-cel]')) irPara('mapa'); });
   $('#cmpSobre').onclick = (e) => { if (!e.target.closest('[data-cmp-alterar]')) return; const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) { desenharAbasFechadas(); el.scrollIntoView({ block: 'nearest' }); } };
   $('#perfilTopo').onclick = () => { if (aba === 'ajustes' && !$('#gaveta').classList.contains('fechada')) fecharGaveta(); else abrirAba('ajustes'); };
-  $('#btnNovaConversa').onclick = () => mostrarNovaConversa();
+  $('#btnNovaConversa').onclick = () => novaAbaDireto();
   $('#cancelarConversa').onclick = () => { $('#formNovaConversa').hidden = true; };
   $('#formNovaConversa').onsubmit = (e) => { e.preventDefault(); criarConversa(); };
   ligarAbasConversa();
@@ -994,7 +998,7 @@ function todosAgentes() {
 // ---------- abas ----------
 function desenharAba() {
   if (!mundo || $('#gaveta').classList.contains('fechada')) return;
-  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, item: desenharItem, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco, hoje: () => Hoje.desenhar(), pedido: () => PP.desenhar() })[aba]?.();
+  ({ equipe: desenharEquipe, agente: desenharAgente, atencao: desenharAtencao, missoes: desenharMissoes, missao: desenharMissao, historico: desenharHistorico, galeria: desenharGaleria, chat: desenharChatCompleto, dupla: desenharDupla, item: desenharItem, mais: desenharMais, ajustes: desenharAjustes, marco: desenharMarco, hoje: () => Hoje.desenhar(), pedido: () => PP.desenhar(), agora: desenharAgora })[aba]?.();
 }
 function filtros(el, atual, opcoes, fn) {
   el.innerHTML = opcoes.map(([v, t]) => `<button data-f="${esc(v)}" class="${v === atual ? 'on' : ''}">${esc(t)}</button>`).join('');
@@ -1227,7 +1231,7 @@ async function ressincronizar() {
     for (const e of n.estado) { estados.set(e.pessoa, e); definirPastas(e.pessoa, e.info?.pastas); lerFichas(e); }
     if (n.aprovacoes) aprovacoes = n.aprovacoes;
     if (n.conversas) conversas = n.conversas;
-    lembrarComandos(n.comandos);
+    lembrarComandos(n.comandos); seloAgora();
     if (n.jornal) jornais = n.jornal;
     if (n.marcos) { marcos = n.marcos; vinculos = new Map((n.vinculos || []).map((v) => [v.missao, v.marco_id])); comentarios = n.comentarios || comentarios; mudouMarcos(); if (!$('#quadro').hidden) desenharQuadro(); }
     desenharSeletorConversas();
@@ -2042,7 +2046,7 @@ function ligarAbasConversa() {
   $('#btnAbasFechadas').onclick = () => { const el = $('#listaAbasFechadas'); el.hidden = !el.hidden; if (!el.hidden) desenharAbasFechadas(); };
   $('#listaAbasFechadas').onclick = (e) => {
     if (e.target.closest('[data-af-fechar]')) { $('#listaAbasFechadas').hidden = true; return; }
-    if (e.target.closest('[data-af-nova]')) { $('#listaAbasFechadas').hidden = true; mostrarNovaConversa(alvoAtual()); return; }
+    if (e.target.closest('[data-af-nova]')) { $('#listaAbasFechadas').hidden = true; novaAbaDireto(); return; }
     if (e.target.closest('[data-af-renomear]')) { $('#listaAbasFechadas').hidden = true; menuConversa(); return; }
     const b = e.target.closest('[data-reabrir]'); if (!b) return;
     $('#listaAbasFechadas').hidden = true; abrirConversa(Number(b.dataset.reabrir));
@@ -2088,6 +2092,24 @@ function mostrarNovaConversa(alvo = 'claude') {
   const projs = estados.get(EU.pessoa)?.info?.projetos || [];
   $('#projetoConversa').innerHTML = (projs.length ? projs : [{ nome: 'genesis-game' }]).map((p) => `<option>${esc(p.nome)}</option>`).join('');
   $('#tituloConversa').value = ''; $('#tituloConversa').focus();
+}
+// "＋ Nova conversa": abre uma aba nova na hora, vazia, com a mesma IA e o mesmo projeto da aba aberta
+// (sem formulário no meio da conversa). O nome da aba vem sozinho do primeiro pedido (a ponte nomeia).
+async function novaAbaDireto(alvo = alvoAtual()) {
+  if (!temSql2 || DEMO) { mostrarNovaConversa(alvo); return; }
+  $('#formNovaConversa').hidden = true;
+  // Já existe uma aba nova vazia aberta? Usa ela em vez de criar outra igual.
+  const vazia = conversas.find((c) => c.titulo === 'Conversa nova' && (c.alvo || 'claude') === alvo && abasAbertas?.includes(c.id) && cacheMsgs.has(c.id) && !cacheMsgs.get(c.id).length && !convOcupada(c.id));
+  if (vazia) { if (aba !== 'chat') abrirAba('chat'); await abrirConversa(vazia.id); $('#entrada').focus(); return; }
+  const atual = conversas.find((c) => c.id === conversaAtual);
+  const projeto = atual?.projeto || estados.get(EU.pessoa)?.info?.projetos?.[0]?.nome || 'genesis-game';
+  try {
+    const c = await R.novaConversa({ titulo: 'Conversa nova', alvo, projeto });
+    conversas = [c, ...conversas.filter((x) => x.id !== c.id)];
+    if (aba !== 'chat') abrirAba('chat');
+    await abrirConversa(c.id);
+    $('#entrada').focus();
+  } catch (e) { toast({ titulo: 'Não criei a conversa', texto: e.message, cor: '#ef6a55' }); }
 }
 async function criarConversa() {
   const titulo = $('#tituloConversa').value.trim() || 'Conversa nova';
@@ -2449,7 +2471,7 @@ function ligarComandoNoApp() {
     pedirNaBarra: (t, alvo, { nova = false } = {}) => { alvoBarra = alvo === 'codex' ? 'codex' : 'claude'; guarda('alvoBarra', alvoBarra); novaNaBarra = !!nova; $('#bcTexto').value = t; return enviarBarra(); },
     setNova: (v) => { novaNaBarra = !!v; }, desenharBarra,
     mudarAlvo: (a) => { alvoBarra = a; guarda('alvoBarra', a); desenharBarra(); abrirChatCom(a); },
-    novaConversa: () => mostrarNovaConversa(alvoAtual()),
+    novaConversa: () => novaAbaDireto(),
     tirarPausa: async () => { if (DEMO) { const st = estados.get(EU.pessoa); if (st) st.pausado = false; } else await R.pausar(false); desenharChat(); desenharBarra(); },
     parar: () => {
       if (DEMO) { for (const [k, v] of comandosAbertos) if (v === conversaAtual) comandosAbertos.delete(k); desenharChat(); desenharBarra(); desenharSeletorConversas(); return toast({ titulo: 'Parei esta conversa', cor: '#f0973d' }); }
@@ -2748,6 +2770,29 @@ function desenharMais() {
     else abrirAba(id, true);
   };
 }
+
+// ---------- painel "Agora" (agora.js): o que está rodando de verdade, a fila e o que terminou ----------
+let ultAgora = 0;
+async function desenharAgora() {
+  const el = $('#agoraCorpo'); if (!el || !EU) return;
+  ultAgora = Date.now();
+  let cmds = [];
+  if (DEMO) cmds = [...comandosAbertos].map(([id, conversa_id], i) => ({ id: Math.abs(id), conversa_id, status: i ? 'novo' : 'rodando', texto: 'Pedido de demonstração', criado: new Date().toISOString() }));
+  else try { cmds = await R.pedidosRecentes(); } catch (e) { el.innerHTML = `<p class="ag-vazio">Não consegui ler os pedidos agora (${esc(e.message)}).</p>`; return; }
+  const st = estados.get(EU.pessoa) || {};
+  const conversa = (id) => { const c = conversas.find((x) => x.id === id); return c ? visualAba(c) : { cor: '#888', icone: '💬', nome: id == null ? 'Conversa única' : 'Conversa apagada' }; };
+  el.innerHTML = AG.htmlAgora({ cmds, conversa, ha: D.ha, esc, ligado: pcLigado(EU.pessoa), pausada: !!st.pausado, versaoPonte: st.info?.versaoPonte ?? null, agora: Date.now() });
+  el.onclick = (e) => {
+    const b = e.target.closest('[data-agora-conv]'); if (!b || b.dataset.agoraConv === '') return;
+    abrirAba('chat'); abrirConversa(Number(b.dataset.agoraConv));
+  };
+}
+// Selo do botão "Agora": quantos pedidos seus estão rodando ou na fila.
+function seloAgora() {
+  const n = comandosAbertos.size, b = $('#seloAgora'); if (!b) return;
+  b.hidden = !n; b.textContent = n;
+}
+setInterval(() => { if (aba === 'agora' && !$('#gaveta').classList.contains('fechada') && Date.now() - ultAgora > 14e3) desenharAgora(); }, 15e3);
 
 // ---------- painel "Hoje" (funcoes-hoje.js): sugestões do dia, fila por agente, custo de IA ----------
 TITULO_ABA.hoje = 'Hoje'; NAV_DA_ABA.hoje = 'mais';

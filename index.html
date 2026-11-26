@@ -40,6 +40,7 @@
 <link rel="stylesheet" href="estilo-equipe.css">
 <link rel="stylesheet" href="estilo-questionario.css">
 <link rel="stylesheet" href="estilo-chat-cel.css">
+<link rel="stylesheet" href="estilo-agora.css">
 </head>
 <body>
 <header id="topo">
@@ -52,6 +53,7 @@
     <button data-nav="mapa" title="Escritório: o mapa"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M7 1h2v1h2v1h2v1h2v2h-1v8H9v-4H7v4H2V6H1V4h2V3h2V2h2zM4 7h2v2H4zM10 7h2v2h-2z"/></svg><span class="txt">Escritório</span></button>
     <button data-nav="conversas" title="Conversas: assistente e dupla (C / M)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M2 2h12v1h1v7h-1v1H7v1H6v1H5v1H4v-3H2v-1H1V3h1zM4 6h2v2H4zM7 6h2v2H7zM10 6h2v2h-2z"/></svg><span class="txt">Conversas</span><i class="ponto-novo" id="pontoConversas" hidden></i></button>
     <button data-nav="atividade" title="Atividade: resumo, missões e histórico (H / L)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M5 1h6v1h2v2h1v2h1v4h-1v2h-1v2h-2v1H5v-1H3v-2H2v-2H1V6h1V4h1V2h2zM5 3h6v1h1v1h1v6h-1v1h-1v1H5v-1H4v-1H3V5h1V4h1zM7 5h2v4h3v2H7z"/></svg><span class="txt">Atividade</span></button>
+    <button data-nav="agora" title="Agora: o que está rodando de verdade e o que está na fila (F)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1H5L3 9h4l-2 6h2l6-9H9l2-5z"/></svg><span class="txt">Agora</span><b class="selo-agora" id="seloAgora" hidden>0</b></button>
     <button data-nav="mais" title="Mais: Quadro, Equipe, Hoje, Diário, Galeria e Ajuda"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7h3v3H1zM6.5 7h3v3h-3zM12 7h3v3h-3z"/></svg><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
   </nav>
   <div id="gente" class="gente"></div>
@@ -123,6 +125,7 @@
     <section data-painel="catalogo" class="painel" hidden><div id="listaCatalogo"></div></section>
     <section data-painel="marco" class="painel" hidden><div id="detalheMarco"></div></section>
     <section data-painel="mais" class="painel" hidden><div id="listaMais" class="mais"></div></section>
+    <section data-painel="agora" class="painel" hidden><div id="agoraCorpo"></div></section>
     <section data-painel="hoje" class="painel" hidden><div id="hojeCorpo" class="hoje"></div></section>
     <section data-painel="missao" class="painel" hidden><div id="detalheMissao"></div></section>
     <!-- Página do pedido (js/pedido-pagina.js): andamento, próximo passo, decisões, entregas e ações. -->
@@ -132,7 +135,7 @@
       <div class="seg-conversas com-novo"><button type="button" class="seg-voltar" data-voltar-cel title="Voltar ao escritório" aria-label="Voltar ao escritório"><span aria-hidden="true">‹</span> Voltar</button><button data-seg="dupla" class="">✉ Dupla<b class="badge" data-badge-dupla hidden>0</b></button><button data-seg="chat" class="on">✦ Assistente</button><button type="button" class="seg-novo" data-novo-pedido="" title="Novo pedido (o mesmo painel do mapa)">＋ Novo pedido</button></div>
       <div class="conversa-topo">
         <div id="abasConversa" class="abas-conversa" role="tablist" aria-label="Conversas abertas"></div>
-        <button class="btn mini" id="btnNovaConversa" title="Aba nova (conversa nova)">＋</button>
+        <button class="btn mini btn-nova-conv" id="btnNovaConversa" title="Abrir uma conversa nova numa aba nova (as outras continuam rodando)">＋ Nova conversa</button>
         <button class="btn mini" id="btnAbasFechadas" title="Abas fechadas / histórico">🕘</button>
         <button class="btn mini" id="btnMaisConversa" title="Renomear ou apagar a aba aberta">⋯</button>
       </div>
