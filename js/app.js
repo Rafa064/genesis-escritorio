@@ -2198,6 +2198,9 @@ function desenharChat() {
   const v = visualAba(conv);
   $('#formChat').style.setProperty('--cor-aba', conv ? v.cor : 'var(--borda-clara)');
   $('#cmpSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${gpt ? '<span class="cmp-quem">Codex</span>' : ''}${chipIa(gpt ? 'codex' : 'claude')}<button type="button" class="cmp-alterar" data-cmp-alterar>Trocar</button>`;
+  // Modelo e esforço da IA desta conversa (comando-ia.js); só regrava se mudou, para não fechar um <select> aberto.
+  const ia = CI.htmlSelects(gpt ? 'codex' : 'claude', { linha: 'cmp-ia-op', rot: 'cmp-ia-rot', curto: true });
+  if ($('#cmpIa').dataset.html !== ia) { $('#cmpIa').innerHTML = ia; $('#cmpIa').dataset.html = ia; }
   const fila = $('#cmpFila');
   fila.hidden = !ocupada; fila.innerHTML = ocupada ? '<span>Ela está ocupada: o que você mandar entra na fila e começa depois.</span><button type="button" class="fila-agora" data-fila-agora>Interromper o atual e começar este</button>' : '';
   desenharHudChat();
@@ -2453,6 +2456,7 @@ function ligarBarra() {
   $('#tela').addEventListener('pointerdown', () => { if (!$('#bcTexto').value.trim()) abrirBarraCel(false); });
   CB.ligarProjeto(f);
   CI.ligar($('#bcIa'), () => { desenharBarra(); if (aba === 'chat') desenharChat(); });
+  CI.ligar($('#cmpIa'), () => { desenharBarra(); desenharChat(); });
   desenharBarra();
 }
 // Frente "comando e coordenação" (js/comando-*.js): o que os módulos podem ler e fazer.

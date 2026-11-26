@@ -138,6 +138,12 @@
 /* compositor da conversa: mesmo desenho, sem moldura (já está dentro do papel) */
 #formChat.compositor { display: grid; gap: 6px; padding-top: 6px; border-top: 2px dashed var(--linha-papel); }
 #formChat .linha { margin: 0; display: flex; }
+/* Modelo e esforço na caixa da conversa (comando-ia.js): uma linha, dois seletores */
+#formChat .cmp-ia { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cmp-ia-op { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cmp-ia-rot { flex: none; font: 600 13px var(--ui); color: var(--meta); }
+.cmp-ia-op select { flex: 1; min-width: 0; min-height: 40px; padding: 0 6px; border: 0; cursor: pointer; font: 600 15px var(--ui); color: var(--tinta); background: var(--papel-claro); box-shadow: inset 0 0 0 2px rgba(90, 58, 34, .3); }
+.cmp-ia-op select:focus { outline: 3px solid var(--acao); outline-offset: 1px; }
 #formChat textarea { border-left: 0 !important; }
 /* sem texto escrito o Enviar fica de papel (o laranja fica com a ação principal da tela) */
 #formChat:not(.tem-texto) #btnEnviar { background: var(--papel-claro); color: var(--meta); box-shadow: 0 0 0 2px var(--contorno), inset 0 -3px 0 var(--papel-sombra); }
