@@ -189,9 +189,10 @@ export const emote = (e) => canal?.send({ type: 'broadcast', event: 'emote', pay
 export const acenar = (para) => canal?.send({ type: 'broadcast', event: 'aceno', payload: { de: euPessoa, para } });
 
 // ---------- ações ----------
-export async function pedir(texto, conversa_id = null) {
+// ia: linha escondida com modelo/esforço (comando-ia.js); só a ponte vê, a conversa mostra o texto puro.
+export async function pedir(texto, conversa_id = null, ia = '') {
   const extra = conversa_id ? { conversa_id } : {};
-  const { data, error } = await sb.from('comandos').insert({ texto, tipo: 'chat', ...extra }).select().single();
+  const { data, error } = await sb.from('comandos').insert({ texto: ia + texto, tipo: 'chat', ...extra }).select().single();
   if (error) throw error;
   await sb.from('chat').insert({ comando_id: data.id, de: 'eu', texto, ...extra });
   if (conversa_id) await sb.from('conversas').update({ atualizado: new Date().toISOString() }).eq('id', conversa_id);

@@ -331,7 +331,8 @@ async function meusComandos() {
   if (ctx.DEMO) return demoComandos;
   if (Date.now() - cacheCmd.t < 20e3) return cacheCmd.lista;
   const { data } = await ctx.R.sb.from('comandos').select('id,conversa_id,status,texto,criado').eq('tipo', 'chat').gte('criado', new Date(inicioDoDia()).toISOString()).order('id', { ascending: false }).limit(80);
-  cacheCmd = { t: Date.now(), lista: data || [] };
+  // Sem a linha escondida de modelo/esforço (comando-ia.js) no começo do pedido.
+  cacheCmd = { t: Date.now(), lista: (data || []).map((c) => ({ ...c, texto: String(c.texto || '').replace(/^⟦ia[^⟧\n]*⟧\n?/, '') })) };
   return cacheCmd.lista;
 }
 // Etapa do quadro -> agente provável (pelas palavras); sem palavra conhecida fica com a assistente.

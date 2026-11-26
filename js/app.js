@@ -28,6 +28,7 @@ import * as EQ from './equipe.js';
 import * as CC from './chat-cel.js';
 import { estadoPedido as estadoDoChat, pendentes } from './estado-pedido.js';
 import * as CTG from './contagem.js';
+import * as CI from './comando-ia.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -1308,7 +1309,7 @@ async function mandarNaConversa(texto, convId) {
   const lista = convId === conversaAtual ? mensagens : cacheMsgs.get(convId);
   lista?.push({ de: 'eu', texto, conversa_id: convId });
   if (DEMO) { comandosAbertos.set(-Date.now(), convId ?? null); return; }
-  const cmd = await R.pedir(texto, temSql2 ? convId : null);
+  const cmd = await R.pedir(texto, temSql2 ? convId : null, iaDe(convId));
   pedidoEnviado(cmd, convId);
 }
 // "Decidir" no cartão do pedido: as autorizações desta conversa numa folha só, com espaço para ler.
@@ -2174,7 +2175,7 @@ function desenharChat() {
   marcarTexto();
   const v = visualAba(conv);
   $('#formChat').style.setProperty('--cor-aba', conv ? v.cor : 'var(--borda-clara)');
-  $('#cmpSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${gpt ? '<span class="cmp-quem">Codex</span>' : ''}<button type="button" class="cmp-alterar" data-cmp-alterar>Trocar</button>`;
+  $('#cmpSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${gpt ? '<span class="cmp-quem">Codex</span>' : ''}${chipIa(gpt ? 'codex' : 'claude')}<button type="button" class="cmp-alterar" data-cmp-alterar>Trocar</button>`;
   const fila = $('#cmpFila');
   fila.hidden = !ocupada; fila.innerHTML = ocupada ? '<span>Ela está ocupada: o que você mandar entra na fila e começa depois.</span><button type="button" class="fila-agora" data-fila-agora>Interromper o atual e começar este</button>' : '';
   desenharHudChat();
@@ -2212,7 +2213,7 @@ async function enviarChat() {
   const naFila = convOcupada(destino);
   rolarPendente = -1; desenharChat();
   if (DEMO) { comandosAbertos.set(-Date.now(), destino); avisarRecebido(naFila); desenharChat(); desenharSeletorConversas(); return; }
-  try { const cmd = await R.pedir(t, temSql2 ? destino : null); pedidoEnviado(cmd, destino); avisarRecebido(naFila); desenharChat(); }
+  try { const cmd = await R.pedir(t, temSql2 ? destino : null, iaDe(destino)); pedidoEnviado(cmd, destino); avisarRecebido(naFila); desenharChat(); }
   catch (e) { toast({ titulo: 'Não consegui mandar', texto: e.message, cor: '#ef6a55' }); $('#entrada').value = t; $('#formChat').classList.add('aberto'); const i = lista.findIndex((m) => m.de === 'eu' && m.texto === t && !m.id); if (i >= 0) lista.splice(i, 1); desenharChat(); }
 }
 
@@ -2293,7 +2294,10 @@ function desenharBarra() {
   const [cor, txt] = CE.estadoBarra({ st, ligado, ocupada, alvo: alvoBarra });
   const v = visualAba(conv);
   // "Sobre: X · Alterar": para onde o pedido vai, numa linha; Alterar abre as Opções.
-  $('#bcSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${alvoBarra === 'codex' ? '<span class="cmp-quem">Codex</span>' : ''}<button type="button" class="cmp-alterar" data-bc-alterar>Trocar</button>`;
+  $('#bcSobre').innerHTML = `<span class="cmp-rot">Na conversa:</span> <b class="cmp-conv">${conv ? `${esc(v.icone)} ${esc(v.nome || conv.titulo)}` : 'conversa nova'}</b>${alvoBarra === 'codex' ? '<span class="cmp-quem">Codex</span>' : ''}${chipIa(alvoBarra)}<button type="button" class="cmp-alterar" data-bc-alterar>Trocar</button>`;
+  // Modelo e esforço (comando-ia.js): só regrava se mudou, para não fechar um <select> aberto.
+  const ia = CI.htmlSelects(alvoBarra);
+  if ($('#bcIa').dataset.html !== ia) { $('#bcIa').innerHTML = ia; $('#bcIa').dataset.html = ia; }
   // Estado só quando foge do normal (ocupada, PC desligado, login, limite).
   const normal = cor === '#4fbf82';
   $('#bcEstado').hidden = normal;
@@ -2306,6 +2310,9 @@ function desenharBarra() {
   f.style.setProperty('--cor-aba', conv ? v.cor : '');
   $('#bcNova').classList.toggle('on', novaNaBarra || !conv);
 }
+// Modelo/esforço escolhidos para a IA da conversa (linha escondida para a ponte) e o chip "Opus · alto".
+const iaDe = (convId) => CI.cabecalho(conversas.find((c) => c.id === convId)?.alvo || 'claude');
+const chipIa = (alvo) => { const r = CI.rotulo(alvo); return r ? `<span class="cmp-quem cmp-ia" title="Modelo e esforço (troque em Opções ou em Novo pedido > Detalhes)">${esc(r)}</span>` : ''; };
 const ultimaDoAlvo = (alvo) => [...conversas].filter((c) => c.alvo === alvo).sort((a, b) => new Date(b.atualizado) - new Date(a.atualizado))[0] || null;
 let convForcada = null; // "Continuar" escolhido no Novo pedido
 function conversaDaBarra() {
@@ -2341,7 +2348,7 @@ async function enviarBarra({ abrir = true } = {}) {
     }
     if (conversaAtual === destino) { mensagens.push({ de: 'eu', texto, conversa_id: destino }); desenharChat(); }
     else (cacheMsgs.get(destino))?.push({ de: 'eu', texto, conversa_id: destino });
-    const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null);
+    const cmd = DEMO ? null : await R.pedir(texto, temSql2 ? destino : null, CI.cabecalho(conv?.alvo || alvoBarra));
     enviado = true;
     if (DEMO) comandosAbertos.set(-Date.now(), destino);
     pedidoEnviado(cmd, destino);
@@ -2423,6 +2430,7 @@ function ligarBarra() {
   $('#bcFechar').onclick = () => abrirBarraCel(false);
   $('#tela').addEventListener('pointerdown', () => { if (!$('#bcTexto').value.trim()) abrirBarraCel(false); });
   CB.ligarProjeto(f);
+  CI.ligar($('#bcIa'), () => { desenharBarra(); if (aba === 'chat') desenharChat(); });
   desenharBarra();
 }
 // Frente "comando e coordenação" (js/comando-*.js): o que os módulos podem ler e fazer.

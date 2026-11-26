@@ -7,6 +7,7 @@ import { primeiraFrase } from './humano.js';
 import { ico } from './comando-icones.js';
 import * as CDu from './comando-dupla.js';
 import { ETAPAS } from './comando-progresso.js';
+import * as CI from './comando-ia.js';
 
 let fundo = null, st = {};
 const projetos = () => { const ps = (ctx.estado(ctx.eu().pessoa)?.info?.projetos || []).map((p) => p.nome).filter(Boolean); return ps.length ? ps : ['genesis-game']; };
@@ -17,6 +18,8 @@ function garantir() {
   fundo = document.createElement('div'); fundo.id = 'novoPedido'; fundo.className = 'np-fundo'; fundo.hidden = true;
   document.body.appendChild(fundo);
   fundo.addEventListener('click', aoClicar);
+  // Modelo/esforço: guarda e redesenha (no Codex, os níveis de esforço dependem do modelo).
+  CI.ligar(fundo, () => { const v = valores(); st.projeto = v.projeto; desenharForm(v.texto, v.contexto); const d = fundo.querySelector('.np-det'); if (d) d.open = true; ctx.desenharBarra?.(); });
   fundo.addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
   fundo.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') fechar();
@@ -63,8 +66,9 @@ function desenharForm(texto, contexto) {
         ${auto.texto ? `<label class="np-chk"><input type="checkbox" name="usarCtx" checked><span><b>Mandar o contexto junto</b><small>${esc(auto.texto)}</small></span></label>` : ''}`
       : `<div class="np-bloco np-linha"><span class="np-rot">Projeto</span><select name="projeto" aria-label="Projeto">${projetos().map((p) => `<option ${p === (conv?.projeto || st.projeto) ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
         <details class="np-ctx" ${contexto ? 'open' : ''}><summary>Contexto <small>(opcional)</small></summary><textarea name="contexto" rows="2" maxlength="1200" placeholder="Arquivos, links ou o que ela precisa saber">${esc(contexto)}</textarea></details>
-        <details class="np-det"><summary>Detalhes <small>· ${esc(nomeIa(st.alvo))} · ${conv ? 'continua uma conversa' : 'conversa nova'}</small></summary>
+        <details class="np-det"><summary>Detalhes <small>· ${esc([nomeIa(st.alvo), CI.rotulo(st.alvo)].filter(Boolean).join(' '))} · ${conv ? 'continua uma conversa' : 'conversa nova'}</small></summary>
           <div class="np-bloco"><span class="np-rot">Quem executa</span><div class="np-seg"><button type="button" class="${st.alvo === 'claude' ? 'on' : ''}" data-np-ia="claude">Claude <small>(padrão)</small></button><button type="button" class="${st.alvo === 'codex' ? 'on' : ''}" data-np-ia="codex">Codex</button></div></div>
+          ${CI.htmlSelects(st.alvo, { linha: 'np-bloco np-linha', rot: 'np-rot' })}
           <div class="np-bloco"><span class="np-rot">Conversa</span><div class="np-seg"><button type="button" class="${!conv ? 'on' : ''}" data-np-conv="">Nova</button>${recente ? `<button type="button" class="${conv ? 'on' : ''}" data-np-conv="${recente.id}">Continuar “${esc(primeiraFrase(recente.titulo, 26))}”</button>` : ''}</div></div>
         </details>`}
     ${estado ? `<p class="np-estado">${esc(estado)}</p>` : ''}
