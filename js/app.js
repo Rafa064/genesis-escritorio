@@ -10,6 +10,7 @@ import { TIPOS, tipoDe, etiquetaTipo, descricaoHumana, conectorDe, nomeConector 
 import * as D from './dados.js';
 import * as R from './rede.js';
 import * as Hoje from './funcoes-hoje.js';
+import * as LimHud from './limites-hud.js';
 import { ligarComando } from './comando-ctx.js';
 import * as CE from './comando-erros.js';
 import * as CP from './comando-progresso.js';
@@ -756,6 +757,7 @@ function abrirAba(nome, empilhar = false) {
   $('#gaveta').classList.remove('fechada');
   $$('[data-painel]').forEach((s) => { s.hidden = s.dataset.painel !== nome; });
   if (['chat', 'dupla'].includes(nome)) guarda('abaConversa', nome);
+  try { if (nome === 'chat' && chatCarregadoDe === conversaAtual) rolarPendente = -1; } catch {} // abrir a conversa = ver a última coisa (try: pode rodar antes das variáveis existirem)
   if (ABAS_ATIVIDADE.includes(nome)) guarda('abaAtividade', nome);
   $('#segAtividade').hidden = !ABAS_ATIVIDADE.includes(nome);
   $$('[data-seg]').forEach((b) => b.classList.toggle('on', b.dataset.seg === nome));
@@ -2054,6 +2056,17 @@ function ligarAbasConversa() {
   // Os "detalhes" que você abriu continuam abertos quando chega mensagem nova.
   $('#msgs').addEventListener('toggle', (e) => { const d = e.target; if (d.dataset?.k) { if (d.open) detalhesAbertos.add(d.dataset.k); else detalhesAbertos.delete(d.dataset.k); } }, true);
 }
+// Abrir no fim de verdade: o painel pode ainda estar abrindo (altura 0) e imagens/anexos crescem depois.
+// Repete o "ir ao fim" por ~1,5 s, a menos que a pessoa role com o dedo ou o mouse nesse meio tempo.
+let colarId = 0;
+function colarNoFim(msgs, aoFim) {
+  const meu = ++colarId; let mexeu = false;
+  const parar = () => { mexeu = true; };
+  msgs.addEventListener('wheel', parar, { once: true, passive: true }); msgs.addEventListener('touchmove', parar, { once: true, passive: true });
+  aoFim();
+  for (const ms of [0, 60, 200, 450, 900, 1500]) setTimeout(() => { if (meu === colarId && !mexeu && msgs.clientHeight) aoFim(); }, ms);
+  requestAnimationFrame(() => { if (meu === colarId && !mexeu) aoFim(); });
+}
 function guardarRolagem() {
   const msgs = $('#msgs'); if (!msgs || chatCarregadoDe !== conversaAtual || aba !== 'chat') return;
   rolagens.set(conversaAtual, msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 60 ? -1 : msgs.scrollTop);
@@ -2071,7 +2084,7 @@ async function abrirConversa(id) {
   conversaAtual = id; guarda('conversa', id || 0);
   if (id != null && abasAbertas && !abasAbertas.includes(id)) { abasAbertas.push(id); salvarAbas(); }
   const cv = conversas.find((c) => c.id === id); if (cv && cv.alvo !== alvoBarra) { alvoBarra = cv.alvo; guarda('alvoBarra', alvoBarra); }
-  rolarPendente = rolagens.get(id) ?? -1;
+  rolarPendente = -1; // abrir uma conversa sempre mostra a última coisa (pedido do Rafael, 26/11)
   const cache = cacheMsgs.get(id);
   mensagens = cache || []; chatCarregadoDe = cache ? id : undefined;
   desenharBarra();
@@ -2189,7 +2202,7 @@ function desenharChat() {
   ligarAprovacoes(msgs); CE.decorarErros(msgs); if (!DEMO) A.preencher(msgs, R.sb).catch(() => {});
   // "Ir ao fim" com decisões abertas = ir à primeira delas ("Decisão 1 de 4"), não à última.
   const aoFim = () => { const d = msgs.querySelector('.aprovacao:not(.decidida)'); msgs.scrollTop = d ? msgs.scrollTop + d.getBoundingClientRect().top - msgs.getBoundingClientRect().top - 6 : msgs.scrollHeight; };
-  if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { if (rolarPendente < 0) aoFim(); else msgs.scrollTop = rolarPendente; rolarPendente = null; }
+  if (rolarPendente !== null && chatCarregadoDe === conversaAtual) { if (rolarPendente < 0) colarNoFim(msgs, aoFim); else msgs.scrollTop = rolarPendente; rolarPendente = null; }
   else if (noFim) aoFim();
   $('#estadoPonte').hidden = !$('#estadoPonte').innerHTML.trim();
   // Compositor: "Sobre: X · Alterar" + caixa + Enviar pedido (ou Enviar para a fila, quando ela está ocupada).
@@ -2809,6 +2822,8 @@ function ligarHoje() {
     contagens: () => { const and = andamento(); return { ...and, fazendo: and.tarefas, esperando: ultPend.alertas, pendencias: ultPend.contagem, pedidos: ultPend.lista || [] }; },
     eu: () => EU, estados: () => estados, marcos: () => marcos, conversas: () => conversas,
     abrir: () => abrirAba('hoje'), aberto: () => aba === 'hoje' && !$('#gaveta').classList.contains('fechada') });
+  // HUD de limites de IA (Claude e Codex, sessão e semana) no canto do mapa: limites-hud.js
+  LimHud.ligar({ DEMO, esc, corPessoa, retratoDe, pessoas, eu: () => EU, estados: () => estados, abrirEm: (s) => Hoje.abrirEm(s) });
 }
 
 // Escritório no celular (mapa-cel.js): visão geral, setores, indicadores e ficha de quem você toca.

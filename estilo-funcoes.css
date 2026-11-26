@@ -355,3 +355,37 @@ body:not(.gaveta-aberta) .selo-hoje { display: flex; }
 .hj-lim .b i { display: block; height: 100%; border-radius: 6px; transition: width .4s; }
 .hj-lim.vazio { opacity: .55; }
 .hj-mes { margin: 6px 0 0; font-size: 13px; opacity: .85; }
+
+/* ===== HUD de limites de IA (limites-hud.js): canto de cima à esquerda do mapa, no estilo madeira/papel ===== */
+.lim-hud { position: absolute; left: 10px; top: 10px; z-index: 4; font: 600 13px var(--ui); color: #2b1d12; max-width: calc(100% - 20px); }
+body.gaveta-aberta .lim-hud { display: none; }
+.lim-hud img, .lim-hud .lh-quem i, .lh-pessoas i { width: 22px; height: 22px; image-rendering: pixelated; border-radius: 4px; flex: none; display: inline-block; background: #0002; }
+.lh-pilula { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 10px 4px 4px; border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--papel-claro, #f6ead2); box-shadow: 0 0 0 2px var(--madeira, #8a5a32), 0 0 0 4px var(--contorno, #2a1a0e), 2px 4px 0 3px rgba(20,12,6,.35); font: inherit; color: inherit; }
+.lh-quem { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 3px; border-radius: 7px; background: color-mix(in srgb, var(--lh-cor) 22%, transparent); box-shadow: inset 0 0 0 2px var(--lh-cor); font-weight: 700; }
+.lh-mini { display: flex; align-items: baseline; gap: 4px; }
+.lh-mini b { font-size: 15px; }
+.lh-ia { font: 700 10px var(--ui); letter-spacing: .04em; text-transform: uppercase; padding: 2px 5px; border-radius: 4px; color: #fff; }
+.lh-ia.claude { background: #c86a45; } .lh-ia.gpt { background: #2f8f63; }
+.lh-cartao { width: 290px; max-width: 100%; padding: 10px 12px 10px; border-radius: 10px; background: var(--papel-claro, #f6ead2);
+  box-shadow: 0 0 0 2px var(--madeira, #8a5a32), 0 0 0 4px var(--contorno, #2a1a0e), 3px 5px 0 3px rgba(20,12,6,.35); }
+.lh-topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.lh-tit { font: 700 15px var(--titulo); letter-spacing: .02em; }
+.lh-x { width: 32px; height: 28px; border: 0; border-radius: 6px; background: var(--madeira, #8a5a32); color: var(--papel-claro, #f6ead2); font: 700 18px/1 var(--ui); cursor: pointer; }
+.lh-pessoas { display: flex; gap: 6px; margin-bottom: 6px; }
+.lh-pessoas button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border: 0; border-radius: 7px; cursor: pointer;
+  background: #0000000d; color: inherit; font: 600 13px var(--ui); box-shadow: inset 0 0 0 2px #0000001a; }
+.lh-pessoas button.sel { background: color-mix(in srgb, var(--c) 25%, transparent); box-shadow: inset 0 0 0 2px var(--c); font-weight: 800; }
+.lh-de { margin: 0 0 6px; font-size: 12px; opacity: .85; } .lh-de em { font-style: normal; opacity: .7; }
+.lh-ia-bloco { padding: 6px 0 2px; border-top: 1px dashed #8a5a3255; }
+.lh-ia-bloco h5 { margin: 0 0 2px; }
+.lh-linha { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "r v" "b b" "s s"; gap: 2px 8px; padding: 3px 0; }
+.lh-linha .lh-r { grid-area: r; } .lh-linha b { grid-area: v; font-size: 15px; }
+.lh-b { grid-area: b; height: 10px; border-radius: 5px; background: #2b1d1222; box-shadow: inset 0 0 0 1px #2b1d1230; overflow: hidden; }
+.lh-b i { display: block; height: 100%; border-radius: 5px; transition: width .4s; }
+.lh-linha small { grid-area: s; font-size: 11px; opacity: .7; font-weight: 500; }
+.lh-linha.vazio { opacity: .5; }
+.lh-pe { display: flex; align-items: center; justify-content: space-between; padding-top: 6px; border-top: 1px dashed #8a5a3255; font-size: 11px; opacity: .9; }
+.lh-pe button { border: 0; background: none; color: var(--madeira-escura, #5a3a1e); font: 700 12px var(--ui); text-decoration: underline; cursor: pointer; min-height: 32px; }
+.lh-sem { font-size: 12px; margin: 4px 0; }
+@media (max-width: 700px) { .lim-hud { left: 6px; top: 54px; } body:has(#salasMapa:not(:empty)) .lim-hud { top: 100px; } .lh-cartao { width: 270px; max-height: calc(100vh - 200px); overflow: auto; } }

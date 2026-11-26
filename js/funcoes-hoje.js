@@ -23,6 +23,7 @@ const dinheiro = (v) => `US$ ${(v || 0).toFixed(2).replace('.', ',')}`;
 const milhar = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')} mi` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(Math.round(n || 0)));
 const TAMANHO = { P: ['P', 'até 15 min', 'até 15 min'], M: ['M', '15 a 45 min', '15–45 min'], G: ['G', 'mais de 45 min', '45+ min'] };
 
+
 export function ligar(c) {
   ctx = c;
   if (ctx.DEMO) prepararDemo();
@@ -462,8 +463,8 @@ const barraH = (rot, v, max, txt, cor = 'var(--hj-acento)') => `<div class="hj-b
 // ======================= limites da assinatura (sessão 5 h, semana, mês) =======================
 // A ponte de cada PC manda info.uso.limites: o Claude Code avisa a cada pedido (rate_limit_event) e o Codex
 // grava nos arquivos de sessão. Nenhum dos dois tem limite mensal: o "mês" é o total usado no mês.
-const NOME_JANELA = { five_hour: 'Sessão (5 h)', seven_day: 'Semana', seven_day_opus: 'Semana · Opus', seven_day_sonnet: 'Semana · Sonnet' };
-function quandoReinicia(s) {
+export const NOME_JANELA = { five_hour: 'Sessão (5 h)', seven_day: 'Semana', seven_day_opus: 'Semana · Opus', seven_day_sonnet: 'Semana · Sonnet' };
+export function quandoReinicia(s) {
   if (!s) return '';
   const ms = s * 1000 - Date.now();
   if (ms <= 0) return 'já reiniciou';
@@ -471,7 +472,7 @@ function quandoReinicia(s) {
   const hora = new Date(s * 1000).toLocaleString('pt-BR', h >= 24 ? { weekday: 'short', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
   return h >= 24 ? `reinicia ${hora}` : `reinicia em ${h ? h + ' h ' : ''}${m} min (${hora})`;
 }
-function barraLimite(nome, w) {
+export function barraLimite(nome, w) {
   if (!w) return `<div class="hj-lim vazio"><span class="r">${nome}</span><span class="b"><i style="width:0"></i></span><span class="v">sem leitura</span></div>`;
   const passou = w.reinicia && w.reinicia * 1000 < Date.now();
   const usado = passou ? 0 : w.usado;
