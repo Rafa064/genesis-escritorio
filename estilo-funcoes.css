@@ -403,3 +403,6 @@ body.gaveta-aberta .lim-hud { display: none; }
 .hj-depois-det .g-depois > h3 { display: none; }
 /* Um aviso só no topo do celular: o botão "Resumo N" sai (as decisões já estão na faixa amarela e em Pedidos). */
 @media (max-width: 760px) { .aviso-topo .av-resumo.av-mais { display: none !important; } }
+/* Ficha do agente no celular (27/11): só quem é, o que está fazendo agora, resultados e "Pedir algo".
+   O "O que é", o histórico e "Ir até a mesa" ficam só no PC. */
+@media (max-width: 760px) { #detalheAgente .so-pc-ficha, #detalheAgente .porque { display: none !important; } }
