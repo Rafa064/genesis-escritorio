@@ -388,4 +388,18 @@ body.gaveta-aberta .lim-hud { display: none; }
 .lh-pe { display: flex; align-items: center; justify-content: space-between; padding-top: 6px; border-top: 1px dashed #8a5a3255; font-size: 11px; opacity: .9; }
 .lh-pe button { border: 0; background: none; color: var(--madeira-escura, #5a3a1e); font: 700 12px var(--ui); text-decoration: underline; cursor: pointer; min-height: 32px; }
 .lh-sem { font-size: 12px; margin: 4px 0; }
-@media (max-width: 700px) { .lim-hud { left: 6px; top: 54px; } body:has(#salasMapa:not(:empty)) .lim-hud { top: 100px; } .lh-cartao { width: 270px; max-height: calc(100vh - 200px); overflow: auto; } }
+@media (max-width: 700px) { .lim-hud { left: 6px; top: 6px; } .lh-cartao { width: 270px; max-height: calc(100vh - 200px); overflow: auto; } }
+
+/* Celular mais limpo (27/11): o mapa fica só na visão geral (sem Aproximar e sem chips de sala);
+   o selo de sugestões do mapa sai (as Sugestões têm botão na barra de baixo). */
+@media (max-width: 760px) {
+  #setoresMapa, #salasMapa { display: none !important; }
+  .selo-hoje { display: none !important; }
+}
+#nav .selo-sug { background: var(--amarelo, #f2c14e); color: #15131b; }
+#dicaGeral { display: none !important; }
+.lh-cap { font: 700 9px/1.05 var(--ui); text-transform: uppercase; opacity: .65; text-align: center; }
+.hj-depois-det { margin-top: 14px; } .hj-depois-det > summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; gap: 6px; font-weight: 700; } .hj-depois-det > summary small { font-weight: 500; opacity: .7; }
+.hj-depois-det .g-depois > h3 { display: none; }
+/* Um aviso só no topo do celular: o botão "Resumo N" sai (as decisões já estão na faixa amarela e em Pedidos). */
+@media (max-width: 760px) { .aviso-topo .av-resumo.av-mais { display: none !important; } }

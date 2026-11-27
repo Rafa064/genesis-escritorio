@@ -46,6 +46,7 @@ export function atualizarSelo() {
   const s = minhasSugestoes(), novas = s ? s.projetos.reduce((n, p) => n + p.prompts.filter((x) => !foiEnviada(s, p, x)).length, 0) : 0;
   b.innerHTML = novas ? `<span class="ic">💡</span><i>${novas}</i><b>${novas === 1 ? 'sugestão' : 'sugestões'}</b>` : '<span class="ic">☀</span><b>Hoje</b>';
   b.classList.toggle('tem', !!novas);
+  const n = document.getElementById('seloSug'); if (n) { n.hidden = !novas; n.textContent = novas; }
   b.setAttribute('aria-label', novas ? `Hoje: ${novas} sugestões de pedido` : 'Hoje: fila e custo de IA');
 }
 
@@ -54,14 +55,15 @@ export async function desenhar(forcar = false) {
   const el = document.getElementById('hojeCorpo'); if (!el || !ctx) return;
   // Não apaga o que a pessoa está escrevendo (o painel se redesenha sozinho a cada 15-20 s).
   if (!forcar && (editando || confirmar || el.contains(document.activeElement) && document.activeElement.matches('textarea, input'))) return;
-  const abas = [['sugestoes', icoPx('sol'), 'Seu dia'],['fila', icoPx('lista'), 'Fila'], ['custo', icoPx('moeda'), 'Limites']];
-  const topo = `<div class="hj-abas" role="tablist">${abas.map(([id, ic, t]) => `<button role="tab" data-hsub="${id}" class="${sub === id ? 'on' : ''}" aria-selected="${sub === id}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>`;
+  // Sem abas (27/11): o painel é ou as Sugestões (botão da barra) ou os Limites (Mais › Limites). A fila saiu: o andamento mora em Pedidos.
+  if (sub === 'fila') sub = 'sugestoes';
+  const tituloAba = document.getElementById('tituloAba'); if (tituloAba && ctx.aberto()) tituloAba.textContent = sub === 'custo' ? 'Limites e custo de IA' : 'Sugestões';
+  const topo = '';
   let corpo = '';
   try { corpo = sub === 'fila' ? await htmlFila() : sub === 'custo' ? await htmlCusto() : await htmlSugestoes(); }
   catch (e) { console.warn('hoje:', e); corpo = `<p class="hj-vazio">Não consegui montar esta parte agora (${ctx.esc(e.message)}).</p>`; }
   // O gasto de IA é contexto, não ação: vai para o fim, numa linha recolhida (a aba Custo já mostra tudo).
   let pe = '';
-  if (sub !== 'custo') try { pe = htmlCabecaDia(await resumoDoDia()); } catch (e) { console.warn('hoje (resumo):', e); }
   // O painel se redesenha sozinho: o que estava aberto (detalhes recolhidos) continua aberto.
   const abertos = new Set([...el.querySelectorAll('details[open]')].map((x) => x.dataset.chave || x.querySelector(':scope > summary')?.textContent));
   el.innerHTML = topo + `<div class="hj-corpo hj-${sub}">${corpo}</div>` + pe;
@@ -316,13 +318,11 @@ async function htmlSugestoes() {
     : `<div class="hj-cab sub"><div><small>Sem sugestões hoje: a ponte escreve de 3 a 5 pedidos toda manhã.</small></div><button class="btn mini" data-gerar title="Precisa da ponte ligada e atualizada">Gerar agora</button></div>`;
   const projs = s?.projetos.length > 1 ? `<div class="hj-chips">${s.projetos.map((x) => `<button data-hproj="${esc(x.projeto)}" class="${x === p ? 'on' : ''}">${esc(nomeProjeto(x.projeto))} <small>${x.prompts.length}</small></button>`).join('')}</div>` : '';
   const c0 = ctx.contagens?.() || {}, and = { tarefas: c0.tarefas ?? 0, agentes: c0.agentes ?? 0, ferramentas: c0.ferramentas ?? 0 }; // a mesma conta do mapa e da Equipe
-  // Ordem fixa: Precisa de você › Em andamento › Pronto hoje › Sugestões para mandar › Ideias para depois.
+  // Ordem: Sugestões para mandar › Ideias para depois.
   return livre
-    + grupoHoje('g-precisa', 'Precisa de você', precisa, 'Nada esperando você agora.', textoPendencias(cont))
-    + grupoHoje('g-andando', 'Em andamento', andando, 'Ninguém trabalhando agora. Mande uma sugestão abaixo.', and.tarefas || and.agentes ? textoAndamento(and) : andando.length ? plural(andando.length, 'item', 'itens') : '')
-    + grupoHoje('g-pronto', 'Pronto hoje', pronto, 'Nenhuma entrega ainda hoje.', pronto.length ? plural(pronto.length, 'entrega') : '')
+    // 27/11: a aba é SÓ de sugestões (o que precisa de você e o andamento moram em Pedidos).
     + grupoHoje('g-sugestoes', 'Sugestões para mandar', sugeridas, 'Todas as sugestões de hoje já foram mandadas.', sugeridas.length ? plural(sugeridas.length, 'sugestão', 'sugestões') : '', projs + cab)
-    + (depois.length ? grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia')) : '')
+    + (depois.length ? `<details class="hj-depois-det" data-chave="ideias"><summary>Ideias para depois · ${plural(depois.length, 'ideia')} <small>(ainda não são pedidos prontos)</small></summary>${grupoHoje('g-depois', 'Ideias para depois', depois, '', plural(depois.length, 'ideia'))}</details>` : '')
     + '<details class="hj-nota-det"><summary>Como funcionam as sugestões</summary><p class="hj-nota">Toque em <b>Mandar</b> para ler o pedido inteiro antes de enviar; só “Enviar pedido” manda, numa conversa nova com a sua assistente. <b>Preparar pedido</b> abre o texto para você editar. As sugestões são escritas por uma IA mais simples: confira antes de pedir coisa grande.</p></details>';
 }
 

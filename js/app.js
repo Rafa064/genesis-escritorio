@@ -748,7 +748,7 @@ $('#janelaChat').onclick = (e) => {
 $('#hudChat').addEventListener('click', (e) => { if ($('#gaveta').classList.contains('min') && e.target.closest('[data-cp="pagina"]')) { e.stopPropagation(); minimizarChat(false); } }, true);
 /// ======================= gaveta =======================
 const ABAS_ATIVIDADE = ['atencao', 'missoes', 'historico'];
-const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Atividade', missoes: 'Atividade', missao: 'Passo a passo', pedido: 'Pedido', historico: 'Atividade', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco', agora: 'Agora: fazendo e fila' };
+const TITULO_ABA = { equipe: 'Equipe', agente: 'Agente', atencao: 'Pedidos', missoes: 'Pedidos', missao: 'Passo a passo', pedido: 'Pedido', historico: 'Pedidos', galeria: 'Galeria', chat: 'Sua assistente', dupla: 'Conversa da dupla', catalogo: 'Quem é quem', item: 'Detalhe', mais: 'Mais', ajustes: 'Perfil e ajustes', marco: 'Marco', agora: 'Agora: fazendo e fila' };
 function abrirAba(nome, empilhar = false) {
   if (nome === 'mural') nome = 'dupla';
   if (nome === 'equipe' || nome === 'catalogo') { abrirEquipeVista(); return; }
@@ -805,6 +805,7 @@ function irPara(destino) {
   else if (destino === 'conversas') { if (NAV_DA_ABA[aba] === 'conversas' && aberta && cel) fecharGaveta(); else abrirAba(guardado('abaConversa', 'dupla')); }
   else if (destino === 'atividade') { if (NAV_DA_ABA[aba] === 'atividade' && aberta) fecharGaveta(); else abrirAba(guardado('abaAtividade', 'atencao')); }
   else if (destino === 'mais') { if (aba === 'mais' && aberta) fecharGaveta(); else abrirAba('mais'); }
+  else if (destino === 'sugestoes') { if (aba === 'hoje' && aberta) fecharGaveta(); else Hoje.abrirEm('sugestoes'); }
   else if (destino === 'agora') { if (aba === 'agora' && aberta) fecharGaveta(); else abrirAba('agora'); }
   marcarNav();
 }
@@ -2773,12 +2774,12 @@ async function pedirCom(x) {
 // ---------- "Mais" (⋯): Diário, Galeria, Ajustes e Ajuda ----------
 function desenharMais() {
   const j = jornais.find((x) => x.conteudo);
-  const itens = [['quadro', 'quadro', 'Quadro', 'Os marcos do projeto: o que está em andamento e o que vem depois'], ['equipe', 'equipe', 'Equipe', 'Quem é quem: agentes, receitas e ferramentas'], ['hoje', 'sol', 'Hoje', 'Sugestões de pedido, fila dos agentes e custo de IA'], ['jornal', 'jornal', 'Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', 'imagem', 'Galeria', 'Vídeos e imagens entregues'], ['ajuda', 'ajuda', 'Ajuda', 'Como ler o escritório e os atalhos']];
-  $('#listaMais').innerHTML = itens.map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ico(ic)}</span><b>${t}</b><small>${d}</small></button>`).join('')
+  const itens = [['quadro', 'quadro', 'Quadro', 'Os marcos do projeto: o que está em andamento e o que vem depois'], ['equipe', 'equipe', 'Equipe', 'Quem é quem: agentes, receitas e ferramentas'], ['limites', 'moeda', 'Limites e custo de IA', 'Quanto já usou do Claude e do ChatGPT: sessão, semana e mês'], ['jornal', 'jornal', 'Diário do Estúdio' + (jornalNovo() ? ' · novo' : ''), j ? j.conteudo.manchete : 'O jornal do dia'], ['galeria', 'imagem', 'Galeria', 'Vídeos e imagens entregues'], ['ajuda', 'ajuda', 'Ajuda', 'Como ler o escritório e os atalhos']];
+  $('#listaMais').innerHTML = itens.filter(([id]) => !(innerWidth <= 760 && id === 'equipe')).map(([id, ic, t, d]) => `<button data-ir-aba="${id}"><span class="ic">${ico(ic)}</span><b>${t}</b><small>${d}</small></button>`).join('')
     + '<p class="mais-dica">Perfil, avisos e ajustes ficam no seu nome, no alto da tela.</p>';
   $('#listaMais').onclick = (e) => {
     const b = e.target.closest('[data-ir-aba]'); if (!b) return; const id = b.dataset.irAba;
-    if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda();
+    if (id === 'jornal') abrirJornal(); else if (id === 'ajuda') abrirAjuda(); else if (id === 'limites') Hoje.abrirEm('custo');
     else if (id === 'quadro' || id === 'equipe') { if (innerWidth <= 760) fecharGaveta(); if (id === 'quadro') { fecharEquipeVista(); abrirQuadro(); } else { fecharQuadro(); abrirEquipeVista(); } marcarNav(); }
     else abrirAba(id, true);
   };
@@ -2808,7 +2809,7 @@ function seloAgora() {
 setInterval(() => { if (aba === 'agora' && !$('#gaveta').classList.contains('fechada') && Date.now() - ultAgora > 14e3) desenharAgora(); }, 15e3);
 
 // ---------- painel "Hoje" (funcoes-hoje.js): sugestões do dia, fila por agente, custo de IA ----------
-TITULO_ABA.hoje = 'Hoje'; NAV_DA_ABA.hoje = 'mais';
+TITULO_ABA.hoje = 'Sugestões'; NAV_DA_ABA.hoje = 'sugestoes';
 // "Mandar" de uma sugestão: vai pela barra de comando, numa conversa nova do alvo e projeto dela.
 async function mandarPronto(texto, { alvo, projeto } = {}) {
   const ia = alvo === 'codex' ? 'codex' : alvo === 'claude' ? 'claude' : alvoBarra;

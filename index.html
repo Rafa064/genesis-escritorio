@@ -52,9 +52,9 @@
     <!-- ícones pixel 16x16 desenhados aqui mesmo (mesma cor do texto, sem emoji misturado) -->
     <button data-nav="mapa" title="Escritório: o mapa"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M7 1h2v1h2v1h2v1h2v2h-1v8H9v-4H7v4H2V6H1V4h2V3h2V2h2zM4 7h2v2H4zM10 7h2v2h-2z"/></svg><span class="txt">Escritório</span></button>
     <button data-nav="conversas" title="Conversas: assistente e dupla (C / M)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M2 2h12v1h1v7h-1v1H7v1H6v1H5v1H4v-3H2v-1H1V3h1zM4 6h2v2H4zM7 6h2v2H7zM10 6h2v2h-2z"/></svg><span class="txt">Conversas</span><i class="ponto-novo" id="pontoConversas" hidden></i></button>
-    <button data-nav="atividade" title="Atividade: resumo, missões e histórico (H / L)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M5 1h6v1h2v2h1v2h1v4h-1v2h-1v2h-2v1H5v-1H3v-2H2v-2H1V6h1V4h1V2h2zM5 3h6v1h1v1h1v6h-1v1h-1v1H5v-1H4v-1H3V5h1V4h1zM7 5h2v4h3v2H7z"/></svg><span class="txt">Atividade</span></button>
-    <button data-nav="agora" title="Agora: o que está rodando de verdade e o que está na fila (F)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1H5L3 9h4l-2 6h2l6-9H9l2-5z"/></svg><span class="txt">Agora</span><b class="selo-agora" id="seloAgora" hidden>0</b></button>
-    <button data-nav="mais" title="Mais: Quadro, Equipe, Hoje, Diário, Galeria e Ajuda"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7h3v3H1zM6.5 7h3v3h-3zM12 7h3v3h-3z"/></svg><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
+    <button data-nav="atividade" title="Pedidos: o que está sendo feito, o que precisa de você e o histórico (H / L)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M5 1h6v1h2v2h1v2h1v4h-1v2h-1v2h-2v1H5v-1H3v-2H2v-2H1V6h1V4h1V2h2zM5 3h6v1h1v1h1v6h-1v1h-1v1H5v-1H4v-1H3V5h1V4h1zM7 5h2v4h3v2H7z"/></svg><span class="txt">Pedidos</span><b class="selo-agora" id="seloAgora" hidden>0</b></button>
+    <button data-nav="sugestoes" title="Sugestões: pedidos prontos que os agentes sugerem para hoje"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M6 1h4v1h2v2h1v4h-1v2h-1v2H5v-2H4V8H3V4h1V2h2zM6 13h4v1H6zM7 15h2v1H7z"/></svg><span class="txt">Sugestões</span><b class="selo-agora selo-sug" id="seloSug" hidden>0</b></button>
+    <button data-nav="mais" title="Mais: Quadro, Equipe, Limites de IA, Diário, Galeria e Ajuda"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 7h3v3H1zM6.5 7h3v3h-3zM12 7h3v3h-3z"/></svg><span class="txt">Mais</span><i class="ponto-novo" id="pontoMais" hidden></i></button>
   </nav>
   <div id="gente" class="gente"></div>
   <!-- Linha 2 no celular: quantos estão trabalhando e quantas coisas precisam de você. -->
@@ -105,7 +105,7 @@
   <aside id="gaveta" class="painel-px">
     <div class="gaveta-topo"><button id="voltarGaveta" class="voltar" hidden title="Voltar">‹</button><h2 id="tituloAba">Equipe</h2><button id="fecharGaveta" title="Fechar (Esc)">×</button></div>
     <div class="janela-chat" id="janelaChat"></div>
-    <div class="seg-conversas seg-atividade" id="segAtividade" hidden><button data-seg="atencao">Resumo</button><button data-seg="missoes">Missões</button><button data-seg="historico">Histórico</button></div>
+    <div class="seg-conversas seg-atividade" id="segAtividade" hidden><button data-seg="atencao">Em aberto</button><button data-seg="missoes">Por frente</button><button data-seg="historico">Histórico</button></div>
     <section data-painel="equipe" class="painel">
       <div class="filtros" id="filtroEquipe"></div>
       <div id="listaEquipe"></div>

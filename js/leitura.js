@@ -53,7 +53,7 @@ export const seloEstado = (status) => { const [c, t] = SELO[status] || SELO.espe
 
 // Rótulos fixos da gaveta (index.html): "Missões" vira "Pedidos", o nome que o resto do app usa.
 function trocarRotulos() {
-  const b = document.querySelector('#segAtividade [data-seg="missoes"]'); if (b && b.textContent.trim() === 'Missões') b.textContent = 'Pedidos';
+  const b = document.querySelector('#segAtividade [data-seg="missoes"]'); if (b && b.textContent.trim() === 'Missões') b.textContent = 'Por frente';
   const busca = document.getElementById('buscaMissoes'); if (busca) busca.placeholder = 'Buscar um pedido…';
 }
 if (typeof document !== 'undefined') { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', trocarRotulos); else trocarRotulos(); }

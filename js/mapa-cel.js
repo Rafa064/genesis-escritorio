@@ -180,7 +180,7 @@ function mudarZoomCel(q) {
 // Na visão geral, tocar num pedaço do chão aproxima o setor dele.
 const setorDoPonto = (x, y) => { const tx = x / T, ty = y / T; return ty >= 22 ? 'copa' : ty >= 11.5 ? (tx < 20.5 ? 'criacao' : 'marketing') : tx >= 13 && tx < 27 ? 'reuniao' : (Math.abs(tx - setores().sala.cx) < 7 ? 'sala' : null); };
 export function tocarGeral(x, y) {
-  if (ctx.zoom() >= 1) return false;
+  return false; // 27/11: sem aproximar no celular (o mapa fica na visão geral; tocar num boneco ainda abre a ficha)
   const id = setorDoPonto(x, y);
   if (!id) return false;
   irSetor(id); return true;

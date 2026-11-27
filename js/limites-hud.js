@@ -59,7 +59,7 @@ function desenhar() {
   if (!aberto) {
     const c5 = usadoAgora(cl?.five_hour), g5 = usadoAgora(cx?.five_hour);
     el.innerHTML = `<button type="button" class="lh-pilula" data-lim="abrir" title="Limites de IA de ${ctx.esc(pessoa)} (sessão de 5 h). Tocar abre.">
-      <span class="lh-quem">${retrato(pessoa)}${ctx.esc(pessoa)}</span>
+      <span class="lh-quem">${retrato(pessoa)}${ctx.esc(pessoa)}</span><span class="lh-cap">uso<br>5 h</span>
       <span class="lh-mini"><span class="lh-ia claude">Claude</span><b style="color:${corDe(c5)}">${txtDe(cl?.five_hour)}</b></span>
       <span class="lh-mini"><span class="lh-ia gpt">GPT</span><b style="color:${corDe(g5)}">${txtDe(cx?.five_hour)}</b></span></button>`;
     return;
